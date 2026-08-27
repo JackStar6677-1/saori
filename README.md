@@ -62,7 +62,7 @@ flowchart TD
         STATE_STORE <--> IPC_SOCK{{"UNIX IPC Socket\n/tmp/saoristar-bot.sock"}}
         IPC_SOCK <--> BRAIN["Brain Engine\n(12 Active Goals & Reflections)"]
         BRAIN --> SKILLS["Skills Engine\n(Mine, Craft, Loot, Build, Defend)"]
-        CHAT_SRV -->|Divine Persona (0 Emojis)| INGAME_CHAT["In-Game Say & Player Support"]
+        CHAT_SRV -->|"Divine Persona (0 Emojis)"| INGAME_CHAT["In-Game Say & Player Support"]
     end
 ```
 
