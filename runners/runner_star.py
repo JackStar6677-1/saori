@@ -27,9 +27,29 @@ LOG_DIR = ROOT / "log/star-agents"
 STATE_DIR = pathlib.Path.home() / ".local/state/saori/agents"
 AGENT_CONTROL = pathlib.Path.home() / ".local/state/nova/agent-control.json"
 MINUTES = {"codex": (0, 30), "claude-code": (12, 42), "antigravity": (24, 54)}
+def get_codex_command() -> list[str]:
+    """Retorna comando de Codex seleccionando gpt-5.6-sol o gpt-5.6-terra con reasoning medium."""
+    model = "gpt-5.6-sol"
+    try:
+        if AGENT_CONTROL.is_file():
+            data = json.loads(AGENT_CONTROL.read_text(encoding="utf-8"))
+            pct = data.get("agentes", {}).get("codex", {}).get("porcentaje", 100)
+            if pct is not None and pct < 50:
+                model = "gpt-5.6-terra"
+    except Exception:
+        pass
+    return [
+        "codex", "exec", "-C", str(WORKSPACE),
+        "-m", model,
+        "-c", 'model_reasoning_effort="medium"',
+        "--dangerously-bypass-approvals-and-sandbox", "-",
+    ]
+
+
 COMMANDS = {
     "codex": [
         "codex", "exec", "-C", str(WORKSPACE),
+        "-m", "gpt-5.6-sol",
         "-c", 'model_reasoning_effort="medium"',
         "--dangerously-bypass-approvals-and-sandbox", "-",
     ],
@@ -285,7 +305,7 @@ def main() -> int:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     log = LOG_DIR / f"{args.agent}-{stamp}.log"
-    command = COMMANDS[args.agent]
+    command = get_codex_command() if args.agent == "codex" else COMMANDS[args.agent]
     if args.agent != "codex":
         command = [*command, prompt]
     try:
