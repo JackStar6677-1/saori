@@ -35,6 +35,7 @@ COMMANDS = {
     ],
     "claude-code": [
         "claude", "--dangerously-skip-permissions",
+        "--model", "opus",
         "--effort", "medium", "-p",
     ],
     "antigravity": [
