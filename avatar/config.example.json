@@ -1,0 +1,9 @@
+{
+  "host": "localhost",
+  "port": 25565,
+  "username": "SaoriStar",
+  "version": "1.21.1",
+  "auth_type": "offline",
+  "jack_uuid": "",
+  "reconnect_delay_ms": 10000
+}

@@ -1,0 +1,34 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Database & SQLite WAL files
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# Node.js dependencies & logs
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Unix Domain Sockets & Logs
+*.sock
+*.log
+log/
+logs/
+
+# Sensitive local configurations
+avatar/config.json
+!avatar/config.example.json
+
+# OS & Editor artifacts
+.DS_Store
+.vscode/
+.idea/

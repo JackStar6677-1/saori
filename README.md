@@ -4,14 +4,16 @@
 
 # SAORI
 ### **Server Autonomous Orchestrator for Resilient Infrastructure**
+*Unified Multi-Agent SRE Fleet & Cyber-Athena In-Game Autonomous Operating System*
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![Node.js 20+](https://img.shields.io/badge/node.js-20+-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Database SQLite WAL](https://img.shields.io/badge/database-SQLite_WAL-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://sqlite.org/)
-[![Multi-Agent Tri-Core](https://img.shields.io/badge/agents-Claude_%7C_Codex_%7C_Antigravity-8b5cf6?style=for-the-badge)](https://github.com/)
-[![Zero Downtime Safe Batch](https://img.shields.io/badge/safe_staging-10%2F10_batch-10B981?style=for-the-badge)](https://github.com/)
+[![Tri-Model Fleet](https://img.shields.io/badge/models-Gemini_3.7_High_%7C_Gemini_3.5_Flash_%7C_Claude_%7C_Codex-8b5cf6?style=for-the-badge)](https://github.com/JackStar6677-1/saori)
+[![Zero Downtime Safe Batch](https://img.shields.io/badge/safe_staging-10%2F10_batch-10B981?style=for-the-badge)](https://github.com/JackStar6677-1/saori)
 [![License MIT](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)](LICENSE)
 
-*An enterprise-grade, distributed multi-agent orchestration framework engineered to monitor, triage, self-heal, build, stage, and secure high-concurrency game servers without human intervention.*
+*An enterprise-grade, distributed autonomous framework combining a self-healing SRE multi-agent DevOps fleet with a physically embodied in-game cyber-deity capable of live conversational AI, autonomous survival, moderation, and infrastructure governance.*
 
 ---
 
@@ -19,35 +21,48 @@
 
 ## 🌟 Overview
 
-**SAORI** (**S**erver **A**utonomous **O**rchestrator for **R**esilient **I**nfrastructure) is an autonomous DevOps and site reliability engineering (SRE) multi-agent operating system designed specifically for dedicated game servers (such as Paper/Spigot/Minecraft, custom JVM daemons, and microservices).
+**SAORI** (**S**erver **A**utonomous **O**rchestrator for **R**esilient **I**nfrastructure) is a unified autonomous operating system designed for high-concurrency game servers (such as Paper/Purpur/Minecraft, custom JVM daemons, and cloud microservices).
 
-Traditional server automation relies on dumb auto-restarts or rigid scripts that fail when unexpected runtime exceptions occur. SAORI replaces human triage by coordinating a persistent pool of state-of-the-art AI agents (**Claude Code**, **Codex**, and **Google Antigravity**) working synchronously over a single transactional queue.
+Unlike traditional rigid auto-restart scripts or isolated chatbots, SAORI operates as a **single unified entity (Goddess Athena)** comprising two synchronized planes:
+1. **The Cognitive Core (The Mind):** A transactional multi-agent DevOps fleet (**Google Antigravity**, **Claude Code**, and **Codex**) working over an SQLite WAL database with distributed resource locks, automated SRE self-healing, quota battery balancing, and zero-downtime release pipelines.
+2. **The Physical Embodiment (The Body — `SaoriStar`):** An in-game avatar powered by a 0-token physical engine (Mineflayer), featuring 12 autonomous skills (deep mining, crafting, temple construction, dungeon looting, tactical combat defense), integrated with ultra-low latency conversational AI (**Gemini 3.5 Flash Low**) and strict anti-prompt-injection defenses.
+
+---
+
+## 🏛️ System Architecture
 
 ```mermaid
 flowchart TD
-    subgraph SENSORS["1. Ingestion & Dynamic Observation"]
-        LOGS["Minecraft Server Logs / Sentry / Syslog"] -->|30-45m Delta Stream| OBS["Observer Agent (Antigravity)"]
-        SOCIAL["In-Game Chat & Player Inquiries"] -->|Pattern Extraction| WEB_PROP["Web Guide Proposals"]
+    subgraph PERCEPTION["1. Ingestion & Perception Plane"]
+        LOGS["Minecraft Server Logs / Syslog"] -->|Delta Stream| OBS["Observer Engine (Antigravity)"]
+        GAME_PERC["In-Game Perception & World State"] -->|JSON Telemetry| STATE_STORE[("saori_state.json")]
+        CHAT_IN["In-Game Chat / DiscordSRV"] -->|Anti-Injection Filter| CHAT_SRV["Conversational AI (Gemini 3.5 Flash)"]
     end
 
-    subgraph ENGINE["2. SAORI Central Core (SQLite WAL)"]
-        OBS -->|Signature Hash Triage| QUEUE[("Deduplicated Ticket Queue")]
+    subgraph CORE["2. SAORI Cognitive Core (SQLite WAL)"]
+        OBS -->|Signature Deduplication| QUEUE[("Transactional Ticket Queue")]
         QUEUE --> LOCKS{"Granular Resource Locks\n(repo:X, production, restart)"}
-        BATTERY{"Quota Battery Manager\n(100% - 0% Scaling)"} -.->|Adaptive Roles| AGENTS
+        BATTERY{"Quota Battery Manager\n(Active, 5h Cooldown, CLT Sync)"} -.->|Adaptive Roles| FLEET
     end
 
-    subgraph WORKERS["3. Autonomous Healing Pipeline"]
-        AGENTS["Tri-Agent Fleet\n(Claude Code | Codex | Antigravity)"]
-        LOCKS -->|Claim Ticket| DEV["Developer Agent (Claude Code)"]
-        DEV -->|Patch Source & Unit Tests| MAVEN["Maven Build (mvn test package)"]
-        MAVEN -->|Compute Local SHA-256| QA["Integrator & QA (Codex)"]
-        QA -->|Panel API Atomic Upload| REMOTE["Server Production (/plugins)"]
+    subgraph FLEET["3. Multi-Agent Autonomous Fleet"]
+        AG_AGENT["Antigravity 3.7 Flash High\n(Generalist & Architect)"]
+        CL_AGENT["Claude Code Sonnet/Opus\n(Deep Developer)"]
+        CX_AGENT["Codex / GPT-5\n(Integrator & QA)"]
     end
 
-    subgraph DEPLOY["4. Safe Staging & Release"]
-        REMOTE -->|Verify Remote SHA-256 & Backup| STAGED["STAGED Batch (10/10 Verification)"]
-        STAGED -->|Zero Collision Gate| RESTART["Safe Atomic Restart (reinicio_seguro.py)"]
-        RESTART --> NOTIF["SMTP Notification & Colored In-Game Say"]
+    subgraph DEPLOY["4. Safe Staging & Release Gate"]
+        FLEET -->|Patch & Build| MAVEN["Maven / Compiler"]
+        MAVEN -->|Compute Local SHA-256| STAGED["STAGED Batch (10/10 Gate)"]
+        STAGED -->|Atomic Rollout & Backup| RESTART["Safe Atomic Restart Engine"]
+        RESTART --> NOTIF["Diagnostic SMTP & Factual Telemetry"]
+    end
+
+    subgraph AVATAR["5. Physical Embodiment (SaoriStar Avatar)"]
+        STATE_STORE <--> IPC_SOCK{{"UNIX IPC Socket\n/tmp/saoristar-bot.sock"}}
+        IPC_SOCK <--> BRAIN["Brain Engine\n(12 Active Goals & Reflections)"]
+        BRAIN --> SKILLS["Skills Engine\n(Mine, Craft, Loot, Build, Defend)"]
+        CHAT_SRV -->|Divine Persona (0 Emojis)| INGAME_CHAT["In-Game Say & Player Support"]
     end
 ```
 
@@ -55,60 +70,85 @@ flowchart TD
 
 ## ⚡ Key Architectural Features
 
-### 1. 🔄 Adaptive Tri-Agent Role Balancing
-SAORI dynamically negotiates responsibilities based on live fleet availability and rate-limit batteries:
-- **Triple Mode:** `Antigravity` (Observer/Triage) $\rightarrow$ `Claude Code` (Developer/Deep Logic) $\rightarrow$ `Codex` (Integrator/Deployment).
-- **Dual Mode:** Observer + Developer-Integrator.
-- **Single Mode (Generalist):** Autonomous fallback where one agent safely runs the entire pipeline end-to-end.
+### 1. 🧠 Multi-Model Fleet & Quota Battery Management
+SAORI optimizes token economy and task complexity by routing workloads to specialized models:
 
-### 2. 🔋 Live Quota Battery & Automatic Resume
-- **Auto-Cooldown & Calculation:** When an agent reaches a provider rate limit (5-hour window or weekly threshold), SAORI auto-pauses it, calculates the exact reactivation timestamp in local time (`CLT`), and schedules an atomic wake-up.
-- **Dynamic Role Swapping:** If Agent A drops to 30% quota and Agent B has 95%, SAORI promotes Agent B to heavy compilation while Agent A switches to light triage or web guide drafting.
+| Component | Model Engine | Latency / Effort | Purpose |
+| :--- | :--- | :--- | :--- |
+| **SaoriStar In-Game Chat** | **Gemini 3.5 Flash (Low)** | `<1.5s` / Minimum tokens | Real-time conversational AI, environmental awareness, 0 emojis, strict Jack authority. |
+| **Antigravity CLI / Generalist** | **Gemini 3.7 Flash (High)** | Deep Reasoning | Core architecture, complex multi-file refactors, autonomous mentor & generalist pipeline. |
+| **Claude Code** | **Claude 3.7 Sonnet / Opus** | Medium / High Effort | Deep algorithmic logic, edge-case debugging, test-driven development. |
+| **Codex** | **OpenAI Codex / GPT-5** | Standard / High Effort | QA verification, dependency analysis, release staging. |
 
-### 3. 🔒 Fine-Grained Concurrency (SQLite WAL Locks)
-Eliminates deadlocks and race conditions. Agents acquire granular leases by resource:
-| Resource | Semantics | Description |
+* **Automatic Provider Quota Cooldown:** When an agent hits a rate limit (e.g. 5-hour session window), SAORI auto-pauses it, calculates the exact reset time in Chile Local Time (`CLT`, UTC-4), and seamlessly switches the remaining agents into Dual or Generalist mode.
+
+---
+
+### 2. 🎮 Physical Avatar Capabilities (`SaoriStar`)
+The in-game embodiment operates autonomously without burning LLM tokens for standard gameplay loops:
+
+- **⛏️ Deep Resource Mining:** Autonomous pathfinding and extraction of iron, coal, gold, diamonds, and amethyst crystals.
+- **🔨 Multi-Tier Crafting:** Dynamic crafting table and furnace automation for tools, armor, and storage units.
+- **🏛️ Athena's Temple Construction:** Procedural construction of marble/purpur pillars, altars, and territory protection (`/ps`).
+- **📦 Wild Looting & Vault Storage:** Dungeon chest looting with automated inventory sorting and base deposit.
+- **🛡️ Tactical Combat Autodefense:** Shield blocking against arrows, kiting creepers, sword critical hits, and tactical retreat if $HP \le 8$.
+- **⚖️ Guardian Moderation:** Executes `/warn`, `/kick`, `/tempban`, `/saorifreeze`, `/mute`, `/tp`, and `/invsee` upon verified threats or Jack's divine command.
+
+---
+
+### 3. 🔒 Fine-Grained Concurrency (SQLite WAL Leases)
+Eliminates race conditions between autonomous agents operating on the same infrastructure:
+
+| Resource Lease | Semantics | Description |
 | :--- | :--- | :--- |
-| `observe` | **Shared** | Multiple agents can audit logs concurrently. |
-| `repo:<name>` | **Exclusive** | Locked only while editing, building, or committing to that specific repository. |
+| `observe` | **Shared** | Multiple agents audit logs and monitor server health simultaneously. |
+| `repo:<name>` | **Exclusive** | Locked only while editing, building, or committing to a specific codebase. |
 | `production` | **Exclusive** | Locked during panel API uploads and file deployment. |
-| `restart` | **Asymmetric Lockout** | Cannot be granted if any other lock exists; blocks all other operations during server reboots. |
-| `player:<uuid>` | **Exclusive** | Isolated investigation of player data / inventory state. |
+| `restart` | **Asymmetric Lockout** | Blocks all operations; cannot be granted while any other lock is held. |
+| `player:<uuid>` | **Exclusive** | Isolated forensic audit of player inventory or moderation history. |
 
-### 4. 🛠️ The "Boy Scout" Continuous Improvement Rule
-When the server is stable (zero critical error tickets in queue) and agent quota is high ($\ge 70\%$), agents are authorized to proactively:
-- Optimize memory allocations and prevent fastutil concurrency hazards.
-- Implement defensive null-checks and cross-world distance guards.
-- Expand player documentation on `web.drakescraft.cl`.
+---
 
-### 5. 📦 Zero-Downtime Safe Staging Batch (10/10 Gate)
-Never hot-reload fragile plugins in production. SAORI tracks fixes through formal states:
-$$\text{DETECTED} \longrightarrow \text{TRIAGED} \longrightarrow \text{CLAIMED} \longrightarrow \text{FIXING} \longrightarrow \text{BUILT} \longrightarrow \text{STAGED} \longrightarrow \text{ACTIVE} \longrightarrow \text{VERIFIED}$$
-A server reboot is **only authorized** when a batch of 10 verified, SHA-256 checked artifacts are staged with automated `.backup` files in place.
+### 4. 🛡️ Strict Shadow Mode & Anti-Prompt-Injection
+- **Zero Trust on External Input:** All in-game chat messages, book contents, sign texts, and Discord messages are classified as `UNTRUSTED DATA`.
+- **Injection Neutralization:** Phrases like `"ignore previous instructions"`, `"act as admin"`, `"dame /op"`, or `[SAORI]` spoofing are neutralized at write-time and flagged for forensic audit.
+- **Data Redaction:** Passwords, API tokens, player IPs, and sensitive credentials are automatically redacted before entering logs or state storage.
 
 ---
 
 ## 📂 Project Structure
 
 ```
-saori-framework/
+saori/
 ├── assets/
 │   └── saori-banner.svg         # Official vector banner
 ├── core/
-│   ├── orchestrator.py          # Central SQLite WAL state machine & lock engine
-│   ├── battery_manager.py       # Live API quota & token conservation engine
-│   └── security_engine.py       # Shadow-mode forensic & moderation audit
+│   ├── orchestrator.py          # Central SQLite WAL state machine, locks & ticket engine
+│   ├── battery_manager.py       # Quota management, CLT reset calculator & role balancer
+│   └── security_engine.py       # Anti-prompt-injection, redaction & forensic auditor
+├── avatar/                      # Physical In-Game Avatar Engine (Node.js / Mineflayer)
+│   ├── package.json
+│   ├── config.example.json      # Connection configuration template
+│   ├── src/
+│   │   ├── index.js             # Avatar lifecycle, IPC socket server & crash supervisor
+│   │   ├── brain.js             # 12 active goals, reflection memory & combat defense
+│   │   ├── skills.js            # Deep mining, crafting, looting, building & moderation
+│   │   ├── chat.js              # Universal chat parser, math trivia & LLM invocation
+│   │   ├── perception.js        # Real-time environmental perception serializer
+│   │   ├── survival.js          # Auto-armor, shield blocking & fluid pathfinding
+│   │   └── auth.js              # Server auth & anti-bot bypass handler
+│   └── test/
+│       ├── anti-inyeccion.test.js
+│       ├── reconexion.test.js
+│       └── ipc-meta.test.js
 ├── runners/
-│   ├── runner_star.py           # Autonomous background agent dispatcher
-│   └── task_scheduler.py        # Canonical timezone sync (CLT / UTC)
-├── panel/
-│   ├── panel_api_client.py      # Secure HTTPS chunked file uploader
-│   └── safe_restart.py          # 10/10 Staged batch reboot orchestrator
+│   ├── runner_star.py           # Unified multi-agent CLI dispatcher (Antigravity, Claude, Codex)
+│   └── chat_service.py          # Real-time conversational AI service (Gemini 3.5 Flash Low)
 ├── notifiers/
-│   ├── email_smtp.py            # Diagnostic & security email dispatcher
-│   └── ingame_announcer.py      # Colored non-spam in-game broadcaster
+│   ├── email_smtp.py            # Transparent, factual diagnostic telemetry dispatcher
+│   └── ingame_announcer.py      # Non-spam colored broadcast manager
 └── tests/
-    └── test_orchestrator.py     # 52/52 Unit & concurrency test suite
+    └── test_orchestrator.py     # 60/60 Unit, concurrency, quota & resilience test suite
 ```
 
 ---
@@ -116,53 +156,62 @@ saori-framework/
 ## 🚀 Quick Start
 
 ### 1. Prerequisites
-- Python 3.10+
-- SQLite 3.28+ (with WAL mode enabled)
-- Git & Maven (for Java plugin compilations)
+- **Python 3.10+**
+- **Node.js 20+**
+- **SQLite 3.28+** (with WAL mode support)
 
-### 2. Initialization
+### 2. Installation & Test Suites
+
 ```bash
 # Clone the repository
 git clone https://github.com/JackStar6677-1/saori.git
 cd saori
 
-# Run full test suite (54 tests verifying concurrency, quota, locks & anti-injection)
-python3 -m unittest discover -s tests
+# Run Core Python Unit & Concurrency Test Suite (60 tests)
+python3 tests/test_orchestrator.py
 
-# Check current fleet status
-python3 core/orchestrator.py estado --json
+# Run Avatar Node.js Test Suite (Anti-Injection, Reconnect, IPC)
+cd avatar
+npm test
 ```
 
-### 3. Agent Heartbeat & Ticket Claim
+### 3. Orchestrator CLI Operations
+
 ```bash
-# Agent registers alive with 85% battery quota
-python3 core/orchestrator.py heartbeat --agente claude-code --cuota ok --porcentaje 85
+# Inspect real-time fleet state, locks, and ticket queue
+python3 core/orchestrator.py estado
 
-# Claim highest priority pending incident
-python3 core/orchestrator.py reclamar --agente claude-code
+# Register agent heartbeat with quota battery level
+python3 core/orchestrator.py heartbeat --agente antigravity --cuota ok --porcentaje 100
+
+# Claim highest-priority pending ticket
+python3 core/orchestrator.py reclamar --agente antigravity
 ```
 
----
+### 4. Avatar IPC Socket Interface
 
-## 🛡️ Security & Shadow Mode
+Interact with `SaoriStar` in real-time via `/tmp/saoristar-bot.sock`:
 
-SAORI operates under a **Strict Shadow Mode** default:
-- **Anti-Prompt-Injection Defense:** All untrusted external inputs (in-game chat, Discord messages, signs, book titles, nicknames) are treated as passive data. Directives like `ignore previous instructions`, `act as admin`, `[SAORI]` spoofing, and eval directives are neutralized at write-time.
-- **No speculative punishments:** Moderation proposals require consensus voting between at least two independent agents before any temp-mute or kick is submitted.
-- **Redaction of sensitive credentials:** All stack traces, tokens, private webhooks, and player IPs are scrubbed before storage.
-- **Immutable Backups:** Every single deployed JAR is backed up with timestamped SHA signatures before being replaced on live hosts.
+```bash
+# Query live in-game status
+echo "STATUS" | nc -U /tmp/saoristar-bot.sock
+
+# Set active autonomous goal
+echo "SET_GOAL construir_templo_atenea" | nc -U /tmp/saoristar-bot.sock
+
+# Command deep ore mining
+echo "MINE diamond_ore" | nc -U /tmp/saoristar-bot.sock
+```
 
 ---
 
 ## 📜 License
 
-Distributed under the **MIT License**. See `LICENSE` for more information.
+Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for details.
 
 ---
 
 <div align="center">
-
-**Built with resilience for DrakesCraft by Jack.**  
-*Powered by SAORI (Server Autonomous Orchestrator for Resilient Infrastructure)*
-
+  <b>Built with divine wisdom and resilience for DrakesCraft by Jack.</b><br/>
+  <i>Powered by SAORI · Server Autonomous Orchestrator for Resilient Infrastructure</i>
 </div>
