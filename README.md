@@ -12,6 +12,7 @@
 [![Tri-Model Fleet](https://img.shields.io/badge/fleet-Antigravity_%7C_Claude_Code_%7C_Codex-8b5cf6?style=for-the-badge)](https://github.com/JackStar6677-1/saori)
 [![Zero Downtime Safe Batch](https://img.shields.io/badge/safe_staging-10%2F10_batch-10B981?style=for-the-badge)](https://github.com/JackStar6677-1/saori)
 [![License MIT](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)](LICENSE)
+[![RepoRanker](https://reporanker.com/badge/JackStar6677-1/saori)](https://reporanker.com/repos/JackStar6677-1/saori)
 
 *An enterprise-grade, distributed autonomous framework combining a self-healing SRE multi-agent DevOps fleet with a physically embodied in-game cyber-deity capable of live conversational AI, autonomous survival, moderation, and infrastructure governance.*
 
