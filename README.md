@@ -16,7 +16,7 @@
 *An enterprise-grade, distributed autonomous framework combining a self-healing SRE multi-agent DevOps fleet with a physically embodied in-game cyber-deity capable of live conversational AI, autonomous survival, moderation, and infrastructure governance.*
 
 [🌐 DrakesCraft Network](https://web.drakescraft.cl) ·
-[💬 Discord Community](https://discord.gg/rR7FbfCt9Y) ·
+[💬 Discord Community](https://discord.gg/rv3vtXZTk7) ·
 [🎮 In-Game Server: `play.drakescraft.cl`](https://web.drakescraft.cl/play)
 
 ---
