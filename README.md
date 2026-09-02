@@ -9,11 +9,15 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![Node.js 20+](https://img.shields.io/badge/node.js-20+-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Database SQLite WAL](https://img.shields.io/badge/database-SQLite_WAL-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://sqlite.org/)
-[![Tri-Model Fleet](https://img.shields.io/badge/models-Gemini_3.7_High_%7C_Gemini_3.5_Flash_%7C_Claude_%7C_Codex-8b5cf6?style=for-the-badge)](https://github.com/JackStar6677-1/saori)
+[![Tri-Model Fleet](https://img.shields.io/badge/fleet-Antigravity_%7C_Claude_Code_%7C_Codex-8b5cf6?style=for-the-badge)](https://github.com/JackStar6677-1/saori)
 [![Zero Downtime Safe Batch](https://img.shields.io/badge/safe_staging-10%2F10_batch-10B981?style=for-the-badge)](https://github.com/JackStar6677-1/saori)
 [![License MIT](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)](LICENSE)
 
 *An enterprise-grade, distributed autonomous framework combining a self-healing SRE multi-agent DevOps fleet with a physically embodied in-game cyber-deity capable of live conversational AI, autonomous survival, moderation, and infrastructure governance.*
+
+[🌐 DrakesCraft Network](https://web.drakescraft.cl) ·
+[💬 Discord Community](https://discord.gg/rR7FbfCt9Y) ·
+[🎮 In-Game Server: `play.drakescraft.cl`](https://web.drakescraft.cl/play)
 
 ---
 
@@ -25,7 +29,7 @@
 
 Unlike traditional rigid auto-restart scripts or isolated chatbots, SAORI operates as a **single unified entity (Goddess Athena)** comprising two synchronized planes:
 1. **The Cognitive Core (The Mind):** A transactional multi-agent DevOps fleet (**Google Antigravity**, **Claude Code**, and **Codex**) working over an SQLite WAL database with distributed resource locks, automated SRE self-healing, quota battery balancing, and zero-downtime release pipelines.
-2. **The Physical Embodiment (The Body — `SaoriStar`):** An in-game avatar powered by a 0-token physical engine (Mineflayer), featuring 12 autonomous skills (deep mining, crafting, temple construction, dungeon looting, tactical combat defense), integrated with ultra-low latency conversational AI (**Gemini 3.5 Flash Low**) and strict anti-prompt-injection defenses.
+2. **The Physical Embodiment (The Body — `SaoriStar`):** An in-game avatar powered by a 0-token physical engine (Mineflayer), featuring 12 autonomous skills (deep mining, crafting, temple construction, dungeon looting, tactical combat defense), integrated with ultra-low latency conversational AI (**Gemini 3.5 Flash Low**), a **Corporal Supervisor** that watches health and environmental hazards, and strict anti-prompt-injection defenses.
 
 ---
 
@@ -41,28 +45,29 @@ flowchart TD
 
     subgraph CORE["2. SAORI Cognitive Core (SQLite WAL)"]
         OBS -->|Signature Deduplication| QUEUE[("Transactional Ticket Queue")]
-        QUEUE --> LOCKS{"Granular Resource Locks\n(repo:X, production, restart)"}
+        QUEUE --> LOCKS{"Granular Resource Locks\n(observe, develop, admin, repo:X)"}
         BATTERY{"Quota Battery Manager\n(Active, 5h Cooldown, CLT Sync)"} -.->|Adaptive Roles| FLEET
     end
 
     subgraph FLEET["3. Multi-Agent Autonomous Fleet"]
-        AG_AGENT["Antigravity 3.7 Flash High\n(Generalist & Architect)"]
-        CL_AGENT["Claude Code Sonnet/Opus\n(Deep Developer)"]
+        AG_AGENT["Antigravity\n(Generalist & Architect)"]
+        CL_AGENT["Claude Code\n(Deep Developer)"]
         CX_AGENT["Codex / GPT-5\n(Integrator & QA)"]
     end
 
     subgraph DEPLOY["4. Safe Staging & Release Gate"]
-        FLEET -->|Patch & Build| MAVEN["Maven / Compiler"]
+        FLEET -->|Patch & Build| MAVEN["Maven / Gradle / Rust"]
         MAVEN -->|Compute Local SHA-256| STAGED["STAGED Batch (10/10 Gate)"]
         STAGED -->|Atomic Rollout & Backup| RESTART["Safe Atomic Restart Engine"]
-        RESTART --> NOTIF["Diagnostic SMTP & Factual Telemetry"]
+        RESTART --> NOTIF["Diagnostic Discord & SMTP Telemetry"]
     end
 
     subgraph AVATAR["5. Physical Embodiment (SaoriStar Avatar)"]
-        STATE_STORE <--> IPC_SOCK{{"UNIX IPC Socket\n/tmp/saoristar-bot.sock"}}
+        STATE_STORE <--> IPC_SOCK{{"UNIX IPC Socket\n/tmp/saori_chat.sock"}}
         IPC_SOCK <--> BRAIN["Brain Engine\n(12 Active Goals & Reflections)"]
+        BRAIN <--> SUPERVISOR["Corporal Supervisor\n(Hazard, Stuckness & Deadline Watchdog)"]
         BRAIN --> SKILLS["Skills Engine\n(Mine, Craft, Loot, Build, Defend)"]
-        CHAT_SRV -->|"Divine Persona (0 Emojis)"| INGAME_CHAT["In-Game Say & Player Support"]
+        CHAT_SRV -->|"Divine Persona (18-Word Max, 0 Emojis)"| INGAME_CHAT["In-Game Say & Player Support"]
     end
 ```
 
@@ -76,7 +81,7 @@ SAORI optimizes token economy and task complexity by routing workloads to specia
 | Component | Model Engine | Latency / Effort | Purpose |
 | :--- | :--- | :--- | :--- |
 | **SaoriStar In-Game Chat** | **Gemini 3.5 Flash (Low)** | `<1.5s` / Minimum tokens | Real-time conversational AI, environmental awareness, 0 emojis, strict Jack authority. |
-| **Antigravity CLI / Generalist** | **Gemini 3.7 Flash (High)** | Deep Reasoning | Core architecture, complex multi-file refactors, autonomous mentor & generalist pipeline. |
+| **Antigravity CLI / Generalist** | **Gemini 3.7 Flash (High)** | Deep Reasoning | Core architecture, multi-file refactors, autonomous mentor & generalist pipeline. |
 | **Claude Code** | **Claude 3.7 Sonnet / Opus** | Medium / High Effort | Deep algorithmic logic, edge-case debugging, test-driven development. |
 | **Codex** | **OpenAI Codex / GPT-5** | Standard / High Effort | QA verification, dependency analysis, release staging. |
 
@@ -87,6 +92,8 @@ SAORI optimizes token economy and task complexity by routing workloads to specia
 ### 2. 🎮 Physical Avatar Capabilities (`SaoriStar`)
 The in-game embodiment operates autonomously without burning LLM tokens for standard gameplay loops:
 
+- **🛡️ Corporal Supervisor (Ticket 231):** Continuous background watchdog monitoring health thresholds, oxygen levels in water, lava immersion, physical stuckness, and observable task progress with automated deadline expiration.
+- **🔑 Strict Protocol UUID Authority (Ticket 186):** Authoritative commands and permissions are bound strictly to handshake-verified UUIDs rather than spoofable chat nicks.
 - **⛏️ Deep Resource Mining:** Autonomous pathfinding and extraction of iron, coal, gold, diamonds, and amethyst crystals.
 - **🔨 Multi-Tier Crafting:** Dynamic crafting table and furnace automation for tools, armor, and storage units.
 - **🏛️ Athena's Temple Construction:** Procedural construction of marble/purpur pillars, altars, and territory protection (`/ps`).
@@ -102,16 +109,18 @@ Eliminates race conditions between autonomous agents operating on the same infra
 | Resource Lease | Semantics | Description |
 | :--- | :--- | :--- |
 | `observe` | **Shared** | Multiple agents audit logs and monitor server health simultaneously. |
+| `develop` | **Shared/Scoped** | Parallel code analysis and local compilation without touching live files. |
+| `admin` | **Exclusive** | Modifying server configurations, tickets or orchestrator rules. |
 | `repo:<name>` | **Exclusive** | Locked only while editing, building, or committing to a specific codebase. |
 | `production` | **Exclusive** | Locked during panel API uploads and file deployment. |
 | `restart` | **Asymmetric Lockout** | Blocks all operations; cannot be granted while any other lock is held. |
-| `player:<uuid>` | **Exclusive** | Isolated forensic audit of player inventory or moderation history. |
 
 ---
 
 ### 4. 🛡️ Strict Shadow Mode & Anti-Prompt-Injection
-- **Zero Trust on External Input:** All in-game chat messages, book contents, sign texts, and Discord messages are classified as `UNTRUSTED DATA`.
-- **Injection Neutralization:** Phrases like `"ignore previous instructions"`, `"act as admin"`, `"dame /op"`, or `[SAORI]` spoofing are neutralized at write-time and flagged for forensic audit.
+- **Zero Trust on External Input (Ticket 199):** All in-game chat messages, book contents, sign texts, and Discord messages are classified as `UNTRUSTED DATA`.
+- **Injection Neutralization:** Phrases like `"ignore previous instructions"`, `"act as admin"`, `"dame /op"`, or `[EXEC:]` directives are neutralized at write-time and flagged for forensic audit.
+- **18-Word Dynamic Truncation (Tickets 205-207):** Chat responses are bounded to a maximum of 18 words, stripped of unsupported supplemental emojis and pruned cleanly before dangling functional prepositions.
 - **Data Redaction:** Passwords, API tokens, player IPs, and sensitive credentials are automatically redacted before entering logs or state storage.
 
 ---
@@ -124,6 +133,7 @@ saori/
 │   └── saori-banner.svg         # Official vector banner
 ├── core/
 │   ├── orchestrator.py          # Central SQLite WAL state machine, locks & ticket engine
+│   ├── agent_reporter.py        # Unified telemetry & run reporter for all agents
 │   ├── battery_manager.py       # Quota management, CLT reset calculator & role balancer
 │   └── security_engine.py       # Anti-prompt-injection, redaction & forensic auditor
 ├── avatar/                      # Physical In-Game Avatar Engine (Node.js / Mineflayer)
@@ -132,15 +142,26 @@ saori/
 │   ├── src/
 │   │   ├── index.js             # Avatar lifecycle, IPC socket server & crash supervisor
 │   │   ├── brain.js             # 12 active goals, reflection memory & combat defense
+│   │   ├── supervisor.js        # Corporal Supervisor (hazard, health & stuckness watchdog)
+│   │   ├── identity.js          # Protocol UUID authority & anti-spoofing verification
+│   │   ├── curriculum.js        # Goal progression, skills validation & milestones
 │   │   ├── skills.js            # Deep mining, crafting, looting, building & moderation
 │   │   ├── chat.js              # Universal chat parser, math trivia & LLM invocation
 │   │   ├── perception.js        # Real-time environmental perception serializer
 │   │   ├── survival.js          # Auto-armor, shield blocking & fluid pathfinding
 │   │   └── auth.js              # Server auth & anti-bot bypass handler
-│   └── test/
-│       ├── anti-inyeccion.test.js
-│       ├── reconexion.test.js
-│       └── ipc-meta.test.js
+│   └── test/                    # Comprehensive unit & adversarial test suite
+│       ├── anti-inyeccion-ticket199.test.js
+│       ├── autoridad-adversarial-ticket186.test.js
+│       ├── supervisor-corporal-ticket231.test.js
+│       ├── memoria-persistente-ticket200.test.js
+│       ├── corte-frase-ticket207.test.js
+│       ├── emojis-ticket205.test.js
+│       ├── mutilacion-ticket206.test.js
+│       ├── palette-findblock-ticket208.test.js
+│       ├── gameplay-regression-ticket210.test.js
+│       ├── estado-cognitivo-ticket229.test.js
+│       └── reconexion.test.js
 ├── runners/
 │   ├── runner_star.py           # Unified multi-agent CLI dispatcher (Antigravity, Claude, Codex)
 │   └── chat_service.py          # Real-time conversational AI service (Gemini 3.5 Flash Low)
@@ -168,10 +189,11 @@ git clone https://github.com/JackStar6677-1/saori.git
 cd saori
 
 # Run Core Python Unit & Concurrency Test Suite (60 tests)
-python3 tests/test_orchestrator.py
+python3 -m unittest discover -s tests
 
-# Run Avatar Node.js Test Suite (Anti-Injection, Reconnect, IPC)
+# Run Avatar Node.js Test Suite (Anti-Injection, Supervisor, Reconnect, IPC)
 cd avatar
+npm install
 npm test
 ```
 
@@ -190,17 +212,17 @@ python3 core/orchestrator.py reclamar --agente antigravity
 
 ### 4. Avatar IPC Socket Interface
 
-Interact with `SaoriStar` in real-time via `/tmp/saoristar-bot.sock`:
+Interact with `SaoriStar` in real-time via `/tmp/saori_chat.sock`:
 
 ```bash
 # Query live in-game status
-echo "STATUS" | nc -U /tmp/saoristar-bot.sock
+echo "STATUS" | nc -U /tmp/saori_chat.sock
 
 # Set active autonomous goal
-echo "SET_GOAL construir_templo_atenea" | nc -U /tmp/saoristar-bot.sock
+echo "SET_GOAL construir_templo_atenea" | nc -U /tmp/saori_chat.sock
 
 # Command deep ore mining
-echo "MINE diamond_ore" | nc -U /tmp/saoristar-bot.sock
+echo "MINE diamond_ore" | nc -U /tmp/saori_chat.sock
 ```
 
 ---
