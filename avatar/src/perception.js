@@ -4,7 +4,9 @@
  */
 
 function getPerceptionState(bot) {
-  if (!bot || !bot.entity) return { ready: false, reason: 'Bot entity not loaded' };
+  if (!bot || !bot.entity || !bot.entity.position) {
+    return { ready: false, reason: 'Bot position not loaded' };
+  }
 
   const pos = bot.entity.position;
   const health = bot.health;

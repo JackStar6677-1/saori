@@ -26,11 +26,8 @@ function equipGear(bot) {
     }
   }
 
-  const sword = items.find(i => i.name.includes('sword'));
-  if (sword && (!bot.heldItem || !bot.heldItem.name.includes('sword') && !bot.heldItem.name.includes('pickaxe') && !bot.heldItem.name.includes('axe'))) {
-    if (sword.enchants && !Array.isArray(sword.enchants)) sword.enchants = [];
-    bot.equip(sword, 'hand').catch(() => {});
-  }
+  // La mano principal pertenece a la habilidad activa. Equipar una espada en
+  // este temporizador interrumpia la tala/mineria cada dos segundos.
 }
 
 function setupSurvival(bot, config) {
@@ -43,22 +40,24 @@ function setupSurvival(bot, config) {
     const mcData = require('minecraft-data')(bot.version);
     const defaultMove = new Movements(bot, mcData);
     
-    defaultMove.canDig = true;
+    // Patrullar nunca debe alterar el mapa para salir de un atasco. Las
+    // habilidades de recoleccion excavan de forma explicita y auditada.
+    defaultMove.canDig = false;
     defaultMove.allowParkour = true; // Permite subir desniveles de 1 bloque y escalones
     defaultMove.allow1by1towers = false;
     defaultMove.allowFreeMotion = true;
     defaultMove.maxDropDown = 4;
-    defaultMove.digCost = 4; // Costo bajo para romper hojas u obstaculos que tapen el paso
+    defaultMove.digCost = 100;
     
-    // Tratamiento de hojas y nieve: transitables o rompibles
-    const clearBlocks = [
+    // Las hojas no son terreno fiable: se evitan en vez de romperlas o
+    // intentar atravesarlas indefinidamente.
+    const avoidBlocks = [
       'birch_leaves', 'oak_leaves', 'spruce_leaves', 'jungle_leaves',
-      'acacia_leaves', 'dark_oak_leaves', 'mangrove_leaves', 'cherry_leaves', 'azalea_leaves',
-      'snow', 'tall_grass', 'grass', 'fern', 'dandelion', 'poppy', 'short_grass'
+      'acacia_leaves', 'dark_oak_leaves', 'mangrove_leaves', 'cherry_leaves', 'azalea_leaves'
     ];
-    for (const b of clearBlocks) {
+    for (const b of avoidBlocks) {
       if (mcData.blocksByName[b]) {
-        defaultMove.blocksToAvoid.delete(mcData.blocksByName[b].id);
+        defaultMove.blocksToAvoid.add(mcData.blocksByName[b].id);
       }
     }
 

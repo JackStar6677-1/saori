@@ -5,7 +5,7 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "test": "node --check src/index.js && node --check src/auth.js && node --check src/chat.js && node --check src/moderation.js && node --check src/survival.js && node test/reconexion.test.js && node test/sesion-fantasma-ticket196.test.js && node test/ipc-meta.test.js && node test/inventory-cleanup-ticket197.test.js && node test/anti-inyeccion-ticket199.test.js"
+    "test": "node --check src/index.js && node --check src/supervisor.js && node --check src/brain.js && node --check src/auth.js && node --check src/chat.js && node --check src/identity.js && node --check src/moderation.js && node --check src/survival.js && node test/reconexion.test.js && node test/sesion-fantasma-ticket196.test.js && node test/reconexion-bloqueada.test.js && node test/ipc-meta.test.js && node test/inventory-cleanup-ticket197.test.js && node test/anti-inyeccion-ticket199.test.js && node test/ipc-seguridad-ticket201.test.js && node test/memoria-persistente-ticket200.test.js && node test/autoridad-adversarial-ticket186.test.js && node --test test/emojis-ticket205.test.js && node --test test/mutilacion-ticket206.test.js && node --test test/corte-frase-ticket207.test.js && node --test test/palette-findblock-ticket208.test.js && node --test test/gameplay-regression-ticket210.test.js && node --test test/estado-cognitivo-ticket229.test.js && node --test test/supervisor-corporal-ticket231.test.js && node --test test/error-proveedor-ticket210.test.js"
   },
   "dependencies": {
     "minecraft-data": "^3.80.0",

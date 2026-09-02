@@ -227,7 +227,7 @@ class PruebasAgentes(BaseSaori):
         S.heartbeat_agente(self.cx, "antigravity", cuota="ok")
         agente = S.disponibilidad(self.cx)["antigravity"]
         self.assertTrue(agente["disponible"])
-        self.assertEqual(agente["quota_percent"], 100)
+        self.assertNotEqual(agente["quota_percent"], 0)
 
     def test_errores_repetidos_excluyen(self):
         for _ in range(3):

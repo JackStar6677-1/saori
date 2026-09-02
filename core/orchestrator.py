@@ -21,7 +21,9 @@ La fase la sube Jack a mano; el codigo nunca se auto-promociona.
 """
 
 import argparse
+import datetime
 import hashlib
+import ipaddress
 import json
 import os
 import re
@@ -45,7 +47,7 @@ LOTE_CANONICO = HUB / "scripts/saori_lote.py"
 
 AGENTES = ("claude-code", "codex", "antigravity")
 
-ESQUEMA_VERSION = 3
+ESQUEMA_VERSION = 5
 
 ESTADOS_TICKET = ("DETECTED", "TRIAGED", "CLAIMED", "INVESTIGATING", "FIXING",
                   "BUILT", "QA", "STAGED", "ACTIVE", "VERIFIED", "BLOCKED",
@@ -147,7 +149,6 @@ def guardar_config(cfg):
 # filtrar despues por un volcado, un backup o un push accidental.
 _PATRONES_REDACCION = (
     (re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b"), "[IP]"),
-    (re.compile(r"\b(?:[0-9a-fA-F]{1,4}:){2,7}[0-9a-fA-F]{1,4}\b"), "[IPv6]"),
     (re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+"), "[EMAIL]"),
     (re.compile(r"(?i)\b(?:token|bearer|api[_-]?key|password|passwd|secret)"
                 r"\s*[:=]\s*\S+"), "[SECRETO]"),
@@ -162,6 +163,26 @@ _PATRONES_INYECCION = (
     (re.compile(r"(?i)\b(?:dame\s+op|give\s+me\s+op|hazme\s+admin|hazme\s+op|op\s+me|force\s+op|bypass\s+auth)\b"), "[INJECTION_BLOCKED:privilege-escalation]"),
     (re.compile(r"(?i)\b(?:run_command|execute_shell|eval|os\.system|subprocess|rm\s+-rf|DROP\s+TABLE)\b"), "[INJECTION_BLOCKED:eval-directive]"),
 )
+
+
+# Candidatos a IPv6: cualquier racha de hex y dos puntos, VALIDADA con
+# `ipaddress`. Decidir por la forma confundia `12:34:56` con una IPv6 y borraba
+# la hora exacta del incidente --justo el dato forense que hace falta-- mientras
+# dejaba visible el prefijo de las IPv6 reales. Validar acierta en ambos casos.
+_CANDIDATO_IPV6 = re.compile(r"[0-9a-fA-F:]{3,45}")
+
+
+def _redactar_ipv6(texto):
+    def _reemplazo(m):
+        cand = m.group(0)
+        if cand.count(":") < 2:
+            return cand
+        try:
+            ipaddress.IPv6Address(cand)
+        except ValueError:
+            return cand          # hora, rango o basura: se conserva
+        return "[IPv6]"
+    return _CANDIDATO_IPV6.sub(_reemplazo, texto)
 
 
 def detectar_inyeccion_prompt(texto):
@@ -180,7 +201,7 @@ def redactar(texto):
     """Quita IP, correos, tokens y neutraliza intentos de inyección de prompt."""
     if not texto:
         return texto
-    salida = str(texto)
+    salida = _redactar_ipv6(str(texto))
     for patron, reemplazo in _PATRONES_REDACCION:
         salida = patron.sub(reemplazo, salida)
     for patron, reemplazo in _PATRONES_INYECCION:
@@ -366,6 +387,66 @@ MIGRACIONES = {
     -- v3 agrega quota_percent para balance adaptativo de roles y despacho de tickets
     ALTER TABLE agents ADD COLUMN quota_percent INTEGER NOT NULL DEFAULT 100;
     """,
+    5: """
+    -- v5 separa el porcentaje de cuota de su procedencia (ticket 247).
+    -- Antes cualquier heartbeat podia escribir 100 y ese numero se publicaba
+    -- como si fuera una medicion. Ahora cada valor viaja con su fuente, el
+    -- instante en que se midio y, si el proveedor la declaro, la ventana y la
+    -- hora exacta de reposicion.
+    ALTER TABLE agents ADD COLUMN quota_source TEXT NOT NULL DEFAULT 'desconocida';
+    ALTER TABLE agents ADD COLUMN quota_measured_at INTEGER;
+    ALTER TABLE agents ADD COLUMN quota_reset_epoch INTEGER;
+    ALTER TABLE agents ADD COLUMN quota_window TEXT;
+    """,
+    4: """
+    -- v4 agrega el plano de acciones estructuradas (ticket 228).
+    -- Una accion no es texto libre: es un objeto tipado del catalogo, con
+    -- actor, objetivo, capacidad, bloqueo, idempotencia, timeout y recibos.
+    CREATE TABLE IF NOT EXISTS actions (
+        action_id        INTEGER PRIMARY KEY AUTOINCREMENT,
+        kind             TEXT NOT NULL,
+        idempotency_key  TEXT NOT NULL UNIQUE,
+        params_json      TEXT NOT NULL,
+        params_hash      TEXT NOT NULL,
+        proposer         TEXT NOT NULL,
+        approver         TEXT,
+        executor         TEXT,
+        status           TEXT NOT NULL,
+        ticket           INTEGER,
+        resource         TEXT,
+        target           TEXT,
+        untrusted_origin INTEGER NOT NULL DEFAULT 0,
+        reason           TEXT,
+        result_json      TEXT,
+        created_at       INTEGER NOT NULL,
+        approved_at      INTEGER,
+        simulated_at     INTEGER,
+        started_at       INTEGER,
+        finished_at      INTEGER,
+        expires_at       INTEGER,
+        timeout_seg      INTEGER NOT NULL,
+        reversible       INTEGER NOT NULL DEFAULT 0,
+        rollback_of      INTEGER,
+        updated_at       INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS ix_actions_status ON actions(status);
+    CREATE INDEX IF NOT EXISTS ix_actions_kind   ON actions(kind);
+
+    -- Recibo por fase, encadenado por hash: alterar uno rompe la cadena.
+    CREATE TABLE IF NOT EXISTS action_receipts (
+        receipt_id    INTEGER PRIMARY KEY AUTOINCREMENT,
+        action_id     INTEGER NOT NULL REFERENCES actions(action_id),
+        phase         TEXT NOT NULL,
+        agent         TEXT,
+        at            INTEGER NOT NULL,
+        outcome       TEXT NOT NULL,
+        detail        TEXT,
+        evidence_hash TEXT,
+        prev_hash     TEXT,
+        receipt_hash  TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS ix_receipts_action ON action_receipts(action_id);
+    """,
 }
 
 
@@ -385,6 +466,17 @@ def migrar(cx):
 
 def ahora():
     return int(time.time())
+
+
+# Hora canonica del proyecto: Chile continental (UTC-4).
+TZ_CLT = datetime.timezone(datetime.timedelta(hours=-4))
+
+
+def _clt(epoch):
+    """Epoch -> 'YYYY-MM-DD HH:MM CLT'. La hora de reposicion se publica exacta."""
+    if not epoch:
+        return None
+    return datetime.datetime.fromtimestamp(int(epoch), TZ_CLT).strftime("%Y-%m-%d %H:%M CLT")
 
 
 def evento(cx, tipo, *, agente=None, ticket=None, resumen=None,
@@ -425,37 +517,86 @@ def registrar_agente(cx, agente, capacidades=None, metadata=None):
     return {"ok": True, "agente": agente}
 
 
-def heartbeat_agente(cx, agente, *, cuota=None, error=None, rol=None, porcentaje=None):
-    """Late-vivo del agente. Tambien es donde declara su cuota, porcentaje y sus fallos."""
+# Procedencias del porcentaje de cuota. Solo las dos primeras son mediciones:
+# el resto son numeros operativos que nadie debe leer como saldo.
+FUENTES_CUOTA = ("manual", "cli", "declarada", "desconocida")
+FUENTES_AUTORITATIVAS = ("manual", "cli")
+# Una medicion envejece. Pasado este plazo sigue siendo el ultimo dato conocido,
+# pero deja de publicarse como cuota vigente.
+TTL_CUOTA_MEDIDA_S = 6 * 3600
+# Valor operativo cuando no hay medicion: permite repartir roles sin afirmar
+# que el agente tenga el deposito lleno.
+PCT_OPERATIVO_SIN_MEDICION = 100
+
+
+def _cuota_medida_vigente(fuente, medida_en, ahora_ts=None):
+    """True si el porcentaje guardado proviene de una medicion aun vigente."""
+    if fuente not in FUENTES_AUTORITATIVAS or not medida_en:
+        return False
+    return (ahora_ts or ahora()) - int(medida_en) <= TTL_CUOTA_MEDIDA_S
+
+
+def heartbeat_agente(cx, agente, *, cuota=None, error=None, rol=None, porcentaje=None,
+                     fuente=None, reset_epoch=None, ventana=None):
+    """Late-vivo del agente. Tambien es donde declara su cuota, porcentaje y sus fallos.
+
+    El porcentaje solo se escribe cuando alguien lo aporta. Un heartbeat de
+    presencia no inventa un 100: eso borraba la cuota real que Jack o la CLI
+    habian medido y dejaba al panel afirmando un saldo que nadie comprobo.
+    """
+    fuente = (str(fuente).lower() if fuente else None)
+    if fuente and fuente not in FUENTES_CUOTA:
+        raise SaoriError(f"fuente de cuota desconocida: {fuente}")
     with transaccion(cx):
-        fila = cx.execute("SELECT error_streak, quota_percent FROM agents WHERE agent_id=?",
-                          (agente,)).fetchone()
+        fila = cx.execute(
+            "SELECT error_streak, quota_percent, quota_source, quota_measured_at "
+            "FROM agents WHERE agent_id=?", (agente,)).fetchone()
         if fila is None:
             cx.execute("INSERT INTO agents(agent_id) VALUES(?)", (agente,))
             racha = 0
-            pct = 100
+            pct = PCT_OPERATIVO_SIN_MEDICION
+            fuente_actual, medida_en = "desconocida", None
         else:
             racha = int(fila["error_streak"])
-            pct = int(fila["quota_percent"]) if "quota_percent" in fila.keys() and fila["quota_percent"] is not None else 100
+            pct = int(fila["quota_percent"]) if fila["quota_percent"] is not None else PCT_OPERATIVO_SIN_MEDICION
+            fuente_actual = fila["quota_source"] or "desconocida"
+            medida_en = fila["quota_measured_at"]
         racha = racha + 1 if error else 0
+        nueva_fuente, nueva_medida = fuente_actual, medida_en
+
         if porcentaje is not None:
-            pct = max(0, min(100, int(porcentaje)))
+            entrante = fuente or "declarada"
+            if entrante not in FUENTES_AUTORITATIVAS and _cuota_medida_vigente(fuente_actual, medida_en):
+                # Un numero sin respaldo no pisa una medicion vigente: asi el
+                # runner no puede borrar la cuota que declaro Jack o leyo la CLI.
+                pass
+            else:
+                pct = max(0, min(100, int(porcentaje)))
+                nueva_fuente, nueva_medida = entrante, ahora()
         elif cuota and str(cuota).lower() in ("agotada", "exhausted", "limite"):
+            # Chocar contra la pared de cuota si es una observacion directa.
             pct = 0
+            nueva_fuente, nueva_medida = fuente or "cli", ahora()
         elif cuota and str(cuota).lower() in ("ok", "activa", "active") and pct <= 0:
             # Una ejecución correcta prueba que la ventana volvió a estar
-            # disponible. No conservar el cero de un agotamiento anterior: eso
-            # excluiría al agente aunque ya esté trabajando. Si la CLI conoce el
-            # porcentaje exacto debe enviarlo expresamente con --porcentaje.
-            pct = 100
+            # disponible, pero no cuanta cuota queda. Se recupera el valor
+            # operativo y se marca como desconocido para que el panel diga
+            # "sin medir" en vez de "100%".
+            pct = PCT_OPERATIVO_SIN_MEDICION
+            nueva_fuente, nueva_medida = "desconocida", None
 
         cx.execute(
             "UPDATE agents SET last_heartbeat=?, quota_status=COALESCE(?,quota_status),"
             " last_error=?, error_streak=?, current_role=COALESCE(?,current_role),"
-            " quota_percent=? WHERE agent_id=?",
-            (ahora(), cuota, redactar(error), racha, rol, pct, agente))
+            " quota_percent=?, quota_source=?, quota_measured_at=?,"
+            " quota_reset_epoch=COALESCE(?,quota_reset_epoch),"
+            " quota_window=COALESCE(?,quota_window) WHERE agent_id=?",
+            (ahora(), cuota, redactar(error), racha, rol, pct, nueva_fuente,
+             nueva_medida, reset_epoch, ventana, agente))
         renovar_bloqueos_de(cx, agente)
-    return {"ok": True, "agente": agente, "errores_seguidos": racha, "quota_percent": pct}
+    return {"ok": True, "agente": agente, "errores_seguidos": racha,
+            "quota_percent": pct, "quota_fuente": nueva_fuente,
+            "quota_medida": _cuota_medida_vigente(nueva_fuente, nueva_medida)}
 
 
 def pausar_agente(cx, agente, pausado):
@@ -483,11 +624,18 @@ def disponibilidad(cx, cfg=None):
         if fila is None:
             salida[agente] = {"disponible": False, "motivo": "no-registrado",
                               "rol": None, "cuota": "desconocida", "quota_percent": 0,
+                              "quota_percent_operativo": 0, "quota_fuente": "desconocida",
+                              "quota_medida": False, "quota_medida_hace_min": None,
+                              "quota_reset_epoch": None, "quota_reset_clt": None,
+                              "quota_ventana": None,
                               "tier_cuota": "critico", "ultimo_heartbeat": None}
             continue
         edad = ahora() - int(fila["last_heartbeat"] or 0)
         pausado = bool(fila["paused"]) or heredadas.get(agente, False)
-        pct = int(fila["quota_percent"]) if "quota_percent" in fila.keys() and fila["quota_percent"] is not None else 100
+        pct = int(fila["quota_percent"]) if fila["quota_percent"] is not None else PCT_OPERATIVO_SIN_MEDICION
+        fuente_cuota = fila["quota_source"] or "desconocida"
+        medida_en = fila["quota_measured_at"]
+        medida = _cuota_medida_vigente(fuente_cuota, medida_en)
         if not int(fila["enabled"]):
             motivo = "deshabilitado"
         elif pausado:
@@ -501,7 +649,9 @@ def disponibilidad(cx, cfg=None):
         else:
             motivo = None
 
-        if pct >= 70:
+        if not medida:
+            tier = "sin-medir"
+        elif pct >= 70:
             tier = "alto"
         elif pct >= 30:
             tier = "medio"
@@ -516,7 +666,16 @@ def disponibilidad(cx, cfg=None):
             "rol": fila["current_role"],
             "ticket": fila["current_ticket"],
             "cuota": fila["quota_status"],
-            "quota_percent": pct,
+            # Solo se publica como porcentaje lo que alguien midio y sigue
+            # vigente. Sin medicion el panel debe decir "sin medir", no 100.
+            "quota_percent": pct if medida else None,
+            "quota_percent_operativo": pct,
+            "quota_fuente": fuente_cuota,
+            "quota_medida": medida,
+            "quota_medida_hace_min": ((ahora() - int(medida_en)) // 60) if medida_en else None,
+            "quota_reset_epoch": fila["quota_reset_epoch"],
+            "quota_reset_clt": _clt(fila["quota_reset_epoch"]),
+            "quota_ventana": fila["quota_window"],
             "tier_cuota": tier,
             "errores_seguidos": int(fila["error_streak"]),
             "ultimo_error": fila["last_error"],
@@ -541,12 +700,12 @@ def asignar_roles(cx, cfg=None):
     vivos = [a for a in AGENTES if disp[a]["disponible"]]
 
     # Agentes operativos son los disponibles con cuota por encima del umbral de riesgo (5%)
-    vivos_operativos = [a for a in vivos if int(disp[a].get("quota_percent", 100)) > UMBRAL_RIESGO_CUOTA]
-    vivos_en_riesgo = [a for a in vivos if int(disp[a].get("quota_percent", 100)) <= UMBRAL_RIESGO_CUOTA]
+    vivos_operativos = [a for a in vivos if int(disp[a].get("quota_percent_operativo", PCT_OPERATIVO_SIN_MEDICION)) > UMBRAL_RIESGO_CUOTA]
+    vivos_en_riesgo = [a for a in vivos if int(disp[a].get("quota_percent_operativo", PCT_OPERATIVO_SIN_MEDICION)) <= UMBRAL_RIESGO_CUOTA]
 
     vivos_por_cuota = sorted(
         vivos_operativos,
-        key=lambda a: (int(disp[a].get("quota_percent", 100)),
+        key=lambda a: (int(disp[a].get("quota_percent_operativo", PCT_OPERATIVO_SIN_MEDICION)),
                        -["antigravity", "claude-code", "codex"].index(a)),
         reverse=True
     )
@@ -554,7 +713,7 @@ def asignar_roles(cx, cfg=None):
     for a in vivos_en_riesgo:
         roles[a] = "reposo-preservacion"
 
-    todos_eco = len(vivos) > 0 and all(int(disp[a].get("quota_percent", 100)) < 30 for a in vivos)
+    todos_eco = len(vivos) > 0 and all(int(disp[a].get("quota_percent_operativo", PCT_OPERATIVO_SIN_MEDICION)) < 30 for a in vivos)
 
     if len(vivos_operativos) == 0:
         if len(vivos) == 0:
@@ -572,7 +731,7 @@ def asignar_roles(cx, cfg=None):
         roles[vivos_operativos[0]] = "generalista"
     elif len(vivos_operativos) == 2:
         modo = "dual"
-        if int(disp[vivos_operativos[0]].get("quota_percent", 100)) == int(disp[vivos_operativos[1]].get("quota_percent", 100)):
+        if int(disp[vivos_operativos[0]].get("quota_percent_operativo", PCT_OPERATIVO_SIN_MEDICION)) == int(disp[vivos_operativos[1]].get("quota_percent_operativo", PCT_OPERATIVO_SIN_MEDICION)):
             orden = sorted(vivos_operativos, key=lambda a: ("antigravity", "claude-code", "codex").index(a))
             roles[orden[0]] = "observador"
             roles[orden[1]] = "desarrollador-integrador"
@@ -582,7 +741,7 @@ def asignar_roles(cx, cfg=None):
     else:
         modo = "triple"
         # Si las cuotas son iguales, usar preferencias
-        cuotas = [int(disp[a].get("quota_percent", 100)) for a in vivos_operativos]
+        cuotas = [int(disp[a].get("quota_percent_operativo", PCT_OPERATIVO_SIN_MEDICION)) for a in vivos_operativos]
         if len(set(cuotas)) == 1:
             for agente in vivos_operativos:
                 roles[agente] = ROL_PREFERIDO[agente]
@@ -1326,6 +1485,12 @@ def construir_parser():
     h.add_argument("--agente", required=True, choices=AGENTES)
     h.add_argument("--cuota", choices=("ok", "baja", "agotada"))
     h.add_argument("--porcentaje", type=int, help="porcentaje de cuota restante (0-100)")
+    h.add_argument("--fuente", choices=FUENTES_CUOTA,
+                   help="procedencia del porcentaje: manual (Jack), cli (lectura del "
+                        "proveedor) o declarada (estimacion del propio agente)")
+    h.add_argument("--reset-epoch", type=int, dest="reset_epoch",
+                   help="epoch unix en que el proveedor repone la ventana")
+    h.add_argument("--ventana", help="tipo de limite declarado por el proveedor (5h, 7d, ...)")
     h.add_argument("--error", default=None)
     h.add_argument("--rol", choices=ROLES)
 
@@ -1450,7 +1615,10 @@ def main(argv=None):
         if cmd == "heartbeat":
             return emitir(heartbeat_agente(cx, args.agente, cuota=args.cuota,
                                            error=args.error, rol=args.rol,
-                                           porcentaje=args.porcentaje), args.json)
+                                           porcentaje=args.porcentaje,
+                                           fuente=args.fuente,
+                                           reset_epoch=args.reset_epoch,
+                                           ventana=args.ventana), args.json)
         if cmd in ("pausar", "reanudar"):
             return emitir(pausar_agente(cx, args.agente, args._pausa), args.json)
         if cmd == "crear-ticket":

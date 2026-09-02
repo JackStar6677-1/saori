@@ -334,11 +334,13 @@ class SaoriSkillsEngine {
   // 7. Construcción Procedural del Templo de Atenea
   async buildAthenaTemple(origin) {
     if (this.isWorking) return false;
+    if (!origin && !this.baseLocation && (!this.bot || !this.bot.entity || !this.bot.entity.position)) return false;
     this.isWorking = true;
     this.currentTask = 'Construir Templo de Atenea';
 
     try {
       const p = origin || (this.baseLocation ? new Vec3(this.baseLocation.x, this.baseLocation.y, this.baseLocation.z) : this.bot.entity.position.floored());
+      if (!p) return false;
       const ox = p.x;
       const oy = p.y;
       const oz = p.z;
@@ -415,25 +417,36 @@ class SaoriSkillsEngine {
 
   // 8. Comandos de Moderación y Vigilancia Divina
   async moderatePlayer(targetPlayer, action, reason = 'Violación de las leyes del reino') {
-    if (!targetPlayer) return false;
-    const act = action.toLowerCase();
+    if (!targetPlayer || typeof targetPlayer !== 'string') return false;
+    const player = targetPlayer.trim();
+    if (!/^[a-zA-Z0-9_]{3,16}$/.test(player)) {
+      console.warn('[MODERATION] Nick invalido rechazado:', targetPlayer);
+      return false;
+    }
+    const act = String(action || '').toLowerCase().trim();
+    const cleanReason = String(reason || 'Violación de las leyes del reino')
+      .replace(/[\r\n\t]+/g, ' ')
+      .replace(/[\u00a7&][0-9a-fk-or]/g, '')
+      .replace(/["';\\]/g, '')
+      .trim()
+      .slice(0, 80);
 
-    console.log(`[MODERATION] Ejecutando ${act} sobre ${targetPlayer}: ${reason}`);
+    console.log(`[MODERATION] Ejecutando ${act} sobre ${player}: ${cleanReason}`);
 
     if (act === 'warn') {
-      this.bot.chat(`/warn ${targetPlayer} ${reason}`);
+      this.bot.chat(`/warn ${player} ${cleanReason}`);
     } else if (act === 'kick') {
-      this.bot.chat(`/kick ${targetPlayer} ${reason}`);
+      this.bot.chat(`/kick ${player} ${cleanReason}`);
     } else if (act === 'freeze' || act === 'saorifreeze') {
-      this.bot.chat(`/saorifreeze ${targetPlayer}`);
+      this.bot.chat(`/saorifreeze ${player}`);
     } else if (act === 'tempban') {
-      this.bot.chat(`/tempban ${targetPlayer} 1h ${reason}`);
+      this.bot.chat(`/tempban ${player} 1h ${cleanReason}`);
     } else if (act === 'mute') {
-      this.bot.chat(`/mute ${targetPlayer} 30m ${reason}`);
+      this.bot.chat(`/mute ${player} 30m ${cleanReason}`);
     } else if (act === 'tp' || act === 'teleport') {
-      this.bot.chat(`/tp ${targetPlayer}`);
+      this.bot.chat(`/tp ${player}`);
     } else if (act === 'invsee') {
-      this.bot.chat(`/invsee ${targetPlayer}`);
+      this.bot.chat(`/invsee ${player}`);
     }
     return true;
   }
