@@ -36,38 +36,40 @@ Unlike traditional rigid auto-restart scripts or isolated chatbots, SAORI operat
 ## 🏛️ System Architecture
 
 ```mermaid
-flowchart TD
-    subgraph PERCEPTION["1. Ingestion & Perception Plane"]
-        LOGS["Minecraft Server Logs / Syslog"] -->|Delta Stream| OBS["Observer Engine (Antigravity)"]
-        GAME_PERC["In-Game Perception & World State"] -->|JSON Telemetry| STATE_STORE[("saori_state.json")]
-        CHAT_IN["In-Game Chat / DiscordSRV"] -->|Anti-Injection Filter| CHAT_SRV["Conversational AI (Gemini 3.5 Flash)"]
+graph TD
+    subgraph S1["1. Ingestion & Perception Plane"]
+        LOGS["Minecraft Server Logs / Syslog"] --> OBS["Observer Engine (Antigravity)"]
+        GAME_PERC["In-Game Perception & World State"] --> STATE_STORE["saori_state.json"]
+        CHAT_IN["In-Game Chat / DiscordSRV"] --> CHAT_SRV["Conversational AI (Gemini 3.5 Flash)"]
     end
 
-    subgraph CORE["2. SAORI Cognitive Core (SQLite WAL)"]
-        OBS -->|Signature Deduplication| QUEUE[("Transactional Ticket Queue")]
-        QUEUE --> LOCKS{"Granular Resource Locks\n(observe, develop, admin, repo:X)"}
-        BATTERY{"Quota Battery Manager\n(Active, 5h Cooldown, CLT Sync)"} -.->|Adaptive Roles| FLEET
+    subgraph S2["2. SAORI Cognitive Core (SQLite WAL)"]
+        OBS --> QUEUE["Transactional Ticket Queue"]
+        QUEUE --> LOCKS["Resource Locks (observe, develop, admin)"]
+        LOCKS --> BATTERY["Quota Battery Manager (CLT Sync)"]
     end
 
-    subgraph FLEET["3. Multi-Agent Autonomous Fleet"]
-        AG_AGENT["Antigravity\n(Generalist & Architect)"]
-        CL_AGENT["Claude Code\n(Deep Developer)"]
-        CX_AGENT["Codex / GPT-5\n(Integrator & QA)"]
+    subgraph S3["3. Multi-Agent Autonomous Fleet"]
+        BATTERY --> AG_AGENT["Antigravity (Generalist & Architect)"]
+        BATTERY --> CL_AGENT["Claude Code (Deep Developer)"]
+        BATTERY --> CX_AGENT["Codex / GPT-5 (Integrator & QA)"]
     end
 
-    subgraph DEPLOY["4. Safe Staging & Release Gate"]
-        FLEET -->|Patch & Build| MAVEN["Maven / Gradle / Rust"]
-        MAVEN -->|Compute Local SHA-256| STAGED["STAGED Batch (10/10 Gate)"]
-        STAGED -->|Atomic Rollout & Backup| RESTART["Safe Atomic Restart Engine"]
+    subgraph S4["4. Safe Staging & Release Gate"]
+        AG_AGENT --> MAVEN["Compiler & Build Engine"]
+        CL_AGENT --> MAVEN
+        CX_AGENT --> MAVEN
+        MAVEN --> STAGED["STAGED Batch (10/10 Gate)"]
+        STAGED --> RESTART["Safe Atomic Restart Engine"]
         RESTART --> NOTIF["Diagnostic Discord & SMTP Telemetry"]
     end
 
-    subgraph AVATAR["5. Physical Embodiment (SaoriStar Avatar)"]
-        STATE_STORE <--> IPC_SOCK{{"UNIX IPC Socket\n/tmp/saori_chat.sock"}}
-        IPC_SOCK <--> BRAIN["Brain Engine\n(12 Active Goals & Reflections)"]
-        BRAIN <--> SUPERVISOR["Corporal Supervisor\n(Hazard, Stuckness & Deadline Watchdog)"]
-        BRAIN --> SKILLS["Skills Engine\n(Mine, Craft, Loot, Build, Defend)"]
-        CHAT_SRV -->|"Divine Persona (18-Word Max, 0 Emojis)"| INGAME_CHAT["In-Game Say & Player Support"]
+    subgraph S5["5. Physical Embodiment (SaoriStar Avatar)"]
+        STATE_STORE --> IPC_SOCK["UNIX IPC Socket (/tmp/saori_chat.sock)"]
+        IPC_SOCK --> BRAIN["Brain Engine (12 Active Goals)"]
+        BRAIN --> SUPERVISOR["Corporal Supervisor (Hazard & Deadline)"]
+        SUPERVISOR --> SKILLS["Skills Engine (Mine, Craft, Build, Defend)"]
+        CHAT_SRV --> INGAME_CHAT["In-Game Chat & Player Support (18-Word Max)"]
     end
 ```
 
