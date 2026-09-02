@@ -1,0 +1,30 @@
+services:
+  saori-whatsapp:
+    build:
+      context: ./whatsapp
+      dockerfile: Dockerfile
+    container_name: saori-whatsapp
+    restart: unless-stopped
+    network_mode: "host"
+    environment:
+      - STAR_MEMORY_URL=http://100.110.230.7:8077
+      - ADMIN_PHONE_NUMBERS=56945184157,56963477776
+      - AUTH_DIR=/app/data/auth_info
+    volumes:
+      - saori_whatsapp_auth:/app/data/auth_info
+      - ./whatsapp/src:/app/src
+
+  saori-discord:
+    build:
+      context: ./discord
+      dockerfile: Dockerfile
+    container_name: saori-discord
+    restart: unless-stopped
+    network_mode: "host"
+    env_file:
+      - .env
+    volumes:
+      - ./discord/src:/app/src
+
+volumes:
+  saori_whatsapp_auth:

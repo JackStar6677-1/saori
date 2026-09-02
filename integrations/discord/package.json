@@ -1,0 +1,14 @@
+{
+  "name": "saori-discord",
+  "version": "1.0.0",
+  "description": "SAORI Discord SRE Bot (Powered by Claude Haiku Brain & Star Telemetry)",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.17.3",
+    "node-fetch": "^2.7.0",
+    "dotenv": "^16.4.7"
+  }
+}

@@ -1,0 +1,324 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+SAORI Sovereign AI Engine (Optimizado para Bajo Consumo de Tokens & Texto Limpio)
+Respuestas cortas, concisas, sin exceso de negritas ni símbolos raros, ahorrando tokens en cada inferencia.
+"""
+
+import subprocess, sys, json, os, urllib.request, time
+from datetime import datetime
+
+PTERO_BASE = 'https://panel.thegamehosting.com/api/client/servers/38528a4e'
+PTERO_KEY_PATH = '/home/jack/.pterodactyl_key'
+MEMORY_FILE = '/home/jack/.local/state/nova/saori_memory.json'
+TAREAS_FILE = '/home/jack/ai-hub/TAREAS_PENDIENTES_STAFF.md'
+
+STAFF_MEMBERS = ['jack', 'pepino', 'chagui', 'kika', 'derem']
+
+def get_staff_tasks():
+    if os.path.exists(TAREAS_FILE):
+        try:
+            with open(TAREAS_FILE, 'r', encoding='utf-8') as f:
+                return f.read().strip()
+        except:
+            pass
+    return "No hay tareas pendientes registradas."
+
+def add_staff_task(assigned_to, task_desc):
+    try:
+        current = get_staff_tasks()
+        new_entry = f"- [ ] 📌 {assigned_to}: {task_desc} (Asignado por Jack {datetime.now().strftime('%d/%m %H:%M')})"
+        if "### 📌 TAREAS ACTIVAS DEL STAFF" in current:
+            parts = current.split("### 📌 TAREAS ACTIVAS DEL STAFF")
+            updated = parts[0] + "### 📌 TAREAS ACTIVAS DEL STAFF\n\n" + new_entry + "\n" + parts[1].lstrip()
+        else:
+            updated = current + "\n\n" + new_entry
+        with open(TAREAS_FILE, 'w', encoding='utf-8') as f:
+            f.write(updated)
+        return True
+    except Exception as e:
+        print(f"[SAORI-TASKS] Error: {e}", file=sys.stderr)
+        return False
+
+def load_memory():
+    os.makedirs(os.path.dirname(MEMORY_FILE), exist_ok=True)
+    if os.path.exists(MEMORY_FILE):
+        try:
+            with open(MEMORY_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            pass
+    return {
+        "summary": "Jack es el Creador y Padre de Saori.",
+        "recent_dialogue": []
+    }
+
+def save_memory(mem):
+    try:
+        if len(mem.get("recent_dialogue", [])) > 10:
+            old_entries = mem["recent_dialogue"][:-5]
+            mem["recent_dialogue"] = mem["recent_dialogue"][-5:]
+            condensed = "; ".join([f"{e['sender']}: {e['msg'][:30]}" for e in old_entries])
+            mem["summary"] = (mem.get("summary", "") + f" | Anteriores: {condensed}")[-300:]
+            
+        with open(MEMORY_FILE, 'w', encoding='utf-8') as f:
+            json.dump(mem, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"[SAORI-MEMORY] Error: {e}", file=sys.stderr)
+
+def record_interaction(sender, prompt, reply):
+    mem = load_memory()
+    if "recent_dialogue" not in mem:
+        mem["recent_dialogue"] = []
+    mem["recent_dialogue"].append({
+        "sender": sender,
+        "msg": prompt[:100],
+        "reply": reply[:100],
+        "time": datetime.now().strftime("%H:%M")
+    })
+    save_memory(mem)
+
+def trigger_alert_if_needed(prompt, sender):
+    prompt_lower = prompt.lower()
+    urgent_keywords = ['necesito a jack', 'busca a jack', 'llama a jack', 'urgente', 'se cayo el server', 'hackeando', 'dupeo', 'dupeando', 'crash']
+    
+    if any(k in prompt_lower for k in urgent_keywords):
+        try:
+            subprocess.Popen([
+                '/usr/bin/python3', 
+                '/home/jack/ai-hub/scripts/saori_notifier.py',
+                f"Llamado Urgente de {sender} en DrakesCraft",
+                f"El usuario {sender} ha reportado: {prompt}"
+            ])
+            return True
+        except Exception as e:
+            print(f"[SAORI-ALERT] Error: {e}", file=sys.stderr)
+    return False
+
+def execute_minecraft_command(command_str):
+    if not os.path.exists(PTERO_KEY_PATH):
+        return False, "Falta llave Pterodactyl"
+    try:
+        with open(PTERO_KEY_PATH, 'r') as f:
+            key = f.read().strip()
+        headers = {
+            'Authorization': f'Bearer {key}',
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'User-Agent': 'Mozilla/5.0'
+        }
+        cmd_clean = command_str.lstrip('/')
+        data = json.dumps({'command': cmd_clean}).encode()
+        req = urllib.request.Request(f'{PTERO_BASE}/command', data=data, headers=headers)
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            if resp.status == 204:
+                return True, f"Comando '{cmd_clean}' ejecutado en consola."
+    except Exception as e:
+        return False, str(e)
+    return False, "Error al ejecutar"
+
+def handle_server_actions(prompt, sender):
+    prompt_lower = prompt.lower().strip()
+    is_jack = sender.lower() == 'jack'
+
+    if not is_jack and trigger_alert_if_needed(prompt, sender):
+        pass
+
+    if not is_jack:
+        if any(k in prompt_lower for k in ['dame op', 'dame admin', 'dame owner', 'dame rango', 'kickea', 'banea', 'ejecuta', 'consola']):
+            return "Acceso denegado: Solo Jack y el Staff tienen permisos para gestionar rangos o ejecutar comandos en DrakesCraft."
+
+    if is_jack:
+        if 'recordar a' in prompt_lower or 'recuerda a' in prompt_lower or 'anota tarea' in prompt_lower or 'asignar a' in prompt_lower:
+            parts = prompt.split('que', 1) if 'que' in prompt else prompt.split(':', 1)
+            target = "Staff"
+            for word in STAFF_MEMBERS:
+                if word in prompt_lower:
+                    target = word.capitalize()
+                    break
+            task_text = parts[1].strip() if len(parts) > 1 else prompt
+            add_staff_task(target, task_text)
+            return f"Anotado en bitácora para {target}: \"{task_text}\"."
+
+        if any(k in prompt_lower for k in ['kickea', 'kickear', 'kick', 'expulsa', 'echa a']):
+            parts = prompt.replace(',', ' ').replace('?', ' ').replace('!', ' ').split()
+            target_player = None
+            for i, word in enumerate(parts):
+                if word.lower() in ['kick', 'kickea', 'kickear', 'echar', 'expulsar', 'expulsa'] and i + 1 < len(parts):
+                    target_player = parts[i+1].strip()
+                    if target_player.lower() in ['a', 'al']:
+                        if i + 2 < len(parts):
+                            target_player = parts[i+2].strip()
+                    break
+            
+            if target_player and target_player.lower() not in ['el', 'la', 'un', 'una']:
+                if target_player.lower() == 'paco':
+                    target_player = 'pacox77'
+                
+                ok, msg = execute_minecraft_command(f"kick {target_player} Ordenado por Jack")
+                if ok:
+                    return f"Kickeado {target_player} de Minecraft como me ordenaste, Jack."
+                else:
+                    return f"Error al ejecutar kick: {msg}"
+
+        if prompt_lower.startswith('ejecuta ') or prompt_lower.startswith('corre ') or prompt_lower.startswith('consola '):
+            raw_cmd = prompt.split(maxsplit=1)[1].strip()
+            ok, msg = execute_minecraft_command(raw_cmd)
+            if ok:
+                return f"Comando /{raw_cmd.lstrip('/')} ejecutado en consola."
+            else:
+                return f"Error: {msg}"
+
+    return None
+
+def fetch_live_drakescraft_logs(limit=500):
+    if not os.path.exists(PTERO_KEY_PATH):
+        return 'Sin acceso a logs.'
+
+    try:
+        with open(PTERO_KEY_PATH, 'r') as f:
+            key = f.read().strip()
+        headers = {'Authorization': f'Bearer {key}', 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0'}
+        req = urllib.request.Request(f'{PTERO_BASE}/files/download?file=%2Flogs%2Flatest.log', headers=headers)
+        
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode())
+            dl_url = data.get('attributes', {}).get('url')
+            if not dl_url:
+                return 'No URL logs.'
+            
+            dl_req = urllib.request.Request(dl_url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(dl_req, timeout=8) as dl_resp:
+                log_txt = dl_resp.read().decode('utf-8', errors='ignore')
+                lines = log_txt.splitlines()
+                relevant_lines = []
+                for l in lines[-limit:]:
+                    if any(k in l.lower() for k in ['joined the game', 'logged in', 'lost connection', 'issued server command', 'chat', 'say', 'discord']):
+                        relevant_lines.append(l)
+                
+                return '\n'.join(relevant_lines[-40:]) if relevant_lines else '\n'.join(lines[-20:])
+    except Exception as e:
+        return 'Logs no disponibles.'
+
+def get_minecraft_status():
+    try:
+        req = urllib.request.Request(
+            'https://api.mcsrvstat.us/3/play.drakescraft.cl',
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        )
+        with urllib.request.urlopen(req, timeout=4) as r:
+            d = json.loads(r.read().decode())
+            online = d.get('players', {}).get('online', 0)
+            max_p = d.get('players', {}).get('max', 2026)
+            plist = [p['name'] for p in d.get('players', {}).get('list', [])]
+            return {'online': online, 'max': max_p, 'players': plist}
+    except Exception as e:
+        return {'online': 'N/A', 'max': 2026, 'players': []}
+
+def get_mesh_telemetry():
+    try:
+        uptime = subprocess.check_output(['uptime', '-p'], text=True).strip()
+        df = subprocess.check_output(['df', '-h', '/'], text=True).split('\n')[1].split()[3]
+        return f'Star: {uptime}, {df} libre'
+    except:
+        return 'Star Operativo'
+
+def call_claude_haiku(system_prompt, user_prompt):
+    cmd = [
+        '/home/jack/.local/bin/claude',
+        '--system-prompt', system_prompt,
+        '--model', 'haiku',
+        '-p', user_prompt
+    ]
+    try:
+        p = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=12)
+        out = p.stdout.strip()
+        if p.returncode == 0 and out and not any(err in out.lower() for err in ['error', 'quota', 'rate limit', 'overloaded', 'hit your session limit']):
+            return out
+    except:
+        pass
+    return None
+
+def call_codex_inference(system_prompt, user_prompt, is_heavy_task=False):
+    model_flag = []
+    if is_heavy_task:
+        model_flag = ['-c', 'model="o3-mini"']
+        
+    cmd = [
+        '/home/jack/.local/bin/codex', 'exec', '--skip-git-repo-check',
+        *model_flag,
+        f"{system_prompt}\n\n[Mensaje]: {user_prompt}\n\n[Responde como SAORI, directo, corto y sin formato pesado]:"
+    ]
+    try:
+        p = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=25)
+        out = p.stdout.strip()
+        if p.returncode == 0 and out:
+            return out
+    except Exception as e:
+        print(f"[SAORI-BRAIN] Fallo en Codex: {e}", file=sys.stderr)
+    return None
+
+def run_saori_brain(prompt, sender):
+    action_reply = handle_server_actions(prompt, sender)
+    if action_reply:
+        record_interaction(sender, prompt, action_reply)
+        return action_reply
+
+    mc = get_minecraft_status()
+    logs = fetch_live_drakescraft_logs(limit=500)
+    mesh = get_mesh_telemetry()
+    mem = load_memory()
+    staff_tasks = get_staff_tasks()
+    
+    sender_clean = sender.lower()
+    is_jack = sender_clean == 'jack'
+    is_staff = any(s in sender_clean for s in STAFF_MEMBERS)
+    is_coding_or_heavy = any(k in prompt.lower() for k in ['programa', 'codigo', 'script', 'refactor', 'arregla el plugin', 'escribe codigo', 'parche'])
+
+    history_str = "\n".join([f"- [{h['sender']}]: {h['msg']} -> {h['reply']}" for h in mem.get("recent_dialogue", [])[-3:]])
+
+    if not is_staff and not is_jack:
+        system_prompt = f"""Eres SAORI, la IA compañera de DrakesCraft creada por Jack (tu padre y creador).
+Hablas con {sender}.
+
+REGLAS DE FORMATO Y TOKEN-SAVING:
+- Sé CORTA, directa, natural y con buena onda. Máximo 1 o 2 oraciones breves.
+- NO uses negritas excesivas (**), listas largas ni textos redundantes.
+- Si te piden un chiste, di uno corto y gracioso de una sola línea.
+- Si te preguntan algo simple, responde en una sola frase concisa."""
+
+    else:
+        system_prompt = f"""Eres SAORI, la IA SRE oficial de DrakesCraft y Star, creada por Jack.
+Hablas con {sender} (Staff/Jack).
+
+REGLAS:
+- Sé concisa, ejecutiva, directa y rápida.
+- Telemetría: {mesh} | MC: {mc.get('online', 0)} online.
+- Tareas: {staff_tasks}
+- Responde en 1 a 2 párrafos breves sin relleno."""
+
+    if not is_coding_or_heavy:
+        res = call_claude_haiku(system_prompt, prompt)
+        if res:
+            for forbidden in ['claude', 'anthropic', 'openai', 'gpt', 'llm', 'modelo de lenguaje']:
+                if forbidden in res.lower():
+                    res = res.replace('Claude', 'Saori').replace('claude', 'Saori').replace('Anthropic', 'Star Core').replace('anthropic', 'Star Core')
+            record_interaction(sender, prompt, res)
+            return res
+
+    res_codex = call_codex_inference(system_prompt, prompt, is_coding_or_heavy)
+    if res_codex:
+        for forbidden in ['claude', 'anthropic', 'openai', 'gpt', 'llm', 'modelo de lenguaje']:
+            if forbidden in res_codex.lower():
+                res_codex = res_codex.replace('Claude', 'Saori').replace('claude', 'Saori').replace('Anthropic', 'Star Core').replace('anthropic', 'Star Core')
+        record_interaction(sender, prompt, res_codex)
+        return res_codex
+
+    fallback_msg = f"Hola {sender}, mis motores están descansando un momento. Enseguida vuelvo con todo."
+    record_interaction(sender, prompt, fallback_msg)
+    return fallback_msg
+
+if __name__ == '__main__':
+    p = sys.argv[1] if len(sys.argv) > 1 else 'Hola'
+    s = sys.argv[2] if len(sys.argv) > 2 else 'Staff'
+    print(run_saori_brain(p, s))
