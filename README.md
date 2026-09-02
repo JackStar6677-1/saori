@@ -1,16 +1,27 @@
-# 🏛️ S.A.O.R.I. · Sovereign AI SRE & Autonomous Omnichannel Fleet
-> **Server Autonomous Orchestrator for Resilient Infrastructure**  
-> *Una inteligencia artificial soberana, omnicanal y protectora de infraestructura, diseñada y dirigida por Jack para DrakesCraft y el Servidor Star.*
+<div align="center">
 
-![SAORI Banner](assets/banner.svg)
+<img src="assets/saori-banner.svg" alt="SAORI Banner" width="100%" />
+
+# 🏛️ S.A.O.R.I.
+### **Server Autonomous Orchestrator for Resilient Infrastructure**
+*Unified Multi-Agent SRE Fleet & Cyber-Athena Autonomous Operating System*
+
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![Node.js 20+](https://img.shields.io/badge/node.js-20+-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Database SQLite WAL](https://img.shields.io/badge/database-SQLite_WAL-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://sqlite.org/)
+[![Tri-Model Fleet](https://img.shields.io/badge/fleet-Antigravity_%7C_Claude_Code_%7C_Codex-8b5cf6?style=for-the-badge)](https://github.com/JackStar6677-1/saori)
+[![Zero Downtime Safe Batch](https://img.shields.io/badge/safe_staging-10%2F10_batch-10B981?style=for-the-badge)](https://github.com/JackStar6677-1/saori)
+[![License MIT](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)](LICENSE)
+
+</div>
 
 ---
 
 ## 🌟 Visión General (Fase II: Expansión Omnicanal)
 
-**SAORI** no es un bot convencional de chat ni un script aislado. Es un ecosistema autónomo de **Site Reliability Engineering (SRE)** y asistencia comunitaria que opera 24/7 en el servidor central **Star**, conectado de forma simultánea a:
+**SAORI** es un ecosistema autónomo de **Site Reliability Engineering (SRE)** y asistencia comunitaria que opera 24/7 en el servidor central **Star**, conectado de forma simultánea a:
 
-1. **La Tríada de Inteligencia Artificial:** Orquestación dual con `Claude 3.5 Haiku` para respuestas ultra-rápidas y conmutación automática a `Codex CLI` y modelos avanzados (`o3-mini`) para análisis de algoritmos o resolución de código complejo.
+1. **La Tríada de Inteligencia Artificial:** Orquestación dual con `Claude 3.5 Haiku` para respuestas rápidas y conmutación automática a `Codex CLI` y modelos avanzados (`o3-mini`) para análisis de algoritmos o resolución de código complejo.
 2. **Omnicanalidad Viva:** Presencia integrada en **Discord** (`discord.js` v14) y **WhatsApp** (`Baileys` v2 multi-file auth).
 3. **Voz Neural y Comprensión Auditiva (STT/TTS):** Generación de notas de voz nativas en español chileno (`es-CL-CatalinaNeural`) y transcripción automática de notas de voz entrantes.
 4. **Generador de Arte Visual con Codex:** Motor de síntesis de imágenes en alta definición potenciado con prompts cinemáticos refinados por IA.
@@ -87,7 +98,7 @@ graph TD
 
 ```text
 saori/
-├── assets/                  # Banners, avatares y recursos visuales
+├── assets/                  # Banners, avatares y recursos visuales (saori-banner.svg)
 ├── core/                    # Núcleo de inferencia, ejecutores y scripts de Star
 │   ├── saori_ai_daemon.py   # Servidor HTTP local multi-endpoint (:8089)
 │   ├── saori_executor.py    # Orquestador cognitivo, telemetría y RBAC
