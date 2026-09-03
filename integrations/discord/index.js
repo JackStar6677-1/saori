@@ -206,7 +206,6 @@ try {
         },
         plugins: [
             new SpotifyPlugin(),
-            new YouTubePlugin(),
             new YtDlpPlugin({ update: false })
         ]
     });
@@ -241,9 +240,11 @@ try {
                 .setFooter({ text: 'S.A.O.R.I. Music Suite' });
             queue.textChannel?.send({ embeds: [embed] }).catch(() => {});
         })
-        .on('error', (channel, error) => {
-            console.error('[DISTUBE] Error:', error.message);
-            if (channel) channel.send(`⚠️ Error reproduciendo música: ${error.message.slice(0, 200)}`).catch(() => {});
+        .on('error', (error, queue, song) => {
+            const msg = error?.message || String(error || 'Error desconocido');
+            console.error('[DISTUBE] Error:', msg);
+            const targetChannel = queue?.textChannel;
+            if (targetChannel) targetChannel.send(`⚠️ Error reproduciendo música: ${msg.slice(0, 200)}`).catch(() => {});
         });
 } catch (e) {
     console.error('[DISTUBE] Error inicializando DisTube:', e.message);
@@ -929,13 +930,35 @@ client.on('messageCreate', async (message) => {
         if (!voiceChannel) {
             return message.reply({ content: '❌ Debes unirte a un canal de voz para que pueda reproducir música.', allowedMentions: { repliedUser: false } });
         }
-        const query = cmdArgs.join(' ').trim();
+        let query = cmdArgs.join(' ').trim();
         if (!query) {
             return message.reply({ content: '🎵 Por favor indica el nombre de una canción o enlace de Spotify/YouTube.\n*Ejemplo:* `splay https://open.spotify.com/track/...` o `splay lofi hip hop`', allowedMentions: { repliedUser: false } });
         }
         if (!distube) {
             return message.reply({ content: '❌ El motor de música no está disponible en este momento.', allowedMentions: { repliedUser: false } });
         }
+
+        // Si es enlace de Spotify, resolver metadata y buscar stream en YouTube de forma resiliente
+        if (query.includes('spotify.com/track/')) {
+            try {
+                await message.react('🔍').catch(() => {});
+                const spotifyHelper = new SpotifyPlugin();
+                const data = await spotifyHelper.api.getData(query);
+                const title = data.name + ' ' + (data.artists?.[0]?.name || '');
+                const ytUrl = await new Promise((resolve, reject) => {
+                    execFile('yt-dlp', ['--print', 'webpage_url', 'ytsearch1:' + title], (err, stdout) => {
+                        if (err) return reject(err);
+                        const cleanUrl = stdout.trim().split('\n')[0];
+                        if (cleanUrl && cleanUrl.startsWith('http')) resolve(cleanUrl);
+                        else reject(new Error('No se encontró enlace en YouTube'));
+                    });
+                });
+                query = ytUrl;
+            } catch (spotifyErr) {
+                console.warn('[SPOTIFY-BRIDGE] Warning resolviendo Spotify a YT:', spotifyErr.message);
+            }
+        }
+
         try {
             await distube.play(voiceChannel, query, {
                 message,
@@ -944,7 +967,8 @@ client.on('messageCreate', async (message) => {
             });
             return message.react('🎶').catch(() => {});
         } catch (e) {
-            return message.reply({ content: `❌ Error al reproducir música: ${e.message}`, allowedMentions: { repliedUser: false } });
+            const errDetail = e?.message || String(e || 'Error desconocido');
+            return message.reply({ content: `❌ Error al reproducir música: ${errDetail.slice(0, 200)}`, allowedMentions: { repliedUser: false } });
         }
     }
 
