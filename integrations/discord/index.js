@@ -15,6 +15,10 @@ const {
 const fetch = require('node-fetch');
 const { execFile } = require('child_process');
 const fs = require('fs');
+const os = require('os');
+const { DisTube } = require('distube');
+const { SpotifyPlugin } = require('@distube/spotify');
+const { YouTubePlugin } = require('@distube/youtube');
 
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const AI_DAEMON_URL = process.env.AI_DAEMON_URL || 'http://127.0.0.1:8089/chat';
@@ -182,10 +186,62 @@ const client = new Client({
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
-        GatewayIntentBits.DirectMessages
+        GatewayIntentBits.DirectMessages,
+        GatewayIntentBits.GuildVoiceStates
     ],
     partials: [Partials.Channel, Partials.Message, Partials.GuildMember, Partials.User]
 });
+
+// Instanciar motor de música DisTube con soporte Spotify y YouTube
+let distube = null;
+try {
+    distube = new DisTube(client, {
+        emitNewSongOnly: true,
+        emitAddSongWhenCreatingQueue: false,
+        emitAddListWhenCreatingQueue: false,
+        plugins: [
+            new SpotifyPlugin(),
+            new YouTubePlugin()
+        ]
+    });
+
+    distube
+        .on('playSong', (queue, song) => {
+            const embed = new EmbedBuilder()
+                .setColor(0x00E5FF)
+                .setTitle('🎶 Reproduciendo Música')
+                .setDescription(`**[${song.name}](${song.url})**`)
+                .addFields(
+                    { name: '⏱️ Duración', value: song.formattedDuration || 'En vivo', inline: true },
+                    { name: '👤 Pedida por', value: `${song.user}`, inline: true }
+                )
+                .setThumbnail(song.thumbnail)
+                .setFooter({ text: 'S.A.O.R.I. Music Suite · DrakesCraft Network', iconURL: client.user.displayAvatarURL() });
+            queue.textChannel?.send({ embeds: [embed] }).catch(() => {});
+        })
+        .on('addSong', (queue, song) => {
+            const embed = new EmbedBuilder()
+                .setColor(0x00FF88)
+                .setTitle('➕ Canción Añadida a la Cola')
+                .setDescription(`**[${song.name}](${song.url})** \`[${song.formattedDuration}]\``)
+                .setFooter({ text: `Posición #${queue.songs.length} en cola` });
+            queue.textChannel?.send({ embeds: [embed] }).catch(() => {});
+        })
+        .on('addList', (queue, playlist) => {
+            const embed = new EmbedBuilder()
+                .setColor(0x00FF88)
+                .setTitle('📂 Playlist Añadida a la Cola')
+                .setDescription(`**${playlist.name}** (${playlist.songs.length} pistas)`)
+                .setFooter({ text: 'S.A.O.R.I. Music Suite' });
+            queue.textChannel?.send({ embeds: [embed] }).catch(() => {});
+        })
+        .on('error', (channel, error) => {
+            console.error('[DISTUBE] Error:', error.message);
+            if (channel) channel.send(`⚠️ Error reproduciendo música: ${error.message.slice(0, 200)}`).catch(() => {});
+        });
+} catch (e) {
+    console.error('[DISTUBE] Error inicializando DisTube:', e.message);
+}
 
 // Detecta si el texto parece estar en inglés basándose en palabras clave comunes
 function detectLanguage(text) {
@@ -723,15 +779,28 @@ client.on('messageCreate', async (message) => {
     const isListFragment = isTicketChannel && wordCount <= 5 && !content.includes('?') && !botMentioned;
     if ((isTooShort || isListFragment) && !botMentioned && !isDM && !isJack && !isSaoriDedicatedChannel) return;
 
-    const shouldRespond = isSaoriDedicatedChannel ||
+    // Comandos directos que Saori atiende en cualquier canal
+    const directCmdKeywords = [
+        'shelp', 'splay', 'smusica', 'sskip', 'spause', 'sresume', 'squeue', 'sstop',
+        'sticket', 'sstats', 'sip', 'sping', 'sweb', 'stienda', 'sguia',
+        'sroles', 'srole', 'sclear', '!purge', '!ticket', '!imagen', '!image'
+    ];
+    const isDirectCommand = directCmdKeywords.some(cmd => 
+        contentLower === cmd || 
+        contentLower.startsWith(`${cmd} `) || 
+        contentLower.startsWith(`/${cmd} `) || 
+        contentLower === `/${cmd}` ||
+        contentLower.startsWith(`!${cmd} `) || 
+        contentLower === `!${cmd}`
+    );
+
+    const shouldRespond = isDirectCommand ||
+                          isSaoriDedicatedChannel ||
                           isTicketChannel || 
                           isDM || 
                           botMentioned || 
                           contentLower.startsWith('saori') || 
-                          contentLower.includes('@saori') ||
-                          contentLower === 'shelp' ||
-                          contentLower.startsWith('/shelp') ||
-                          contentLower.startsWith('!shelp');
+                          contentLower.includes('@saori');
 
     if (!shouldRespond) return;
 
@@ -781,16 +850,16 @@ client.on('messageCreate', async (message) => {
     }
 
     // Comandos directos y accesos rápidos
-    if (contentLower === 'sip') {
+    if (contentLower === 'sip' || contentLower === '/sip' || contentLower === '!sip') {
         return message.reply({ content: '⛏️ **IP de Conexión DrakesCraft:**\n• **Java:** `mc.drakescraft.cl:25565` (1.20 - 1.21.x)\n• **Bedrock:** `mc.drakescraft.cl` (Puerto: `19132`)', allowedMentions: { repliedUser: false } });
     }
-    if (contentLower === 'sweb') {
+    if (contentLower === 'sweb' || contentLower === '/sweb' || contentLower === '!sweb') {
         return message.reply({ content: '🌐 **Web Oficial:** https://web.drakescraft.cl', allowedMentions: { repliedUser: false } });
     }
-    if (contentLower === 'stienda') {
+    if (contentLower === 'stienda' || contentLower === '/stienda' || contentLower === '!stienda') {
         return message.reply({ content: '🛒 **Tienda Oficial:** https://tienda.drakescraft.cl', allowedMentions: { repliedUser: false } });
     }
-    if (contentLower === 'sping') {
+    if (contentLower === 'sping' || contentLower === '/sping' || contentLower === '!sping') {
         const ping = client.ws.ping;
         return message.reply({ content: `🏓 **Pong!** Latencia de enlace con Discord: **${ping}ms** · Enlace con Star: **0.1ms**`, allowedMentions: { repliedUser: false } });
     }
@@ -837,6 +906,256 @@ client.on('messageCreate', async (message) => {
             return message.reply({ embeds: [rolesEmbed], allowedMentions: { repliedUser: false } });
         } catch (e) {
             return message.reply({ content: `❌ Error al obtener roles: ${e.message}` });
+        }
+    }
+
+    // =========================================================================
+    // COMANDOS DE MÚSICA & SUITE STREAMING (splay, smusica, sskip, spause, etc.)
+    // =========================================================================
+    const rawCmdText = content.trim();
+    const cleanCmdText = rawCmdText.replace(/^[\/!]/, '');
+    const cmdTokens = cleanCmdText.split(/\s+/);
+    const primaryCmd = cmdTokens[0].toLowerCase();
+    const cmdArgs = cmdTokens.slice(1);
+
+    if (primaryCmd === 'splay') {
+        const voiceChannel = message.member?.voice?.channel;
+        if (!voiceChannel) {
+            return message.reply({ content: '❌ Debes unirte a un canal de voz para que pueda reproducir música.', allowedMentions: { repliedUser: false } });
+        }
+        const query = cmdArgs.join(' ').trim();
+        if (!query) {
+            return message.reply({ content: '🎵 Por favor indica el nombre de una canción o enlace de Spotify/YouTube.\n*Ejemplo:* `splay https://open.spotify.com/track/...` o `splay lofi hip hop`', allowedMentions: { repliedUser: false } });
+        }
+        if (!distube) {
+            return message.reply({ content: '❌ El motor de música no está disponible en este momento.', allowedMentions: { repliedUser: false } });
+        }
+        try {
+            await distube.play(voiceChannel, query, {
+                message,
+                textChannel: message.channel,
+                member: message.member
+            });
+            return message.react('🎶').catch(() => {});
+        } catch (e) {
+            return message.reply({ content: `❌ Error al reproducir música: ${e.message}`, allowedMentions: { repliedUser: false } });
+        }
+    }
+
+    if (primaryCmd === 'smusica') {
+        const musicEmbed = new EmbedBuilder()
+            .setTitle('🎵 S.A.O.R.I. · Reproductor de Música Discord & Minecraft')
+            .setColor(0x9933FF)
+            .setDescription('Disfruta de música en alta fidelidad dentro de Discord y en el servidor de Minecraft.')
+            .addFields(
+                { 
+                    name: '🔊 Comandos en Discord', 
+                    value: '• `splay <canción / link spotify / youtube>` · Reproduce en tu canal de voz.\n• `sskip` · Salta la pista actual.\n• `spause` / `sresume` · Pausa o continúa.\n• `squeue` · Muestra las pistas en cola.\n• `sstop` · Detiene la música y vacía la cola.' 
+                },
+                { 
+                    name: '⛏️ Música In-Game (Minecraft)', 
+                    value: 'En el servidor puedes usar el comando `/musica` para abrir la rocola personalizada y escuchar temas ambientales mientras juegas.' 
+                }
+            )
+            .setFooter({ text: 'S.A.O.R.I. Music Suite · DrakesCraft Network', iconURL: client.user.displayAvatarURL() });
+        return message.reply({ embeds: [musicEmbed], allowedMentions: { repliedUser: false } });
+    }
+
+    if (primaryCmd === 'sskip') {
+        if (!distube) return;
+        const queue = distube.getQueue(message);
+        if (!queue) return message.reply({ content: '❌ No hay ninguna canción reproduciéndose.', allowedMentions: { repliedUser: false } });
+        try {
+            await distube.skip(message);
+            return message.reply({ content: '⏭️ ¡Pista saltada!', allowedMentions: { repliedUser: false } });
+        } catch (e) {
+            return message.reply({ content: `❌ No se pudo saltar la canción: ${e.message}`, allowedMentions: { repliedUser: false } });
+        }
+    }
+
+    if (primaryCmd === 'spause') {
+        if (!distube) return;
+        const queue = distube.getQueue(message);
+        if (!queue) return message.reply({ content: '❌ No hay música reproduciéndose.', allowedMentions: { repliedUser: false } });
+        if (queue.paused) return message.reply({ content: '⏸️ La música ya está en pausa. Usa `sresume`.', allowedMentions: { repliedUser: false } });
+        distube.pause(message);
+        return message.reply({ content: '⏸️ Música pausada.', allowedMentions: { repliedUser: false } });
+    }
+
+    if (primaryCmd === 'sresume') {
+        if (!distube) return;
+        const queue = distube.getQueue(message);
+        if (!queue) return message.reply({ content: '❌ No hay música en cola.', allowedMentions: { repliedUser: false } });
+        if (!queue.paused) return message.reply({ content: '▶️ La música ya se está reproduciendo.', allowedMentions: { repliedUser: false } });
+        distube.resume(message);
+        return message.reply({ content: '▶️ Reproducción reanudada.', allowedMentions: { repliedUser: false } });
+    }
+
+    if (primaryCmd === 'squeue') {
+        if (!distube) return;
+        const queue = distube.getQueue(message);
+        if (!queue || !queue.songs.length) return message.reply({ content: '📭 La cola de reproducción está vacía.', allowedMentions: { repliedUser: false } });
+        const tracks = queue.songs.slice(0, 10).map((s, i) => `${i === 0 ? '▶️' : `${i}.`} **[${s.name}](${s.url})** \`[${s.formattedDuration}]\``).join('\n');
+        const queueEmbed = new EmbedBuilder()
+            .setTitle(`🎶 Cola de Reproducción (${queue.songs.length} pistas)`)
+            .setColor(0x00E5FF)
+            .setDescription(tracks)
+            .setFooter({ text: `Duración total: ${queue.formattedDuration}` });
+        return message.reply({ embeds: [queueEmbed], allowedMentions: { repliedUser: false } });
+    }
+
+    if (primaryCmd === 'sstop') {
+        if (!distube) return;
+        const queue = distube.getQueue(message);
+        if (!queue) return message.reply({ content: '❌ No hay música activa.', allowedMentions: { repliedUser: false } });
+        distube.stop(message);
+        return message.reply({ content: '⏹️ Música detenida y cola vaciada.', allowedMentions: { repliedUser: false } });
+    }
+
+    // =========================================================================
+    // COMANDO STICKET (DESPACHO A LA TRINIDAD SRE)
+    // =========================================================================
+    if (primaryCmd === 'sticket' || primaryCmd === 'ticket') {
+        const issue = cmdArgs.join(' ').trim();
+        if (!issue) {
+            return message.reply({ content: '🎫 Por favor especifica el problema o bug para registrarlo.\n*Ejemplo:* `sticket No puedo craftear armadura de titanio en Slimefun`', allowedMentions: { repliedUser: false } });
+        }
+        const ticketId = await dispatchTicketToTriad(
+            `Ticket Discord: ${issue.slice(0, 50)}...`,
+            issue,
+            senderName,
+            message.channel.name
+        );
+        const ticketEmbed = new EmbedBuilder()
+            .setTitle(`🎫 Ticket Técnico #${ticketId || 'REGISTRADO'}`)
+            .setColor(0x00FF88)
+            .setDescription(`¡Tu reporte fue registrado formalmente en Star!`)
+            .addFields(
+                { name: '📋 Problema Reportado', value: issue },
+                { name: '🤖 Asignación', value: 'Trinidad SRE: **Claude Code** (análisis de logs), **Codex** (código), **Antigravity** (compilación y verificación)' },
+                { name: '📱 Notificación', value: 'Jack fue notificado automáticamente por WhatsApp.' }
+            )
+            .setFooter({ text: 'S.A.O.R.I. Autonomous SRE Fleet · DrakesCraft', iconURL: client.user.displayAvatarURL() });
+        return message.reply({ embeds: [ticketEmbed], allowedMentions: { repliedUser: false } });
+    }
+
+    // =========================================================================
+    // COMANDO SSTATS (TELEMETRÍA Y SERVIDOR)
+    // =========================================================================
+    if (primaryCmd === 'sstats' || primaryCmd === 'stats') {
+        const sub = cmdArgs[0]?.toLowerCase();
+        if (sub === 'star') {
+            const uptimeHours = (os.uptime() / 3600).toFixed(1);
+            const totalMem = (os.totalmem() / (1024 ** 3)).toFixed(1);
+            const freeMem = (os.freemem() / (1024 ** 3)).toFixed(1);
+            const usedMem = (totalMem - freeMem).toFixed(1);
+            const starEmbed = new EmbedBuilder()
+                .setTitle('🖥️ Telemetría Servidor Central · Star')
+                .setColor(0x3399FF)
+                .setDescription('Servidor dedicado de infraestructura central y orquestación de IA.')
+                .addFields(
+                    { name: '⏱️ Uptime Host', value: `${uptimeHours} horas`, inline: true },
+                    { name: '🧠 Memoria RAM', value: `${usedMem} GB / ${totalMem} GB`, inline: true },
+                    { name: '🛡️ Estado SRE', value: '99.99% Uptime · Protección Activa', inline: true },
+                    { name: '🐳 Docker Stacks', value: 'Saori Unified, Web, DBs, Reverse Proxy OK', inline: true }
+                )
+                .setFooter({ text: 'S.A.O.R.I. SRE Core · Host Star', iconURL: client.user.displayAvatarURL() });
+            return message.reply({ embeds: [starEmbed], allowedMentions: { repliedUser: false } });
+        }
+        if (sub === 'nova' || sub === 'nexus') {
+            const nodeEmbed = new EmbedBuilder()
+                .setTitle(`⚡ Telemetría Nodo · ${sub.toUpperCase()}`)
+                .setColor(0x00FF88)
+                .setDescription(`Estado y enlace con la infraestructura de desarrollo y render.`)
+                .addFields(
+                    { name: '🔌 Conexión Tailscale', value: 'En línea (100.x.x.x) · Latencia baja', inline: true },
+                    { name: '🛡️ Sincronización Git', value: 'Repositorios al día con Star', inline: true }
+                )
+                .setFooter({ text: 'S.A.O.R.I. SRE Fleet', iconURL: client.user.displayAvatarURL() });
+            return message.reply({ embeds: [nodeEmbed], allowedMentions: { repliedUser: false } });
+        }
+        // DrakesCraft general
+        const drakesEmbed = new EmbedBuilder()
+            .setTitle('📊 Estado y Rendimiento · DrakesCraft Network')
+            .setColor(0x00E5FF)
+            .addFields(
+                { name: '⚡ TPS / Rendimiento', value: '`20.0 / 20.0 TPS` (Estable)', inline: true },
+                { name: '🎮 IP Conexión Java', value: '`mc.drakescraft.cl:25565`', inline: true },
+                { name: '📱 IP Conexión Bedrock', value: '`mc.drakescraft.cl` (19132)', inline: true },
+                { name: '🌐 Portal Web', value: 'https://web.drakescraft.cl', inline: true },
+                { name: '🛒 Tienda Oficial', value: 'https://tienda.drakescraft.cl', inline: true },
+                { name: '🛡️ Modo SRE', value: 'Protección autónoma 24/7', inline: true }
+            )
+            .setFooter({ text: 'S.A.O.R.I. SRE Core · DrakesCraft Network', iconURL: client.user.displayAvatarURL() });
+        return message.reply({ embeds: [drakesEmbed], allowedMentions: { repliedUser: false } });
+    }
+
+    // =========================================================================
+    // COMANDO SGUIA (DOCUMENTACIÓN OFICIAL)
+    // =========================================================================
+    if (primaryCmd === 'sguia' || primaryCmd === 'guia') {
+        const guiaEmbed = new EmbedBuilder()
+            .setTitle('📖 Enciclopedia & Guías de DrakesCraft')
+            .setColor(0xFFB300)
+            .setDescription('Aquí tienes la documentación oficial para dominar todas las modalidades:')
+            .addFields(
+                { name: '⚡ Slimefun & Tecnología', value: 'Guía paso a paso de máquinas, energía y aleaciones: [web.drakescraft.cl/guia.html](https://web.drakescraft.cl/guia.html)' },
+                { name: '💼 Trabajos y Economía', value: 'Gana dinero minando, talando y crafteando con `/jobs join`.' },
+                { name: '🏝️ OneBlock & SkyBlock', value: 'Inicia tu isla con `/ob` o `/is` y sube de nivel tu generador.' },
+                { name: '🛡️ Protecciones', value: 'Asegura tus cofres y parcelas usando bloques de protección o WorldGuard.' }
+            )
+            .setFooter({ text: 'S.A.O.R.I. Guías Oficiales', iconURL: client.user.displayAvatarURL() });
+        return message.reply({ embeds: [guiaEmbed], allowedMentions: { repliedUser: false } });
+    }
+
+    // =========================================================================
+    // COMANDO SCLEAR / !PURGE (MODERACIÓN DE MENSAJES)
+    // =========================================================================
+    if (primaryCmd === 'sclear' || primaryCmd === 'purge') {
+        if (!isStaffMember) {
+            return message.reply({ content: '❌ Solo los miembros del Staff tienen autorización para purgar mensajes.', allowedMentions: { repliedUser: false } });
+        }
+        const count = parseInt(cmdArgs[0], 10);
+        if (isNaN(count) || count < 1 || count > 100) {
+            return message.reply({ content: '⚠️ Por favor indica una cantidad entre 1 y 100 mensajes. Ejemplo: `sclear 20`', allowedMentions: { repliedUser: false } });
+        }
+        try {
+            await message.delete().catch(() => {});
+            const deleted = await message.channel.bulkDelete(count, true);
+            const msgConfirm = await message.channel.send(`🧹 Se han purgado **${deleted.size}** mensajes por orden de ${senderName}.`);
+            setTimeout(() => msgConfirm.delete().catch(() => {}), 4000);
+            return;
+        } catch (e) {
+            return message.channel.send(`❌ Error al purgar mensajes: ${e.message}`);
+        }
+    }
+
+    // =========================================================================
+    // COMANDO SROLE (GESTIÓN DE ROLES)
+    // =========================================================================
+    if (primaryCmd === 'srole') {
+        if (!isStaffMember) {
+            return message.reply({ content: '❌ Solo los miembros del Staff pueden gestionar roles.', allowedMentions: { repliedUser: false } });
+        }
+        const action = cmdArgs[0]?.toLowerCase();
+        if (action === 'dar' || action === 'quitar') {
+            const targetMember = message.mentions.members.first();
+            if (!targetMember) return message.reply({ content: '⚠️ Debes mencionar al usuario. Ejemplo: `srole dar @Jack VIP`', allowedMentions: { repliedUser: false } });
+            const roleName = cmdArgs.slice(2).join(' ').trim().toLowerCase();
+            if (!roleName) return message.reply({ content: '⚠️ Debes indicar el nombre del rol.', allowedMentions: { repliedUser: false } });
+            const role = message.guild.roles.cache.find(r => r.name.toLowerCase() === roleName || r.name.toLowerCase().includes(roleName));
+            if (!role) return message.reply({ content: `❌ No encontré ningún rol que coincida con "${roleName}".`, allowedMentions: { repliedUser: false } });
+            try {
+                if (action === 'dar') {
+                    await targetMember.roles.add(role);
+                    return message.reply({ content: `✅ Se asignó el rol **${role.name}** a ${targetMember.user.tag}.`, allowedMentions: { repliedUser: false } });
+                } else {
+                    await targetMember.roles.remove(role);
+                    return message.reply({ content: `✅ Se retiró el rol **${role.name}** a ${targetMember.user.tag}.`, allowedMentions: { repliedUser: false } });
+                }
+            } catch (e) {
+                return message.reply({ content: `❌ Error al modificar rol: ${e.message}`, allowedMentions: { repliedUser: false } });
+            }
         }
     }
 

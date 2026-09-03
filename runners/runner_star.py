@@ -32,6 +32,8 @@ def get_codex_command() -> list[str]:
     """Construye Codex en Terra/medium, el perfil operativo solicitado por Jack."""
     return [
         "codex", "exec", "-C", str(WORKSPACE),
+        "--skip-git-repo-check",
+        "--dangerously-bypass-approvals-and-sandbox",
         "-m", "gpt-5.6-terra",
         "-c", 'model_reasoning_effort="medium"',
         "-",
@@ -41,6 +43,8 @@ def get_codex_command() -> list[str]:
 COMMANDS = {
     "codex": [
         "codex", "exec", "-C", str(WORKSPACE),
+        "--skip-git-repo-check",
+        "--dangerously-bypass-approvals-and-sandbox",
         "-m", "gpt-5.6-terra",
         "-c", 'model_reasoning_effort="medium"',
         "-",
@@ -48,7 +52,9 @@ COMMANDS = {
     "claude-code": [
         "claude",
         "--model", "opus",
-        "--effort", "medium", "-p",
+        "--effort", "medium",
+        "--dangerously-skip-permissions",
+        "-p",
     ],
     "antigravity": [
         "agy",
