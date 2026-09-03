@@ -195,10 +195,14 @@ const client = new Client({
 // Instanciar motor de música DisTube con soporte Spotify y YouTube
 let distube = null;
 try {
+    const ffmpegPath = require('ffmpeg-static');
     distube = new DisTube(client, {
         emitNewSongOnly: true,
         emitAddSongWhenCreatingQueue: false,
         emitAddListWhenCreatingQueue: false,
+        ffmpeg: {
+            path: ffmpegPath || 'ffmpeg'
+        },
         plugins: [
             new SpotifyPlugin(),
             new YouTubePlugin()
