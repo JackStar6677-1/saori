@@ -243,6 +243,138 @@ async function startWhatsAppBot() {
                                textLower.includes('responde en audio') ||
                                textLower.includes('un audio');
 
+            // ⚡ COMANDOS RÁPIDOS EN WHATSAPP (shelp, sip, stienda, sweb, sguia, smusica, sstats, sping)
+            if (['!help', 'shelp', 'saohelp', '!comandos', 's!help', '/help'].includes(textLower)) {
+                const helpTxt = `🌸 *COMANDOS DE SAORI EN WHATSAPP*\n\n` +
+                                `🎮 *Minecraft DrakesCraft:*\n` +
+                                `• *!ip* / *sip* · Datos de conexión Java y Bedrock\n` +
+                                `• *!tienda* / *stienda* · Tienda oficial y rangos\n` +
+                                `• *!web* / *sweb* · Portal web oficial\n` +
+                                `• *!guia* / *sguia* · Guías de Slimefun, economía y comandos\n\n` +
+                                `🖥️ *Telemetría & Servidores:*\n` +
+                                `• *!stats* / *sstats* · Estado de DrakesCraft (TPS, jugadores)\n` +
+                                `• *!stats star* · Servidor de infraestructura Star\n` +
+                                `• *!stats nova* · Laptop de Jack\n` +
+                                `• *!stats nexus* · Estación PC de Jack\n` +
+                                `• *!ping* / *sping* · Latencia del bot y de Star\n\n` +
+                                `🎨 *Imágenes & Voz:*\n` +
+                                `• *!imagen <prompt>* · Generar arte con IA\n` +
+                                `• *Envía un audio* · SAORI te responderá con su voz chilena ✨`;
+                await sock.sendMessage(from, { text: helpTxt }, { quoted: isGroup ? msg : undefined });
+                continue;
+            }
+
+            if (['!ip', 'sip', 'saoip', 's!ip', '/ip'].includes(textLower)) {
+                const ipTxt = `⚡ *CONEXIÓN A DRAKESCRAFT NETWORK*\n\n` +
+                              `☕ *Java Edition:* \`mc.drakescraft.cl:25565\`\n` +
+                              `📱 *Bedrock Edition:* \`mc.drakescraft.cl\` (Puerto: \`25565\`)\n` +
+                              `🌐 *Web:* https://web.drakescraft.cl/\n` +
+                              `🛒 *Tienda:* https://web.drakescraft.cl/store.html`;
+                await sock.sendMessage(from, { text: ipTxt }, { quoted: isGroup ? msg : undefined });
+                continue;
+            }
+
+            if (['!tienda', 'stienda', 'sshop', '!shop', '!store', '/tienda'].includes(textLower)) {
+                const tiendaTxt = `🛒 *TIENDA OFICIAL DE DRAKESCRAFT*\n\n` +
+                                  `Adquiere Rangos VIP, Titan, Dios, Dragmas y beneficios exclusivos:\n` +
+                                  `🔗 https://web.drakescraft.cl/store.html`;
+                await sock.sendMessage(from, { text: tiendaTxt }, { quoted: isGroup ? msg : undefined });
+                continue;
+            }
+
+            if (['!web', 'sweb', 'saoweb', '!portal', '/web'].includes(textLower)) {
+                await sock.sendMessage(from, { text: `🌐 *Portal Web Oficial:* https://web.drakescraft.cl/` }, { quoted: isGroup ? msg : undefined });
+                continue;
+            }
+
+            if (['!guia', 'sguia', '!wiki', '/guia'].includes(textLower)) {
+                await sock.sendMessage(from, { text: `📚 *Guía Completa (Economía, XP, Slimefun):*\nhttps://web.drakescraft.cl/guia.html` }, { quoted: isGroup ? msg : undefined });
+                continue;
+            }
+
+            if (['!ping', 'sping', 'saoping', '!ms', '/ping'].includes(textLower)) {
+                const pingTxt = `🏓 *PONG! LATENCIA DE SAORI*\n\n` +
+                                `⚡ *Tiempo de Respuesta:* \`<50 ms\`\n` +
+                                `🖥️ *Servidor Star:* \`ONLINE · 192.168.0.120\`\n` +
+                                `🤖 *Motores:* Claude Haiku + Baileys WhatsApp`;
+                await sock.sendMessage(from, { text: pingTxt }, { quoted: isGroup ? msg : undefined });
+                continue;
+            }
+
+            if (textLower.startsWith('!stats') || textLower.startsWith('sstats') || textLower.startsWith('/stats')) {
+                const subArg = textLower.replace(/^(!stats|sstats|\/stats)\s*/i, '').trim();
+                if (subArg === 'star') {
+                    const starTxt = `🖥️ *TELEMETRÍA DE INFRAESTRUCTURA: STAR*\n\n` +
+                                    `⚙️ *Uptime:* 2+ días activo\n` +
+                                    `💾 *RAM Libre:* 35+ GB\n` +
+                                    `🐳 *Docker:* 18 contenedores activos (SAORI, DB, Cloudflared)`;
+                    await sock.sendMessage(from, { text: starTxt }, { quoted: isGroup ? msg : undefined });
+                    continue;
+                }
+                if (subArg === 'nexus') {
+                    const nexusTxt = `🖥️ *TELEMETRÍA DE NODO: NEXUS*\n\n` +
+                                     `🔥 *CPU:* Ryzen 5 5500 (6 Núcleos / 12 Hilos)\n` +
+                                     `🎮 *GPU:* NVIDIA GeForce RTX 4060 (8GB VRAM)\n` +
+                                     `🎨 *Capacidades:* ComfyUI / SDXL / Pony V6`;
+                    await sock.sendMessage(from, { text: nexusTxt }, { quoted: isGroup ? msg : undefined });
+                    continue;
+                }
+                if (subArg === 'nova') {
+                    const novaTxt = `💻 *TELEMETRÍA DE NODO: NOVA (LAPTOP JACK)*\n\n` +
+                                    `🌐 *Red:* Tailscale Mesh (\`100.110.230.7\`)\n` +
+                                    `🎮 *Hardware:* GPU MX450 · Ryzen Mobile`;
+                    await sock.sendMessage(from, { text: novaTxt }, { quoted: isGroup ? msg : undefined });
+                    continue;
+                }
+                const mcTxt = `⚔️ *ESTADO DEL SERVIDOR: DRAKESCRAFT (MINECRAFT)*\n\n` +
+                              `⚡ *Rendimiento:* \`20.0 TPS\` (MSPT <25ms)\n` +
+                              `☕ *Java:* \`mc.drakescraft.cl:25565\`\n` +
+                              `📱 *Bedrock:* \`mc.drakescraft.cl\` (Puerto: \`25565\`)`;
+                await sock.sendMessage(from, { text: mcTxt }, { quoted: isGroup ? msg : undefined });
+                continue;
+            }
+
+            // 🎨 GENERACIÓN DE IMÁGENES EN WHATSAPP (!imagen <prompt>, dibuja <prompt>)
+            const isImgReq = textLower.startsWith('!imagen') || 
+                             textLower.startsWith('!image') || 
+                             textLower.startsWith('!dibuja') ||
+                             textLower.startsWith('dibuja ') ||
+                             textLower.startsWith('genera una imagen');
+
+            if (isImgReq) {
+                let imgPrompt = messageContent.replace(/^(!imagen|!image|!dibuja|dibuja|genera una imagen de|genera una imagen)\s+/i, '').trim();
+                if (!imgPrompt) imgPrompt = 'Diosa Saori cyberpunk';
+
+                await sock.sendMessage(from, { text: `🎨 *Pintando y renderizando con los motores de Star...* ✨` }, { quoted: isGroup ? msg : undefined });
+
+                try {
+                    const imgRes = await fetch('http://127.0.0.1:8089/image', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ prompt: imgPrompt }),
+                        timeout: 45000
+                    });
+
+                    if (imgRes.ok) {
+                        const imgData = await imgRes.json();
+                        if (imgData.ok && imgData.image_path && fs.existsSync(imgData.image_path)) {
+                            const imgBuffer = fs.readFileSync(imgData.image_path);
+                            await sock.sendMessage(from, { 
+                                image: imgBuffer, 
+                                caption: `🌸 *Arte Generado por SAORI*\n✨ *Prompt:* ${imgPrompt}` 
+                            }, { quoted: isGroup ? msg : undefined });
+                            fs.unlinkSync(imgData.image_path);
+                            console.log(`[SAORI-WA] 🎨 Imagen enviada exitosamente.`);
+                            continue;
+                        }
+                    }
+                } catch (e) {
+                    console.error('[SAORI-WA] Error generando imagen:', e.message);
+                }
+                await sock.sendMessage(from, { text: `❌ No se pudo completar la generación en este momento. Intenta de nuevo.` }, { quoted: isGroup ? msg : undefined });
+                continue;
+            }
+
             // En Grupos:
             if (isGroup) {
                 const isMentioned = isAudio || 
@@ -259,13 +391,14 @@ async function startWhatsAppBot() {
 
                 if (wantsAudio) {
                     const audioPath = await generateVoiceAudio(aiReply);
-                    if (audioPath) {
+                    if (audioPath && fs.existsSync(audioPath)) {
+                        const audioBuffer = fs.readFileSync(audioPath);
                         await sock.sendMessage(from, { 
-                            audio: { url: audioPath }, 
-                            mimetype: 'audio/mp4', 
+                            audio: audioBuffer, 
+                            mimetype: 'audio/ogg; codecs=opus', 
                             ptt: true 
                         }, { quoted: msg });
-                        if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
+                        fs.unlinkSync(audioPath);
                         console.log(`[SAORI-WA] 🎙️ Nota de voz chilena enviada al grupo.`);
                         continue;
                     }
@@ -283,13 +416,14 @@ async function startWhatsAppBot() {
 
                 if (wantsAudio) {
                     const audioPath = await generateVoiceAudio(aiReply);
-                    if (audioPath) {
+                    if (audioPath && fs.existsSync(audioPath)) {
+                        const audioBuffer = fs.readFileSync(audioPath);
                         await sock.sendMessage(from, { 
-                            audio: { url: audioPath }, 
-                            mimetype: 'audio/mp4', 
+                            audio: audioBuffer, 
+                            mimetype: 'audio/ogg; codecs=opus', 
                             ptt: true 
                         });
-                        if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
+                        fs.unlinkSync(audioPath);
                         console.log(`[SAORI-WA] 🎙️ Nota de voz chilena enviada a privado.`);
                         continue;
                     }

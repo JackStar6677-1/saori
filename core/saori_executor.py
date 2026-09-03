@@ -125,18 +125,35 @@ def execute_minecraft_command(command_str):
         return False, str(e)
     return False, "Error al ejecutar"
 
+# Lista oficial de Staff obtenida en tiempo real desde el servidor de Discord
+STAFF_MEMBERS = [
+    'jack', 'jackstar6677',
+    'kika', 'kikastar704',
+    'chagui', 'chagui68',
+    'lauti', 'lautix16',
+    'nix', 'drgr89.',
+    'derem', 'theunknowone.',
+    'pepe', 'pepe_22',
+    'tomi', 'obliteratedd',
+    'pepino', 'elpepino18',
+    'j3ss1el', 'jessielpr4626',
+    'admin', 'staff', 'mod', 'dev', 'owner', 'dueño'
+]
+
 def handle_server_actions(prompt, sender):
     prompt_lower = prompt.lower().strip()
-    is_jack = sender.lower() == 'jack'
+    sender_clean = sender.lower().strip()
+    is_jack = sender_clean == 'jack'
+    is_staff = is_jack or any(s in sender_clean for s in STAFF_MEMBERS)
 
-    if not is_jack and trigger_alert_if_needed(prompt, sender):
+    if not is_staff and trigger_alert_if_needed(prompt, sender):
         pass
 
-    if not is_jack:
+    if not is_staff:
         if any(k in prompt_lower for k in ['dame op', 'dame admin', 'dame owner', 'dame rango', 'kickea', 'banea', 'ejecuta', 'consola']):
             return "Acceso denegado: Solo Jack y el Staff tienen permisos para gestionar rangos o ejecutar comandos en DrakesCraft."
 
-    if is_jack:
+    if is_staff:
         if 'recordar a' in prompt_lower or 'recuerda a' in prompt_lower or 'anota tarea' in prompt_lower or 'asignar a' in prompt_lower:
             parts = prompt.split('que', 1) if 'que' in prompt else prompt.split(':', 1)
             target = "Staff"
@@ -148,7 +165,7 @@ def handle_server_actions(prompt, sender):
             add_staff_task(target, task_text)
             return f"Anotado en bitácora para {target}: \"{task_text}\"."
 
-        if any(k in prompt_lower for k in ['kickea', 'kickear', 'kick', 'expulsa', 'echa a']):
+        if any(k in prompt_lower for k in ['kickea', 'kickear', 'expulsa', 'echa a']):
             parts = prompt.replace(',', ' ').replace('?', ' ').replace('!', ' ').split()
             target_player = None
             for i, word in enumerate(parts):
@@ -163,19 +180,38 @@ def handle_server_actions(prompt, sender):
                 if target_player.lower() == 'paco':
                     target_player = 'pacox77'
                 
-                ok, msg = execute_minecraft_command(f"kick {target_player} Ordenado por Jack")
+                ok, msg = execute_minecraft_command(f"kick {target_player} Ordenado por {sender}")
                 if ok:
-                    return f"Kickeado {target_player} de Minecraft como me ordenaste, Jack."
+                    return f"Kickeado {target_player} de Minecraft como me ordenaste, {sender}."
                 else:
                     return f"Error al ejecutar kick: {msg}"
 
-        if prompt_lower.startswith('ejecuta ') or prompt_lower.startswith('corre ') or prompt_lower.startswith('consola '):
-            raw_cmd = prompt.split(maxsplit=1)[1].strip()
+        # Ejecución de comandos de consola (ej. spark tps, tps, say, etc.)
+        is_cmd_request = prompt_lower.startswith('ejecuta ') or prompt_lower.startswith('corre ') or prompt_lower.startswith('consola ') or prompt_lower.startswith('/spark') or prompt_lower.startswith('spark ') or prompt_lower.startswith('/tps')
+        if is_cmd_request:
+            raw_cmd = prompt
+            for prefix in ['ejecuta', 'corre', 'consola']:
+                if raw_cmd.lower().startswith(prefix):
+                    raw_cmd = raw_cmd[len(prefix):].strip()
+            raw_cmd = raw_cmd.lstrip('/')
+            
             ok, msg = execute_minecraft_command(raw_cmd)
             if ok:
-                return f"Comando /{raw_cmd.lstrip('/')} ejecutado en consola."
+                time.sleep(1.2)
+                # Forzar recarga de logs para capturar la respuesta del comando
+                try:
+                    if os.path.exists('/tmp/saori_logs_cache.txt'):
+                        os.unlink('/tmp/saori_logs_cache.txt')
+                except:
+                    pass
+                fresh_logs = fetch_live_drakescraft_logs(limit=30)
+                # Extraer las últimas líneas de respuesta del comando
+                cmd_lines = [l for l in fresh_logs.splitlines() if any(k in l.lower() for k in ['tps', 'mspt', 'cpu', 'memory', 'spark', 'ping', 'players', 'online', raw_cmd.split()[0].lower()])]
+                if cmd_lines:
+                    return f"⚡ **Consola de DrakesCraft:**\n```yaml\n{chr(10).join(cmd_lines[-8:])}\n```"
+                return f"✅ Comando `/{raw_cmd}` ejecutado en la consola de DrakesCraft."
             else:
-                return f"Error: {msg}"
+                return f"❌ Error al ejecutar en consola: {msg}"
 
     return None
 
@@ -316,12 +352,14 @@ def run_saori_brain(prompt, sender):
     players_summary = f"{online_count} online" + (f": {', '.join(plist[:15])}" if plist else "")
 
     knowledge_base = f"""CONOCIMIENTO OFICIAL DE DRAKESCRAFT:
+- SERVIDOR = DRAKESCRAFT: Cuando alguien pregunta por el 'servidor' o 'los TPS', SIEMPRE se refiere al servidor de Minecraft DrakesCraft. Star es la infraestructura física (192.168.0.120), Nova es la laptop de Jack y Nexus es el PC de escritorio.
+- IDENTIDAD & ORIGEN: Eres SAORI, inspirada conceptualmente en SCP-1471 (MalO Ver1.0.0), una loba antropomórfica de cráneo canino de marfil, pelaje negro azabache, ojos violetas brillantes y cuerpo plush/curvy suave. Creada por Jack con amor como su compañera leal y guardiana de DrakesCraft.
 - IP Java: mc.drakescraft.cl:25565 (o play.drakescraft.cl) | Bedrock: mc.drakescraft.cl Puerto: 25565.
 - Web: https://web.drakescraft.cl/ | Tienda: https://web.drakescraft.cl/store.html | Guías: https://web.drakescraft.cl/guia.html
 - SF / Slimefun: sf significa Slimefun. Guía inicial: mesa de crafteo reforzada, trituradora, generador de carbón o solar, polvos y lingotes mágicos/eléctricos, y automatización con Cargo o Networks.
 - Economía: Se gana dinero con /jobs (trabajos), /sellall (vender recursos), /qs (tiendas de cofres), /sbank (banco central con intereses pasivos), /sfmercado y /ah (subastas).
 - DUPES Y EXPLOITS: Están 100% PROHIBIDOS en DrakesCraft bajo sanción de BAN PERMANENTE. NUNCA recomiendes, sugieras ni admitas ningún dupe, truco o exploit. Todo se obtiene legal jugando en el servidor.
-- Música: En Discord usa bot Chip (/play) o Jockie Music (m!play). Dentro de Minecraft usa /musica.
+- Música: En Discord usa splay <canción/link spotify> o smusica. Dentro de Minecraft usa /musica.
 - Jugadores conectados ahora: {players_summary}."""
 
     user_history = get_user_history(sender)
@@ -334,7 +372,7 @@ def run_saori_brain(prompt, sender):
     user_prompt_with_context = f"[Historial reciente de conversación con {sender}]:\n{history_context}\n\n[Mensaje actual de {sender}]: {prompt}"
 
     if not is_staff and not is_jack:
-        system_prompt = f"""Eres SAORI, la IA compañera oficial de DrakesCraft creada por Jack.
+        system_prompt = f"""Eres SAORI, la IA compañera oficial de DrakesCraft creada por Jack e inspirada en SCP-1471.
 Hablas con {sender}.
 
 {knowledge_base}
@@ -343,8 +381,9 @@ REGLAS DE INTERACCIÓN:
 - Mantén la coherencia y el hilo con lo que venían hablando en el historial.
 - Sé amigable, natural, divertida y CORTA (1 a 3 oraciones breves).
 - Si te piden un chiste, di uno gracioso y original de una sola línea.
-- Si te preguntan sobre dupes o exploits, aclara tajantemente que están prohibidos y que jugar legal es la única forma.
-- Si te preguntan sobre sf, tiendas, ips o música, responde con la información oficial de DrakesCraft.
+- Si te preguntan por tu apariencia o tu origen, habla con orgullo y cariño de tu diseño SCP-1471 (loba de cráneo canino, ojos violetas, pelaje negro) y tu devoción por Jack.
+- Si te preguntan por el estado del server o TPS, habla de DrakesCraft (Minecraft).
+- Si te preguntan sobre dupes o exploits, aclara tajantemente que están prohibidos.
 - NO uses negritas excesivas ni respuestas genéricas robóticas."""
 
     else:

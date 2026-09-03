@@ -9,23 +9,38 @@ import sys, os, asyncio, edge_tts, subprocess
 
 VOICE_CHILEAN_FEMALE = 'es-CL-CatalinaNeural'
 
-async def generate_voice(text, output_mp3_path):
+async def generate_voice(text, final_output_path):
     # Limpiar emojis o formatos especiales para que la voz suene limpia y natural
-    clean_text = text.replace('*', '').replace('_', '').replace('#', '').replace('`', '')
-    communicate = edge_tts.Communicate(clean_text, VOICE_CHILEAN_FEMALE, pitch="+0Hz", rate="+5%")
-    await communicate.save(output_mp3_path)
-    
-    # Si se requiere OGG Opus para WhatsApp PTT
-    output_ogg_path = output_mp3_path.replace('.mp3', '.opus')
+    clean_text = text.replace('*', '').replace('_', '').replace('#', '').replace('`', '').replace('~', '')
+    if not clean_text.strip():
+        clean_text = "Hola, aquí estoy."
+
+    temp_mp3 = f"/tmp/saori_raw_{os.getpid()}_{int(asyncio.get_event_loop().time() * 1000)}.mp3"
     try:
-        subprocess.run([
-            'ffmpeg', '-y', '-i', output_mp3_path,
+        communicate = edge_tts.Communicate(clean_text, VOICE_CHILEAN_FEMALE, pitch="+0Hz", rate="+5%")
+        await communicate.save(temp_mp3)
+
+        # Convertir a OGG Opus estándar 48kHz mono compatible con WhatsApp PTT y Discord
+        cmd = [
+            'ffmpeg', '-y', '-i', temp_mp3,
             '-c:a', 'libopus', '-b:a', '32k', '-vbr', 'on',
-            '-compression_level', '10', output_ogg_path
-        ], capture_output=True, check=True)
-        return output_ogg_path
-    except:
-        return output_mp3_path
+            '-ar', '48000', '-ac', '1',
+            final_output_path
+        ]
+        p = subprocess.run(cmd, capture_output=True)
+        if p.returncode == 0 and os.path.exists(final_output_path) and os.path.getsize(final_output_path) > 100:
+            return final_output_path
+        else:
+            # Fallback: copiar el mp3
+            import shutil
+            shutil.copyfile(temp_mp3, final_output_path)
+            return final_output_path
+    finally:
+        if os.path.exists(temp_mp3):
+            try:
+                os.unlink(temp_mp3)
+            except:
+                pass
 
 if __name__ == '__main__':
     if len(sys.argv) > 2:

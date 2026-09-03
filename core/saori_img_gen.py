@@ -8,10 +8,16 @@ Genera imágenes hiper-detalladas a partir de prompts y las guarda en /tmp/saori
 import sys, os, urllib.request, urllib.parse, time, subprocess
 
 def enhance_prompt_with_codex(raw_prompt):
-    """Mejora el prompt en inglés para que la IA de imagen genere una obra de arte."""
+    """Mejora el prompt en inglés para que la IA de imagen genere una obra de arte con canon de Saori."""
+    p_lower = raw_prompt.lower()
+    is_saori = any(k in p_lower for k in ['saori', 'ti misma', 'tu foto', 'como eres', 'retrato tuyo', 'dibujate'])
+    
+    if is_saori:
+        raw_prompt += " (character features: anthropomorphic wolf creature inspired by SCP-1471 MalO, ivory canine skull face with glowing purple eyes, soft dark midnight fur, sleek black hair, plush curvy silhouette, cute, majestic, high quality digital art)"
+
     cmd = [
         '/home/jack/.local/bin/codex', 'exec', '--skip-git-repo-check',
-        f"Transform the following image request into a single detailed, artistic English prompt for a modern image generator (max 30 words, visually stunning, highly detailed): '{raw_prompt}'. Output ONLY the final prompt:"
+        f"Transform the following image request into a single detailed, artistic English prompt for a modern image generator (max 35 words, visually stunning, highly detailed, vivid lighting): '{raw_prompt}'. Output ONLY the final prompt:"
     ]
     try:
         p = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=12)

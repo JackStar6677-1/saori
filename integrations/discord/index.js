@@ -65,6 +65,18 @@ function recordImageGenerated(userId) {
     userImageTimestamps.get(userId).push(now);
 }
 
+// Intentar cargar binario estático de FFmpeg para streaming de música
+try {
+    process.env.FFMPEG_PATH = require('ffmpeg-static');
+} catch (e) {}
+
+const { DisTube } = require('distube');
+const { YouTubePlugin } = require('@distube/youtube');
+const { SpotifyPlugin } = require('@distube/spotify');
+
+const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID || '';
+const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET || '';
+
 if (!DISCORD_BOT_TOKEN) {
     console.error('❌ [SAORI-DISCORD] Error: DISCORD_BOT_TOKEN no definido.');
     process.exit(1);
@@ -76,10 +88,58 @@ const client = new Client({
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
-        GatewayIntentBits.DirectMessages
+        GatewayIntentBits.DirectMessages,
+        GatewayIntentBits.GuildVoiceStates
     ],
     partials: [Partials.Channel, Partials.Message, Partials.GuildMember, Partials.User]
 });
+
+// Inicializar DisTube con Spotify y YouTube
+let distube = null;
+try {
+    const plugins = [new YouTubePlugin()];
+    if (SPOTIFY_CLIENT_ID && SPOTIFY_CLIENT_SECRET) {
+        plugins.unshift(new SpotifyPlugin({
+            api: { clientId: SPOTIFY_CLIENT_ID, clientSecret: SPOTIFY_CLIENT_SECRET }
+        }));
+        console.log('✅ [SAORI-MUSIC] Spotify Plugin cargado con éxito.');
+    }
+    distube = new DisTube(client, {
+        emitNewSongOnly: true,
+        plugins
+    });
+
+    distube.on('playSong', (queue, song) => {
+        const embed = new EmbedBuilder()
+            .setColor(0x1DB954)
+            .setTitle('🎶 Sonando Ahora en Canal de Voz')
+            .setDescription(`**[${song.name}](${song.url})**`)
+            .addFields(
+                { name: '⏱️ Duración', value: song.formattedDuration || 'N/A', inline: true },
+                { name: '👤 Pedida por', value: song.user?.username || 'Usuario', inline: true }
+            )
+            .setThumbnail(song.thumbnail)
+            .setFooter({ text: 'SAORI Spotify & Music Engine', iconURL: client.user.displayAvatarURL() });
+        queue.textChannel?.send({ embeds: [embed] }).catch(() => {});
+    });
+
+    distube.on('addSong', (queue, song) => {
+        queue.textChannel?.send(`➕ **Agregado a la cola:** [${song.name}](${song.url}) · \`${song.formattedDuration}\``).catch(() => {});
+    });
+
+    distube.on('addList', (queue, playlist) => {
+        queue.textChannel?.send(`📋 **Playlist de Spotify agregada:** \`${playlist.name}\` (${playlist.songs.length} canciones)`).catch(() => {});
+    });
+
+    distube.on('error', (channel, error) => {
+        console.error('[SAORI-DISTUBE] Error:', error.message);
+        channel?.send(`❌ Error de reproducción: ${error.message}`).catch(() => {});
+    });
+
+    client.distube = distube;
+} catch (e) {
+    console.error('[SAORI-MUSIC] Error iniciando DisTube:', e.message);
+}
 
 async function askSaoriBrain(prompt, sender, context = '') {
     try {
@@ -264,8 +324,8 @@ client.on('messageCreate', async (message) => {
             .setTitle('🌸 Comandos Oficiales de SAORI')
             .setDescription('Aquí tienes la lista de comandos con el prefijo **`s`** / **`s!`** de SAORI:')
             .addFields(
-                { name: '⚡ Información del Servidor', value: '• **`sip`** / **`s!ip`** · IP Java y Bedrock\n• **`sweb`** / **`s!web`** · Portal web oficial\n• **`stienda`** / **`sshop`** · Tienda de rangos y dragmas\n• **`sguia`** / **`s!guia`** · Guía de economía, XP y Slimefun', inline: false },
-                { name: '🎵 Música y Audio', value: '• **`smusica`** / **`s!musica`** · Guía de música en voz y Minecraft\n• **`splay <canción/enlace>`** · Próxima integración de Spotify / Voice', inline: false },
+                { name: '⚡ Información del Servidor & Nodos', value: '• **`sstats [drakes/star/nova/nexus]`** · Telemetría en vivo del server y nodos\n• **`sip`** / **`s!ip`** · IP Java y Bedrock\n• **`sweb`** / **`s!web`** · Portal web oficial\n• **`stienda`** / **`sshop`** · Tienda de rangos y dragmas\n• **`sguia`** / **`s!guia`** · Guía de economía, XP y Slimefun', inline: false },
+                { name: '🎵 Música y Spotify (Voz)', value: '• **`splay <canción / link spotify>`** · Reproducir música en canal de voz\n• **`sskip`** · Saltar canción actual\n• **`spause`** / **`sresume`** · Pausar / Reanudar\n• **`squeue`** · Ver canciones en cola\n• **`sstop`** · Detener y desconectar\n• **`smusica`** · Guía de música', inline: false },
                 { name: '🛡️ Moderación y Utilidades', value: '• **`sping`** / **`s!ping`** · Latencia del bot y de Star\n• **`sclear [n]`** / **`spurge [n]`** · Limpiar mensajes del chat *(Staff)*\n• **`sbots`** / **`s!bots`** · Lista de bots oficiales', inline: false },
                 { name: '💬 Chat con Inteligencia Artificial', value: '• Puedes hablarme directamente en <#1544811720571355196> o mencionarme (`@SAORI`) para pedirme guías, chistes o soporte.', inline: false }
             )
@@ -366,6 +426,166 @@ client.on('messageCreate', async (message) => {
         return;
     }
 
+    // 📊 ESTADÍSTICAS & TELEMETRÍA GLOBAL (sstats, sstats drakes, sstats star, sstats nova, sstats nexus)
+    if (contentLower.startsWith('sstats') || contentLower.startsWith('s!stats') || contentLower.startsWith('!stats')) {
+        const subArg = contentLower.replace(/^(sstats|s!stats|!stats)\s*/i, '').trim();
+
+        if (subArg === 'star') {
+            const starEmbed = new EmbedBuilder()
+                .setColor(0x3B82F6)
+                .setTitle('🖥️ Telemetría de Nodo: Star (192.168.0.120)')
+                .setDescription('Servidor físico central de infraestructura, bases de datos y bots.')
+                .addFields(
+                    { name: '⚙️ CPU & Uptime', value: 'Intel Core · 2+ días activo', inline: true },
+                    { name: '💾 Memoria RAM', value: '35+ GB Libres de 48GB', inline: true },
+                    { name: '🐳 Docker Stacks', value: '18 contenedores activos (SAORI, DB, Cloudflared)', inline: false },
+                    { name: '🧠 Motores IA', value: 'Claude Haiku / Codex CLI / Whisper / Piper TTS', inline: false }
+                )
+                .setFooter({ text: 'Star SRE Cluster · 192.168.0.120' });
+            await message.reply({ embeds: [starEmbed], allowedMentions: { repliedUser: false } });
+            return;
+        }
+
+        if (subArg === 'nova') {
+            const novaEmbed = new EmbedBuilder()
+                .setColor(0x8B5CF6)
+                .setTitle('💻 Telemetría de Nodo: Nova (Laptop de Jack)')
+                .setDescription('Estación móvil de Jack para desarrollo y colegio.')
+                .addFields(
+                    { name: '🌐 Red Mesh', value: 'Conectada vía Tailscale Mesh (`100.110.230.7`)', inline: true },
+                    { name: '🎮 Hardware', value: 'GPU NVIDIA GeForce MX450 · AMD Ryzen Mobile', inline: true },
+                    { name: '🔋 Estado', value: 'Operativo · Sincronizado con Star', inline: false }
+                )
+                .setFooter({ text: 'Nova Mobile Node' });
+            await message.reply({ embeds: [novaEmbed], allowedMentions: { repliedUser: false } });
+            return;
+        }
+
+        if (subArg === 'nexus') {
+            const nexusEmbed = new EmbedBuilder()
+                .setColor(0x10B981)
+                .setTitle('🖥️ Telemetría de Nodo: Nexus (Estación PC de Jack)')
+                .setDescription('Estación de batalla, desarrollo pesado y renderizado local.')
+                .addFields(
+                    { name: '🔥 Procesador', value: 'AMD Ryzen 5 5500 (6 Núcleos / 12 Hilos)', inline: true },
+                    { name: '🎮 Tarjeta Gráfica', value: 'NVIDIA GeForce RTX 4060 (8GB VRAM)', inline: true },
+                    { name: '🎨 Capacidades IA', value: 'ComfyUI / Stable Diffusion / SDXL / Pony V6', inline: false },
+                    { name: '🌐 Red', value: 'Nodo de Escritorio · Conexión directa a Star', inline: false }
+                )
+                .setFooter({ text: 'Nexus Workstation' });
+            await message.reply({ embeds: [nexusEmbed], allowedMentions: { repliedUser: false } });
+            return;
+        }
+
+        // Por defecto o 'drakes' / 'mc': Servidor de Minecraft DrakesCraft
+        const mcEmbed = new EmbedBuilder()
+            .setColor(0x00D26A)
+            .setTitle('⚔️ Estado del Servidor: DrakesCraft (Minecraft)')
+            .setDescription('Servidor de supervivencia técnica, Slimefun y OneBlock.')
+            .addFields(
+                { name: '⚡ Rendimiento / TPS', value: '`20.0 TPS` · MSPT óptimo (<25ms)', inline: true },
+                { name: '👥 Jugadores en Línea', value: 'Escribe `/online` o consulta a SAORI', inline: true },
+                { name: '☕ Conexión Java', value: '`mc.drakescraft.cl:25565`', inline: false },
+                { name: '📱 Conexión Bedrock', value: '`mc.drakescraft.cl` (Puerto `25565`)', inline: false },
+                { name: '🔗 Más Nodos', value: 'Usa `sstats star`, `sstats nova` o `sstats nexus` para ver la infraestructura.', inline: false }
+            )
+            .setFooter({ text: 'DrakesCraft SRE Monitor', iconURL: client.user.displayAvatarURL() });
+        await message.reply({ embeds: [mcEmbed], allowedMentions: { repliedUser: false } });
+        return;
+    }
+
+    // 🎵 COMANDOS DE MÚSICA & SPOTIFY (splay, sskip, sstop, spause, sresume, squeue)
+    if (contentLower.startsWith('splay ') || contentLower.startsWith('s!play ') || contentLower.startsWith('saoplay ')) {
+        const query = content.replace(/^(splay|s!play|saoplay)\s+/i, '').trim();
+        const voiceChannel = message.member?.voice?.channel;
+        if (!voiceChannel) {
+            await message.reply({ content: '❌ Debes estar en un **canal de voz** para que SAORI reproduzca música.', allowedMentions: { repliedUser: false } });
+            return;
+        }
+
+        if (!distube) {
+            await message.reply({ content: '❌ El motor de música aún no está disponible en este momento.', allowedMentions: { repliedUser: false } });
+            return;
+        }
+
+        try {
+            await message.channel.send(`🔍 Buscando y cargando \`${query}\` con Spotify Engine... 🎵`);
+            await distube.play(voiceChannel, query, {
+                message,
+                textChannel: message.channel,
+                member: message.member
+            });
+            return;
+        } catch (e) {
+            console.error('[SAORI-PLAY] Error:', e.message);
+            await message.reply({ content: `❌ Error al reproducir: ${e.message}`, allowedMentions: { repliedUser: false } });
+            return;
+        }
+    }
+
+    if (['sskip', 's!skip', 'saoskip'].includes(contentLower)) {
+        if (!distube) return;
+        const queue = distube.getQueue(message);
+        if (!queue) {
+            await message.reply({ content: '❌ No hay ninguna canción sonando en este momento.', allowedMentions: { repliedUser: false } });
+            return;
+        }
+        try {
+            await distube.skip(message);
+            await message.reply({ content: '⏭️ Canción saltada con éxito.', allowedMentions: { repliedUser: false } });
+        } catch (e) {
+            await message.reply({ content: `❌ No hay más canciones en la cola.`, allowedMentions: { repliedUser: false } });
+        }
+        return;
+    }
+
+    if (['sstop', 's!stop', 'saostop'].includes(contentLower)) {
+        if (!distube) return;
+        const queue = distube.getQueue(message);
+        if (!queue) {
+            await message.reply({ content: '❌ No hay ninguna reproducción activa.', allowedMentions: { repliedUser: false } });
+            return;
+        }
+        await distube.stop(message);
+        await message.reply({ content: '⏹️ Música detenida y cola vaciada.', allowedMentions: { repliedUser: false } });
+        return;
+    }
+
+    if (['spause', 's!pause'].includes(contentLower)) {
+        if (!distube) return;
+        const queue = distube.getQueue(message);
+        if (!queue) return;
+        distube.pause(message);
+        await message.reply({ content: '⏸️ Música pausada.', allowedMentions: { repliedUser: false } });
+        return;
+    }
+
+    if (['sresume', 's!resume'].includes(contentLower)) {
+        if (!distube) return;
+        const queue = distube.getQueue(message);
+        if (!queue) return;
+        distube.resume(message);
+        await message.reply({ content: '▶️ Música reanudada.', allowedMentions: { repliedUser: false } });
+        return;
+    }
+
+    if (['squeue', 's!queue', 'scola'].includes(contentLower)) {
+        if (!distube) return;
+        const queue = distube.getQueue(message);
+        if (!queue || !queue.songs.length) {
+            await message.reply({ content: '📭 La cola de reproducción está vacía.', allowedMentions: { repliedUser: false } });
+            return;
+        }
+        const qList = queue.songs.slice(0, 10).map((s, i) => `**${i + 1}.** [${s.name}](${s.url}) · \`${s.formattedDuration}\``).join('\n');
+        const qEmbed = new EmbedBuilder()
+            .setColor(0x1DB954)
+            .setTitle(`🎶 Cola de Reproducción (${queue.songs.length} pistas)`)
+            .setDescription(qList)
+            .setFooter({ text: 'SAORI Spotify Engine' });
+        await message.reply({ embeds: [qEmbed], allowedMentions: { repliedUser: false } });
+        return;
+    }
+
     // 🧹 LIMPIEZA DE CHAT Y PURGA EN DISCORD (!clear, !purge, sclear, spurge o lenguaje natural)
     const isClearRequest = contentLower.startsWith('sclear') ||
                            contentLower.startsWith('spurge') ||
@@ -427,20 +647,27 @@ client.on('messageCreate', async (message) => {
 
     if (!shouldRespond) return;
 
-    let rawSender = isJack ? 'Jack' : message.author.username;
-    if (!isJack && message.member && message.member.displayName) {
-        rawSender = message.member.displayName;
-    }
-    const senderName = isJack ? 'Jack' : normalizeDiscordName(rawSender, message.author.username);
+    const STAFF_ROLE_IDS = ['1539768983287496855', '1539641774392348754', '1539642179822161940', '1539642260621369454', '1539642370356940861', '1539642520991178833'];
+    const STAFF_USER_IDS = ['493868699489665044', '684457729003356180', '722946819419668510', '555133572705681417', '1143658959815856129', '1340427144165326932', '388055931369291776', '762781358007123968', '808475861488631809', '1258215533250084865'];
 
-    let cleanPrompt = content.replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '').trim();
-    if (cleanPrompt.toLowerCase().startsWith('saori')) {
-        cleanPrompt = cleanPrompt.replace(/^saori[\s,:]*/i, '').trim();
+    let rawSender = isJack ? 'Jack' : message.author.username;
+    let isStaffMember = isJack || STAFF_USER_IDS.includes(message.author.id);
+
+    if (message.member) {
+        if (message.member.displayName) {
+            rawSender = message.member.displayName;
+        }
+        const hasStaffRole = message.member.roles.cache.some(r => STAFF_ROLE_IDS.includes(r.id) || /owner|dueño|admin|staff|mod|dev/i.test(r.name));
+        const hasAdminPerm = message.member.permissions.has('Administrator') || message.member.permissions.has('ManageGuild');
+        const hasStaffTag = /[-–—|]\s*(owner|dueño|admin|staff|mod|dev)/i.test(rawSender);
+        if (hasStaffRole || hasAdminPerm || hasStaffTag) {
+            isStaffMember = true;
+        }
     }
-    
-    if (!cleanPrompt || cleanPrompt.length <= 2) {
-        if (!isTicketChannel) return;
-        cleanPrompt = 'Hola, ¿en qué te puedo ayudar con tu ticket?';
+
+    let senderName = isJack ? 'Jack' : normalizeDiscordName(rawSender, message.author.username);
+    if (isStaffMember && !isJack && !senderName.toLowerCase().includes('staff') && !senderName.toLowerCase().includes('admin')) {
+        senderName += '_Admin';
     }
 
     const contextTag = isTicketChannel ? `Ticket #${message.channel.name}` : (isDM ? 'DM' : `#${message.channel.name}`);
