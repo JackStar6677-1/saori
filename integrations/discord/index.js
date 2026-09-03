@@ -19,6 +19,7 @@ const os = require('os');
 const { DisTube } = require('distube');
 const { SpotifyPlugin } = require('@distube/spotify');
 const { YouTubePlugin } = require('@distube/youtube');
+const { YtDlpPlugin } = require('@distube/yt-dlp');
 
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const AI_DAEMON_URL = process.env.AI_DAEMON_URL || 'http://127.0.0.1:8089/chat';
@@ -205,7 +206,8 @@ try {
         },
         plugins: [
             new SpotifyPlugin(),
-            new YouTubePlugin()
+            new YouTubePlugin(),
+            new YtDlpPlugin({ update: false })
         ]
     });
 
@@ -902,8 +904,8 @@ client.on('messageCreate', async (message) => {
                 .setColor(0x00E5FF)
                 .setDescription(`Censo de rangos sincronizados en Discord (**${guild.memberCount} miembros totales**):`)
                 .addFields(
-                    { name: '👑 Equipo de Staff', value: staffRoles.join('\n') || 'Sin datos', inline: false },
-                    { name: '⚡ Rangos Dioses, VIPs & OldSchool', value: godRoles.join('\n') || 'Sin datos', inline: false }
+                    { name: '👑 Equipo de Staff', value: staffRoles.join('\n').slice(0, 1020) || 'Sin datos', inline: false },
+                    { name: '⚡ Rangos Dioses, VIPs & OldSchool', value: godRoles.join('\n').slice(0, 1020) || 'Sin datos', inline: false }
                 )
                 .setFooter({ text: 'S.A.O.R.I. SRE · Sincronización Automática', iconURL: client.user.displayAvatarURL() });
 
@@ -1245,12 +1247,36 @@ client.on('messageCreate', async (message) => {
     // =========================================================================
     // 3. DETECCIÓN DE PETICIÓN DE IMAGEN (POLLINATIONS + CODEX)
     // =========================================================================
-    const isImageRequest = anyKeyword(cleanPrompt.toLowerCase(), [
-        'genera una imagen', 'crea una imagen', 'generar imagen', 'crear imagen', 
-        'generate una imagen', 'dibuja', 'dibujame', 'haz una imagen', 'creame una imagen'
-    ]);
+    const isImageRequest = (
+        primaryCmd === 'imagen' || 
+        primaryCmd === 'image' || 
+        primaryCmd === 'simagen' || 
+        primaryCmd === 'simage' ||
+        contentLower.startsWith('!imagen') || 
+        contentLower.startsWith('/imagen') || 
+        contentLower.startsWith('!image') || 
+        contentLower.startsWith('/image') ||
+        anyKeyword(cleanPrompt.toLowerCase(), [
+            'genera una imagen', 'crea una imagen', 'generar imagen', 'crear imagen', 
+            'generate una imagen', 'dibuja', 'dibujame', 'haz una imagen', 'creame una imagen'
+        ])
+    );
 
     if (isImageRequest) {
+        let promptForImg = cleanPrompt;
+        if (primaryCmd === 'imagen' || primaryCmd === 'image' || primaryCmd === 'simagen' || primaryCmd === 'simage') {
+            promptForImg = cmdArgs.join(' ').trim();
+        } else {
+            promptForImg = cleanPrompt
+                .replace(/^!(imagen|image)\s+/i, '')
+                .replace(/^\/(imagen|image)\s+/i, '')
+                .replace(/.*(imagen|dibuja|dibujame)\s+(de\s+)?/i, '')
+                .trim();
+        }
+        if (!promptForImg) {
+            return message.reply({ content: '🎨 Por favor indica qué imagen deseas que dibuje.\n*Ejemplo:* `!imagen un dragón sobrevolando un castillo`', allowedMentions: { repliedUser: false } });
+        }
+
         const rateCheck = canGenerateImage(message.author.id, isJack);
         if (!rateCheck.allowed) {
             await message.reply({ 
@@ -1262,7 +1288,6 @@ client.on('messageCreate', async (message) => {
 
         try {
             await message.channel.sendTyping();
-            const promptForImg = cleanPrompt.replace(/.*(imagen|dibuja|dibujame)\s+(de\s+)?/i, '').trim() || cleanPrompt;
             
             const waitingMsg = await message.reply({ 
                 content: `🎨 *Pintando imagen...* ✨`,

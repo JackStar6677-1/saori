@@ -369,9 +369,9 @@ async function startWhatsAppBot() {
             if (['!ip', 'sip', 'saoip', 's!ip', '/ip'].includes(textLower)) {
                 const ipTxt = `⚡ *CONEXIÓN A DRAKESCRAFT NETWORK*\n\n` +
                               `☕ *Java Edition:* \`mc.drakescraft.cl:25565\`\n` +
-                              `📱 *Bedrock Edition:* \`mc.drakescraft.cl\` (Puerto: \`25565\`)\n` +
+                              `📱 *Bedrock Edition:* \`mc.drakescraft.cl\` (Puerto: \`19132\`)\n` +
                               `🌐 *Web:* https://web.drakescraft.cl/\n` +
-                              `🛒 *Tienda:* https://web.drakescraft.cl/store.html`;
+                              `🛒 *Tienda:* https://tienda.drakescraft.cl`;
                 await sock.sendMessage(from, { text: ipTxt }, { quoted: isGroup ? msg : undefined });
                 continue;
             }
