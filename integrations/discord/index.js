@@ -333,6 +333,57 @@ client.on('messageCreate', async (message) => {
         return;
     }
 
+    if (['!ping', '!latencia', '!ms'].includes(contentLower)) {
+        const wsPing = client.ws.ping;
+        const msgPing = Date.now() - message.createdTimestamp;
+        const pingEmbed = new EmbedBuilder()
+            .setColor(0x00FF88)
+            .setTitle('🏓 Pong! Latencia de SAORI')
+            .addFields(
+                { name: '🌐 Gateway Discord', value: `\`${wsPing} ms\``, inline: true },
+                { name: '⚡ Tiempo de Respuesta', value: `\`${msgPing} ms\``, inline: true },
+                { name: '🖥️ Servidor Star', value: '`ONLINE · 192.168.0.120`', inline: true }
+            )
+            .setFooter({ text: 'SAORI SRE Monitor' });
+        await message.reply({ embeds: [pingEmbed], allowedMentions: { repliedUser: false } });
+        return;
+    }
+
+    // 🧹 LIMPIEZA DE CHAT Y PURGA EN DISCORD (!clear, !purge, o lenguaje natural)
+    const isClearRequest = contentLower.startsWith('!clear') || 
+                           contentLower.startsWith('!purge') || 
+                           contentLower.startsWith('!limpiar') ||
+                           anyKeyword(contentLower, ['borra el historial', 'limpia el chat', 'borra los mensajes', 'limpiar chat', 'purga el chat', 'borra este chat', 'limpia este canal', 'limpiar este canal', 'borra el chat']);
+
+    if (isClearRequest) {
+        const hasPerm = isJack || (message.member && (message.member.permissions.has('ManageMessages') || message.member.permissions.has('Administrator')));
+        if (!hasPerm) {
+            await message.reply({ content: '❌ Acceso denegado: Necesitas permisos de **Gestionar Mensajes** o **Administrador** para limpiar el chat.', allowedMentions: { repliedUser: false } });
+            return;
+        }
+
+        let amount = 50;
+        const matchNumber = content.match(/\d+/);
+        if (matchNumber) {
+            amount = Math.min(parseInt(matchNumber[0], 10), 100);
+        }
+
+        try {
+            const fetched = await message.channel.messages.fetch({ limit: amount + 1 }).catch(() => null);
+            if (fetched && fetched.size > 0) {
+                const deleted = await message.channel.bulkDelete(fetched, true).catch(() => null);
+                const count = deleted ? deleted.size : fetched.size;
+                const confirmMsg = await message.channel.send(`🧹 **Limpieza completada:** Se eliminaron **${count}** mensajes y se restableció el contexto del canal.`);
+                setTimeout(() => { confirmMsg.delete().catch(() => {}); }, 5000);
+                return;
+            }
+        } catch (e) {
+            console.error('[SAORI-CLEAR] Error en limpieza:', e.message);
+            await message.reply({ content: `❌ Error al limpiar mensajes: ${e.message}`, allowedMentions: { repliedUser: false } });
+            return;
+        }
+    }
+
     const botMentioned = message.mentions.has(client.user);
     const isSaoriDedicatedChannel = message.channel.id === CHANNELS.SAORI_CHAT;
 
