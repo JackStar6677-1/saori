@@ -15,7 +15,32 @@ TAREAS_FILE = '/home/jack/ai-hub/TAREAS_PENDIENTES_STAFF.md'
 
 import unicodedata
 
-STAFF_MEMBERS = ['jack', 'pepino', 'chagui', 'kika', 'derem', 'lauti', 'lautaro', 'pasiente', 'pacox77', 'emilio', 'mr_em1lio', 'em1lio']
+STAFF_MEMBERS = [
+    'jack', 'pepino', 'chagui', 'kika', 'derem', 'derem8503', 
+    'lauti', 'lautaro', 'macgyver', 'tomi', 'bytomixd', 'tomixd', 'tomas',
+    'pasiente', 'pacox77', 'emilio', 'mr_em1lio', 'em1lio'
+]
+
+STAFF_ROSTER = {
+    'jack': 'Fundador, Owner & Dios de DrakesCraft',
+    'lauti': 'Administrador del Servidor (Staff Técnico)',
+    'lautaro': 'Administrador del Servidor (Staff Técnico)',
+    'macgyver': 'Administrador del Servidor (Staff Técnico / Lauti)',
+    'tomi': 'Moderador Oficial de DrakesCraft',
+    'bytomixd': 'Moderador Oficial de DrakesCraft',
+    'tomixd': 'Moderador Oficial de DrakesCraft',
+    'tomas': 'Moderador Oficial de DrakesCraft',
+    'pepino': 'Administrador de DrakesCraft',
+    'chagui': 'Moderador de DrakesCraft',
+    'kika': 'Staff & Soporte de DrakesCraft',
+    'derem': 'Staff & Moderador de DrakesCraft',
+    'derem8503': 'Staff & Moderador de DrakesCraft',
+    'pasiente': 'Staff & Moderador de DrakesCraft',
+    'pacox77': 'Staff & Moderador de DrakesCraft',
+    'emilio': 'Staff & Soporte de DrakesCraft',
+    'mr_em1lio': 'Staff & Soporte de DrakesCraft',
+    'em1lio': 'Staff & Soporte de DrakesCraft'
+}
 
 SMALL_CAPS_MAP = {
     'ᴀ': 'a', 'ʙ': 'b', 'ᴄ': 'c', 'ᴅ': 'd', 'ᴇ': 'e', 'ғ': 'f', 'ɢ': 'g', 'ʜ': 'h',
@@ -64,12 +89,17 @@ def clean_sender_name(raw_name):
         return 'Chagui'
     if 'lauti' in first_lower or 'lautaro' in first_lower:
         return 'Lauti'
+    if 'macgyver' in first_lower:
+        return 'Macgyver'
+    if 'tomi' in first_lower or 'bytomixd' in first_lower or 'tomixd' in first_lower:
+        return 'Tomi'
     if 'kika' in first_lower:
         return 'Kika'
     if 'derem' in first_lower:
         return 'Derem'
         
     return first.capitalize() or 'Amigo'
+
 
 
 
@@ -226,8 +256,45 @@ def handle_server_actions(prompt, sender):
             add_staff_task(target, task_text)
             return f"Anotado en bitácora para {target}: \"{task_text}\"."
 
-    # KICK (Jack o Staff)
+    # CONSULTA DE CARGO EN EL STAFF
+    if any(k in prompt_lower for k in ['que cargo tengo', 'qué cargo tengo', 'mi cargo', 'que rango tengo', 'qué rango tengo', 'quien soy en el staff', 'quién soy en el staff', 'cual es mi rango', 'cuál es mi rango', 'cual es mi cargo']):
+        s_clean = clean_sender_name(sender).lower()
+        cargo = STAFF_ROSTER.get(sender.lower()) or STAFF_ROSTER.get(s_clean)
+        if cargo:
+            return f"Hola {clean_sender_name(sender)}, según el registro oficial de DrakesCraft eres {cargo}."
+        return f"Hola {clean_sender_name(sender)}, actualmente apareces como usuario/jugador. Si eres Staff, pídele a Jack que te registre en la lista oficial."
+
+    # BROADCAST / SAY EN MINECRAFT (Jack o Staff)
+    # Soporta: "pone esto en el servidor de minecraft, ...", "pon esto en el server", "anuncia en minecraft ...", "manda al chat de mc: ..."
+    broadcast_triggers = [
+        'pone esto en el servidor de minecraft', 'pon esto en el servidor de minecraft',
+        'pone esto en el servidor', 'pon esto en el servidor', 'pone en el servidor', 'pon en el servidor',
+        'pone esto en minecraft', 'pon esto en minecraft', 'pone en minecraft', 'pon en minecraft',
+        'anuncia en el servidor', 'anuncia en minecraft', 'avisa en el servidor', 'avisa en minecraft',
+        'di en el server', 'di en el servidor', 'di en minecraft', 'manda al chat de minecraft'
+    ]
+    matched_broadcast = next((t for t in broadcast_triggers if t in prompt_lower), None)
+    if is_staff and matched_broadcast:
+        parts = re.split(re.escape(matched_broadcast), prompt, maxsplit=1, flags=re.IGNORECASE)
+        msg_to_say = parts[1].strip() if len(parts) > 1 else ""
+        msg_to_say = msg_to_say.lstrip(':').lstrip(',').strip()
+        if msg_to_say:
+            msg_clean = msg_to_say.replace('\n', ' ').strip()
+            ok, _ = execute_minecraft_command(f"say {msg_clean}")
+            if ok:
+                return f"📢 *Aviso enviado a Minecraft con /say:*\n\"{msg_clean}\""
+            else:
+                return "Hubo un problema al enviar el /say a la consola de Minecraft."
+
+    # KICK / KICKALL (Jack o Staff)
     if is_staff and any(k in prompt_lower for k in ['kickea', 'kickear', 'kick', 'expulsa', 'echa a']):
+        if any(k in prompt_lower for k in ['a todos', 'todos', 'all', '@a', 'kickall', 'todos enel servidor', 'todos en el servidor']):
+            ok, _ = execute_minecraft_command("kick @a Servidor en reinicio de emergencia")
+            if ok:
+                return f"✅ Expulsados todos los jugadores de Minecraft para reinicio de emergencia por orden de {sender}."
+            else:
+                return "Hubo un error al intentar expulsar a todos los jugadores."
+
         parts = prompt.replace(',', ' ').replace('?', ' ').replace('!', ' ').split()
         target_player = None
         for i, word in enumerate(parts):
@@ -238,7 +305,7 @@ def handle_server_actions(prompt, sender):
                         target_player = parts[i+2].strip()
                 break
         
-        if target_player and target_player.lower() not in ['el', 'la', 'un', 'una']:
+        if target_player and target_player.lower() not in ['el', 'la', 'un', 'una', 'de']:
             if target_player.lower() == 'paco':
                 target_player = 'pacox77'
             
