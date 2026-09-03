@@ -172,6 +172,14 @@ def handle_server_actions(prompt, sender):
     return None
 
 def fetch_live_drakescraft_logs(limit=500):
+    cache_path = '/tmp/saori_logs_cache.txt'
+    if os.path.exists(cache_path) and (time.time() - os.path.getmtime(cache_path) < 30):
+        try:
+            with open(cache_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        except:
+            pass
+
     if not os.path.exists(PTERO_KEY_PATH):
         return 'Sin acceso a logs.'
 
@@ -181,14 +189,14 @@ def fetch_live_drakescraft_logs(limit=500):
         headers = {'Authorization': f'Bearer {key}', 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0'}
         req = urllib.request.Request(f'{PTERO_BASE}/files/download?file=%2Flogs%2Flatest.log', headers=headers)
         
-        with urllib.request.urlopen(req, timeout=5) as resp:
+        with urllib.request.urlopen(req, timeout=3) as resp:
             data = json.loads(resp.read().decode())
             dl_url = data.get('attributes', {}).get('url')
             if not dl_url:
                 return 'No URL logs.'
             
             dl_req = urllib.request.Request(dl_url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(dl_req, timeout=8) as dl_resp:
+            with urllib.request.urlopen(dl_req, timeout=4) as dl_resp:
                 log_txt = dl_resp.read().decode('utf-8', errors='ignore')
                 lines = log_txt.splitlines()
                 relevant_lines = []
@@ -196,22 +204,42 @@ def fetch_live_drakescraft_logs(limit=500):
                     if any(k in l.lower() for k in ['joined the game', 'logged in', 'lost connection', 'issued server command', 'chat', 'say', 'discord']):
                         relevant_lines.append(l)
                 
-                return '\n'.join(relevant_lines[-40:]) if relevant_lines else '\n'.join(lines[-20:])
+                res = '\n'.join(relevant_lines[-40:]) if relevant_lines else '\n'.join(lines[-20:])
+                try:
+                    with open(cache_path, 'w', encoding='utf-8') as f:
+                        f.write(res)
+                except:
+                    pass
+                return res
     except Exception as e:
         return 'Logs no disponibles.'
 
 def get_minecraft_status():
+    cache_path = '/tmp/saori_mc_status.json'
+    if os.path.exists(cache_path) and (time.time() - os.path.getmtime(cache_path) < 30):
+        try:
+            with open(cache_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            pass
+
     try:
         req = urllib.request.Request(
             'https://api.mcsrvstat.us/3/play.drakescraft.cl',
             headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
         )
-        with urllib.request.urlopen(req, timeout=4) as r:
+        with urllib.request.urlopen(req, timeout=3) as r:
             d = json.loads(r.read().decode())
             online = d.get('players', {}).get('online', 0)
             max_p = d.get('players', {}).get('max', 2026)
             plist = [p['name'] for p in d.get('players', {}).get('list', [])]
-            return {'online': online, 'max': max_p, 'players': plist}
+            data = {'online': online, 'max': max_p, 'players': plist}
+            try:
+                with open(cache_path, 'w', encoding='utf-8') as f:
+                    json.dump(data, f)
+            except:
+                pass
+            return data
     except Exception as e:
         return {'online': 'N/A', 'max': 2026, 'players': []}
 
