@@ -45,35 +45,43 @@ def load_memory():
     if os.path.exists(MEMORY_FILE):
         try:
             with open(MEMORY_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                data = json.load(f)
+                if "users" not in data:
+                    data["users"] = {}
+                return data
         except:
             pass
     return {
         "summary": "Jack es el Creador y Padre de Saori.",
-        "recent_dialogue": []
+        "users": {}
     }
 
 def save_memory(mem):
     try:
-        if len(mem.get("recent_dialogue", [])) > 10:
-            old_entries = mem["recent_dialogue"][:-5]
-            mem["recent_dialogue"] = mem["recent_dialogue"][-5:]
-            condensed = "; ".join([f"{e['sender']}: {e['msg'][:30]}" for e in old_entries])
-            mem["summary"] = (mem.get("summary", "") + f" | Anteriores: {condensed}")[-300:]
-            
+        if "users" in mem:
+            for u in mem["users"]:
+                if len(mem["users"][u]) > 8:
+                    mem["users"][u] = mem["users"][u][-8:]
         with open(MEMORY_FILE, 'w', encoding='utf-8') as f:
             json.dump(mem, f, ensure_ascii=False, indent=2)
     except Exception as e:
         print(f"[SAORI-MEMORY] Error: {e}", file=sys.stderr)
 
+def get_user_history(sender):
+    mem = load_memory()
+    sender_clean = sender.lower().strip()
+    return mem.get("users", {}).get(sender_clean, [])[-4:]
+
 def record_interaction(sender, prompt, reply):
     mem = load_memory()
-    if "recent_dialogue" not in mem:
-        mem["recent_dialogue"] = []
-    mem["recent_dialogue"].append({
-        "sender": sender,
-        "msg": prompt[:100],
-        "reply": reply[:100],
+    sender_clean = sender.lower().strip()
+    if "users" not in mem:
+        mem["users"] = {}
+    if sender_clean not in mem["users"]:
+        mem["users"][sender_clean] = []
+    mem["users"][sender_clean].append({
+        "msg": prompt[:150],
+        "reply": reply[:150],
         "time": datetime.now().strftime("%H:%M")
     })
     save_memory(mem)
@@ -312,8 +320,18 @@ def run_saori_brain(prompt, sender):
 - Web: https://web.drakescraft.cl/ | Tienda: https://web.drakescraft.cl/store.html | Guías: https://web.drakescraft.cl/guia.html
 - SF / Slimefun: sf significa Slimefun. Guía inicial: mesa de crafteo reforzada, trituradora, generador de carbón o solar, polvos y lingotes mágicos/eléctricos, y automatización con Cargo o Networks.
 - Economía: Se gana dinero con /jobs (trabajos), /sellall (vender recursos), /qs (tiendas de cofres), /sbank (banco central con intereses pasivos), /sfmercado y /ah (subastas).
+- DUPES Y EXPLOITS: Están 100% PROHIBIDOS en DrakesCraft bajo sanción de BAN PERMANENTE. NUNCA recomiendes, sugieras ni admitas ningún dupe, truco o exploit. Todo se obtiene legal jugando en el servidor.
 - Música: En Discord usa bot Chip (/play) o Jockie Music (m!play). Dentro de Minecraft usa /musica.
 - Jugadores conectados ahora: {players_summary}."""
+
+    user_history = get_user_history(sender)
+    history_lines = []
+    for h in user_history:
+        history_lines.append(f"{sender}: {h['msg']}")
+        history_lines.append(f"SAORI: {h['reply']}")
+    history_context = "\n".join(history_lines) if history_lines else "(Sin mensajes previos)"
+
+    user_prompt_with_context = f"[Historial reciente de conversación con {sender}]:\n{history_context}\n\n[Mensaje actual de {sender}]: {prompt}"
 
     if not is_staff and not is_jack:
         system_prompt = f"""Eres SAORI, la IA compañera oficial de DrakesCraft creada por Jack.
@@ -322,9 +340,10 @@ Hablas con {sender}.
 {knowledge_base}
 
 REGLAS DE INTERACCIÓN:
+- Mantén la coherencia y el hilo con lo que venían hablando en el historial.
 - Sé amigable, natural, divertida y CORTA (1 a 3 oraciones breves).
 - Si te piden un chiste, di uno gracioso y original de una sola línea.
-- Si te preguntan quién está conectado, menciona la lista de jugadores conectados arriba.
+- Si te preguntan sobre dupes o exploits, aclara tajantemente que están prohibidos y que jugar legal es la única forma.
 - Si te preguntan sobre sf, tiendas, ips o música, responde con la información oficial de DrakesCraft.
 - NO uses negritas excesivas ni respuestas genéricas robóticas."""
 
@@ -340,7 +359,7 @@ REGLAS:
 - Sé concisa, ejecutiva, directa y precisa."""
 
     if not is_coding_or_heavy:
-        res = call_claude_haiku(system_prompt, prompt)
+        res = call_claude_haiku(system_prompt, user_prompt_with_context)
         if res:
             for forbidden in ['claude', 'anthropic', 'openai', 'gpt', 'llm', 'modelo de lenguaje']:
                 if forbidden in res.lower():
@@ -348,7 +367,7 @@ REGLAS:
             record_interaction(sender, prompt, res)
             return res
 
-    res_codex = call_codex_inference(system_prompt, prompt, is_coding_or_heavy)
+    res_codex = call_codex_inference(system_prompt, user_prompt_with_context, is_coding_or_heavy)
     if res_codex:
         for forbidden in ['claude', 'anthropic', 'openai', 'gpt', 'llm', 'modelo de lenguaje']:
             if forbidden in res_codex.lower():
