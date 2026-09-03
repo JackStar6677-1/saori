@@ -846,11 +846,18 @@ client.on('messageCreate', async (message) => {
     // =========================================================================
     // 2. DETECCIÓN DE PETICIÓN DE AUDIO / VOZ DIRECTA
     // =========================================================================
-    const wantsAudio = anyKeyword(cleanPrompt.toLowerCase(), [
-        'audio', 'voz', 'manda audio', 'en audio', 'un audio', 'responde en audio', 
-        'crea un audio', 'graba un audio', 'nota de voz', 'habla', 'di con tu voz',
-        'manda un audio'
-    ]);
+    const promptLower = cleanPrompt.toLowerCase();
+    const wantsAudio = (
+        promptLower.startsWith('!voz') ||
+        promptLower.startsWith('/voz') ||
+        promptLower.startsWith('!audio') ||
+        promptLower.startsWith('/audio') ||
+        anyKeyword(promptLower, [
+            'manda audio', 'en audio', 'un audio', 'responde en audio', 
+            'crea un audio', 'graba un audio', 'nota de voz', 'háblame con tu voz', 'hablame con tu voz', 'di con tu voz',
+            'manda un audio', 'mándame un audio', 'mandame un audio', 'dilo con tu voz', 'envía un audio', 'envia un audio'
+        ])
+    );
 
     if (wantsAudio) {
         let recordingMsg = null;

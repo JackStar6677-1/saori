@@ -147,7 +147,13 @@ def dispatch_alert(subject: str, message: str, force_level: str = None) -> dict:
         # WhatsApp al grupo de staff
         wa_ok, wa_msg = send_whatsapp(subject, message, STAFF_GROUP_JID)
         result['whatsapp'] = {'ok': wa_ok, 'detail': wa_msg}
-        print(f'[SAORI-NOTIFY] WhatsApp → {wa_msg}', file=sys.stderr)
+        print(f'[SAORI-NOTIFY] WhatsApp Grupo → {wa_msg}', file=sys.stderr)
+
+        # Si es alerta de cuota IA o crítico, enviar también mensaje directo a Jack
+        if any(k in subject.lower() or k in message.lower() for k in ['cuota', 'quota', 'rate limit', 'agotada', 'límite']) or severity == 'critical':
+            jack_jid = f"{JACK_WA_NUMBER}@s.whatsapp.net"
+            send_whatsapp(subject, message, jack_jid)
+            print(f'[SAORI-NOTIFY] WhatsApp Directo Jack ({JACK_WA_NUMBER}) → Enviado', file=sys.stderr)
 
     if severity == 'critical':
         # Email solo para críticos

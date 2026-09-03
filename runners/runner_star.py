@@ -459,6 +459,14 @@ def main() -> int:
             set_pause_state(args.agent, False)
             save_state(args.agent, status="activo", reason=None, quota_reset=None, quota_reset_epoch=None)
             run([sys.executable, str(ROOT / "scripts/saori_orchestrador.py"), "heartbeat", "--agente", args.agent, "--cuota", "ok"])
+            
+            # Notificar a Jack que el agente recuperó cuota
+            run([
+                sys.executable, str(ROOT / "scripts/saori_notifier.py"),
+                f"Cuota Recuperada: {args.agent.upper()}",
+                f"Jack, el agente {args.agent} ha recuperado cuota y vuelve a estar operativo en la Tríada.",
+                "urgent"
+            ], text=True, capture_output=True)
 
     mantener_conocimiento()
 
@@ -482,7 +490,7 @@ def main() -> int:
         returncode = run_agent(command, prompt, log, args.agent)
         status, reset_desc, reset_epoch, quota_type = classify(log, returncode)
         
-        # Si entró en sin-cuota: pausar automáticamente
+        # Si entró en sin-cuota: pausar automáticamente y notificar a Jack
         if status == "sin-cuota":
             set_pause_state(args.agent, True, f"sin-cuota-{quota_type or '5h'}")
             agotada = [sys.executable, str(ROOT / "scripts/saori_orchestrador.py"),
@@ -492,6 +500,14 @@ def main() -> int:
             if reset_epoch:
                 agotada.extend(["--reset-epoch", str(reset_epoch)])
             run(agotada, text=True, capture_output=True)
+
+            if prev_state.get("status") != "sin-cuota":
+                run([
+                    sys.executable, str(ROOT / "scripts/saori_notifier.py"),
+                    f"Alerta de Cuota Agotada: {args.agent.upper()}",
+                    f"Jack, el agente {args.agent} se ha quedado sin cuota ({quota_type or '5h'}). Reactivación estimada: {reset_desc or 'Pendiente'}.",
+                    "urgent"
+                ], text=True, capture_output=True)
         
         save_state(args.agent, status=status,
                    reason=None if returncode == 0 else status,

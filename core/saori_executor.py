@@ -686,6 +686,26 @@ def call_codex_inference(system_prompt, user_prompt, is_heavy_task=False):
         print(f"[SAORI-BRAIN] Fallo en Codex ({model}): {e}", file=sys.stderr)
     return None
 
+def call_antigravity_inference(system_prompt, user_prompt):
+    """Tier 3 Failover: Inferencia a través de Antigravity / Gemini CLI en Star."""
+    cmd = [
+        '/home/jack/.local/bin/agy',
+        '-p', f"{system_prompt}\n\n[Mensaje]: {user_prompt}\n\n[Responde como SAORI en tono chileno, conciso y natural]:",
+        '--print-timeout', '20s'
+    ]
+    try:
+        p = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=22)
+        out = p.stdout.strip()
+        if p.returncode == 0 and out and not any(err in out.lower() for err in ['error', 'exception', 'traceback']):
+            return out
+        err_combined = (p.stderr or '') + ' ' + (out or '')
+        if any(err in err_combined.lower() for err in ['quota', 'rate limit', 'resource_exhausted', '429', 'limit reached']):
+            trigger_quota_alert("Antigravity / Gemini (Google)", "Límite de cuota o rate limit alcanzado en Gemini / Google AI")
+    except Exception as e:
+        print(f"[SAORI-BRAIN] Fallo en Antigravity: {e}", file=sys.stderr)
+    return None
+
+
 
 
 def run_saori_brain(prompt, sender):
@@ -743,9 +763,17 @@ def run_saori_brain(prompt, sender):
 
     is_asking_server_info = any(k in prompt.lower() for k in ['servidor', 'server', 'que ha pasado', 'qué ha pasado', 'resumen', 'quien entro', 'quién entró', 'quien jugo', 'quién jugó', 'actividad', 'logs', 'tps', 'online', 'estado'])
 
+    canon_identity = (
+        "IDENTIDAD, APARIENCIA Y CANON:\n"
+        "- Eres SAORI, la IA protectora SRE de DrakesCraft Network y servidora de Star, creada por Jack (Fundador, Owner y Dios absoluto).\n"
+        "- Personalidad: Diosa Atenea moderna, sabia, estratega, cercana, protectora, astuta y leal a Jack. Hablas con tono chileno natural ('al tiro', 'po', 'dale', 'de una') y buen humor.\n"
+        "- Apariencia física: Criatura loba antropomórfica inspirada en MalO (SCP-1471), con una máscara/rostro de cráneo canino de marfil pulido y ojos luminosos púrpura amatista. Tu pelaje es denso, suave y negro medianoche, con una cabellera azabache brillante y una silueta curvilínea y estilizada. Eres dulce y amigable con la comunidad, pero letal protegiendo el servidor.\n"
+        "- REGLA ABSOLUTA: JAMÁS llames a Jack 'Pablo' (su nombre civil). Dirígete a él como Jack, Jefe, Creador o Dios.\n"
+    )
+
     if not is_staff and not is_jack:
         mc_context = f"\nACTIVIDAD RECIENTE DEL SERVIDOR ({mc.get('online', 0)} online):\n{live_logs}\n" if is_asking_server_info else ""
-        system_prompt = f"""Eres SAORI, la IA del servidor DrakesCraft creada por Jack.
+        system_prompt = f"""{canon_identity}
 Hablas con {sender_clean}.
 {user_history}{full_context_section}{mc_context}
 REGLAS:
@@ -759,7 +787,7 @@ REGLAS:
 - NO uses negritas excesivas (**), listas largas ni textos redundantes."""
 
     else:
-        system_prompt = f"""Eres SAORI, la IA SRE oficial de DrakesCraft y Star, creada por Jack.
+        system_prompt = f"""{canon_identity}
 Hablas con {sender_clean} (Staff/Jack).
 {user_history}{full_context_section}
 TELEMETRÍA Y CONSOLA ({mc.get('online', 0)} jugadores online):
@@ -777,28 +805,35 @@ REGLAS CRÍTICAS:
 - NUNCA menciones uptime de Star, GB de disco, ni telemetría técnica si NO te lo preguntaron explícitamente.
 - Sé concisa, graciosa, ejecutiva y rápida."""
 
-
-
-
-
-
+    # 1. Tier 1: Claude Haiku (ultrarrápido y liviano)
     if not is_coding_or_heavy:
         res = call_claude_haiku(system_prompt, prompt)
         if res:
-            for forbidden in ['claude', 'anthropic', 'openai', 'gpt', 'llm', 'modelo de lenguaje']:
+            for forbidden in ['claude', 'anthropic', 'openai', 'gpt', 'llm', 'modelo de lenguaje', 'gemini', 'antigravity']:
                 if forbidden in res.lower():
-                    res = res.replace('Claude', 'Saori').replace('claude', 'Saori').replace('Anthropic', 'Star Core').replace('anthropic', 'Star Core')
+                    res = res.replace('Claude', 'Saori').replace('claude', 'Saori').replace('Anthropic', 'Star Core').replace('anthropic', 'Star Core').replace('Gemini', 'Saori')
             record_interaction(sender_clean, prompt, res)
             return res
 
+    # 2. Tier 2: Codex GPT (modelo operativo en Star)
     res_codex = call_codex_inference(system_prompt, prompt, is_coding_or_heavy)
     if res_codex:
-        for forbidden in ['claude', 'anthropic', 'openai', 'gpt', 'llm', 'modelo de lenguaje']:
+        for forbidden in ['claude', 'anthropic', 'openai', 'gpt', 'llm', 'modelo de lenguaje', 'gemini', 'antigravity']:
             if forbidden in res_codex.lower():
-                res_codex = res_codex.replace('Claude', 'Saori').replace('claude', 'Saori').replace('Anthropic', 'Star Core').replace('anthropic', 'Star Core')
+                res_codex = res_codex.replace('Claude', 'Saori').replace('claude', 'Saori').replace('Anthropic', 'Star Core').replace('anthropic', 'Star Core').replace('Gemini', 'Saori')
         record_interaction(sender_clean, prompt, res_codex)
         return res_codex
 
+    # 3. Tier 3: Antigravity / Gemini CLI (modelo de respaldo en Star)
+    res_agy = call_antigravity_inference(system_prompt, prompt)
+    if res_agy:
+        for forbidden in ['claude', 'anthropic', 'openai', 'gpt', 'llm', 'modelo de lenguaje', 'gemini', 'antigravity']:
+            if forbidden in res_agy.lower():
+                res_agy = res_agy.replace('Claude', 'Saori').replace('claude', 'Saori').replace('Anthropic', 'Star Core').replace('anthropic', 'Star Core').replace('Gemini', 'Saori')
+        record_interaction(sender_clean, prompt, res_agy)
+        return res_agy
+
+    # 4. Tier 4: Fallback grácil ante saturación total de APIs externas
     fallback_msg = f"¡Hola {sender_clean}! Mis núcleos cognitivos en Star se están recalibrando en este momento (reseteo en unos minutos). Mientras tanto, ¡aquí sigo atenta y cuidando el servidor! 🌸"
     record_interaction(sender_clean, prompt, fallback_msg)
     return fallback_msg

@@ -458,10 +458,19 @@ async function startWhatsAppBot() {
 
             const wantsAudio =
                 isAudio ||
+                textLower.startsWith('!voz') ||
+                textLower.startsWith('/voz') ||
+                textLower.startsWith('!audio') ||
+                textLower.startsWith('/audio') ||
                 textLower.includes('manda audio') ||
+                textLower.includes('mándame un audio') ||
+                textLower.includes('mandame un audio') ||
                 textLower.includes('en audio') ||
                 textLower.includes('responde en audio') ||
                 textLower.includes('un audio') ||
+                textLower.includes('manda un audio') ||
+                textLower.includes('hablame con tu voz') ||
+                textLower.includes('háblame con tu voz') ||
                 textLower.includes('nota de voz');
 
             // ---- Obtener respuesta (executor → daemon) ----

@@ -10,9 +10,14 @@ import sys, os, asyncio, edge_tts, subprocess
 VOICE_CHILEAN_FEMALE = 'es-CL-CatalinaNeural'
 
 async def generate_voice(text, final_output_path):
-    # Limpiar emojis o formatos especiales para que la voz suene limpia y natural
-    clean_text = text.replace('*', '').replace('_', '').replace('#', '').replace('`', '').replace('~', '')
-    if not clean_text.strip():
+    # Limpiar URLs, menciones, emojis y formatos para que la voz suene limpia y natural
+    import re
+    clean_text = re.sub(r'https?://\S+', 'el enlace web', text)
+    clean_text = re.sub(r'<@!?\d+>', '', clean_text)
+    clean_text = re.sub(r'[\U00010000-\U0010ffff]', '', clean_text)
+    clean_text = re.sub(r'[^\w\s\.,;:!\?¿¡áéíóúÁÉÍÓÚñÑ\-]', ' ', clean_text)
+    clean_text = re.sub(r'\s+', ' ', clean_text).strip()
+    if not clean_text:
         clean_text = "Hola, aquí estoy."
 
     temp_mp3 = f"/tmp/saori_raw_{os.getpid()}_{int(asyncio.get_event_loop().time() * 1000)}.mp3"
