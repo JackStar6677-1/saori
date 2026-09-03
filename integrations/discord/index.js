@@ -257,8 +257,25 @@ client.on('messageCreate', async (message) => {
     const content = message.content.trim();
     const contentLower = content.toLowerCase();
 
-    // ⚡ COMANDOS RÁPIDOS DE DISCORD (!ip, !web, !tienda, !musica, !bots, !guia)
-    if (['!ip', '!server', '!servidor', '!conexion', '!mc', '!port', '!puerto'].includes(contentLower)) {
+    // ⚡ COMANDOS SAORI CON PREFIJO S (shelp, saohelp, sip, stienda, sweb, smusica, sbots, sping, sclear)
+    if (['shelp', 'saohelp', 's!help', '!help', '!comandos', 's!comandos'].includes(contentLower)) {
+        const helpEmbed = new EmbedBuilder()
+            .setColor(0xFF69B4)
+            .setTitle('🌸 Comandos Oficiales de SAORI')
+            .setDescription('Aquí tienes la lista de comandos con el prefijo **`s`** / **`s!`** de SAORI:')
+            .addFields(
+                { name: '⚡ Información del Servidor', value: '• **`sip`** / **`s!ip`** · IP Java y Bedrock\n• **`sweb`** / **`s!web`** · Portal web oficial\n• **`stienda`** / **`sshop`** · Tienda de rangos y dragmas\n• **`sguia`** / **`s!guia`** · Guía de economía, XP y Slimefun', inline: false },
+                { name: '🎵 Música y Audio', value: '• **`smusica`** / **`s!musica`** · Guía de música en voz y Minecraft\n• **`splay <canción/enlace>`** · Próxima integración de Spotify / Voice', inline: false },
+                { name: '🛡️ Moderación y Utilidades', value: '• **`sping`** / **`s!ping`** · Latencia del bot y de Star\n• **`sclear [n]`** / **`spurge [n]`** · Limpiar mensajes del chat *(Staff)*\n• **`sbots`** / **`s!bots`** · Lista de bots oficiales', inline: false },
+                { name: '💬 Chat con Inteligencia Artificial', value: '• Puedes hablarme directamente en <#1544811720571355196> o mencionarme (`@SAORI`) para pedirme guías, chistes o soporte.', inline: false }
+            )
+            .setFooter({ text: 'SAORI SRE · Creada por Jack', iconURL: client.user.displayAvatarURL() })
+            .setTimestamp();
+        await message.reply({ embeds: [helpEmbed], allowedMentions: { repliedUser: false } });
+        return;
+    }
+
+    if (['sip', 'saoip', 's!ip', '!ip', '!server', '!servidor', '!conexion', '!mc', '!port', '!puerto'].includes(contentLower)) {
         const ipEmbed = new EmbedBuilder()
             .setColor(0x00D26A)
             .setTitle('⚡ Conexión a DrakesCraft Network')
@@ -274,7 +291,7 @@ client.on('messageCreate', async (message) => {
         return;
     }
 
-    if (['!web', '!portal', '!pagina'].includes(contentLower)) {
+    if (['sweb', 'saoweb', 's!web', '!web', '!portal', '!pagina'].includes(contentLower)) {
         await message.reply({
             content: `🌐 **Portal Web Oficial de DrakesCraft:** https://web.drakescraft.cl/`,
             allowedMentions: { repliedUser: false }
@@ -282,7 +299,7 @@ client.on('messageCreate', async (message) => {
         return;
     }
 
-    if (['!tienda', '!shop', '!store', '!comprar', '!rangos'].includes(contentLower)) {
+    if (['stienda', 'saotienda', 'sshop', 's!tienda', 's!shop', '!tienda', '!shop', '!store', '!comprar', '!rangos'].includes(contentLower)) {
         const shopEmbed = new EmbedBuilder()
             .setColor(0xF59E0B)
             .setTitle('🛒 Tienda Oficial de DrakesCraft')
@@ -296,7 +313,7 @@ client.on('messageCreate', async (message) => {
         return;
     }
 
-    if (['!guia', '!guias', '!wiki', '!comandos'].includes(contentLower)) {
+    if (['sguia', 'saoguia', 's!guia', '!guia', '!guias', '!wiki', '!comandos'].includes(contentLower)) {
         await message.reply({
             content: `📚 **Guía Completa de DrakesCraft (Economía, XP, Slimefun y Comandos):** https://web.drakescraft.cl/guia.html`,
             allowedMentions: { repliedUser: false }
@@ -304,7 +321,7 @@ client.on('messageCreate', async (message) => {
         return;
     }
 
-    if (['!musica', '!music', '!cancion', '!song'].includes(contentLower)) {
+    if (['smusica', 'saomusica', 's!musica', '!musica', '!music', '!cancion', '!song'].includes(contentLower)) {
         const musicEmbed = new EmbedBuilder()
             .setColor(0x9B59B6)
             .setTitle('🎵 Música en DrakesCraft')
@@ -319,7 +336,7 @@ client.on('messageCreate', async (message) => {
         return;
     }
 
-    if (['!bots', '!botlist'].includes(contentLower)) {
+    if (['sbots', 'saobots', 's!bots', '!bots', '!botlist'].includes(contentLower)) {
         const botsEmbed = new EmbedBuilder()
             .setColor(0x3498DB)
             .setTitle('🤖 Bots Oficiales del Servidor')
@@ -333,7 +350,7 @@ client.on('messageCreate', async (message) => {
         return;
     }
 
-    if (['!ping', '!latencia', '!ms'].includes(contentLower)) {
+    if (['sping', 'saoping', 's!ping', '!ping', '!latencia', '!ms'].includes(contentLower)) {
         const wsPing = client.ws.ping;
         const msgPing = Date.now() - message.createdTimestamp;
         const pingEmbed = new EmbedBuilder()
@@ -349,8 +366,12 @@ client.on('messageCreate', async (message) => {
         return;
     }
 
-    // 🧹 LIMPIEZA DE CHAT Y PURGA EN DISCORD (!clear, !purge, o lenguaje natural)
-    const isClearRequest = contentLower.startsWith('!clear') || 
+    // 🧹 LIMPIEZA DE CHAT Y PURGA EN DISCORD (!clear, !purge, sclear, spurge o lenguaje natural)
+    const isClearRequest = contentLower.startsWith('sclear') ||
+                           contentLower.startsWith('spurge') ||
+                           contentLower.startsWith('s!clear') ||
+                           contentLower.startsWith('s!purge') ||
+                           contentLower.startsWith('!clear') || 
                            contentLower.startsWith('!purge') || 
                            contentLower.startsWith('!limpiar') ||
                            anyKeyword(contentLower, ['borra el historial', 'limpia el chat', 'borra los mensajes', 'limpiar chat', 'purga el chat', 'borra este chat', 'limpia este canal', 'limpiar este canal', 'borra el chat']);
