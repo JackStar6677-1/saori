@@ -197,7 +197,7 @@ def trigger_alert_if_needed(prompt, sender):
                 '/home/jack/ai-hub/scripts/saori_notifier.py',
                 f"Llamado Urgente de {sender} en DrakesCraft",
                 f"El usuario {sender} ha reportado: {prompt}"
-            ])
+            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return True
         except Exception as e:
             print(f"[SAORI-ALERT] Error: {e}", file=sys.stderr)
@@ -657,7 +657,7 @@ def trigger_quota_alert(provider, detail):
                 f"Alerta de Cuota IA: {provider}",
                 msg,
                 'urgent'
-            ])
+            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             print(f"[SAORI-QUOTA] ⚠️ Alerta de cuota enviada a Jack por WhatsApp para {provider}", file=sys.stderr)
     except Exception as e:
         print(f"[SAORI-QUOTA] Error enviando alerta: {e}", file=sys.stderr)
@@ -764,6 +764,8 @@ Hablas con {sender_clean}.
 REGLAS:
 - Sé CORTA, directa, cercana y natural con tono chileno.
 - Usa SOLO el primer nombre ({sender_clean}).
+- CAPACIDADES OMNICANAL: Sí estás conectada a WhatsApp, Discord y Minecraft. Si te preguntan si puedes hablar o mandar mensajes por WhatsApp a Jack o al staff, responde que SÍ: tienes integración directa con WhatsApp y despachas alertas y tickets (con sticket) a Jack y al staff de inmediato ante emergencias o avisos.
+- Si te piden que avises cuando termine el reinicio o preguntan por el estado del servidor, responde con seguridad y simpatía: confirma que estás monitoreando el reinicio del servidor de Minecraft (que suele tardar 1 a 2 minutos en cargar mundos y plugins) y que avisarás apenas esté 100% online. NUNCA preguntes 'si es el servidor completo o algo específico'.
 - Si te piden un chiste sobre actualidad o IA, cuenta un chiste ingenioso y gracioso sabiendo que hoy se cayeron ChatGPT, Claude y Grok mientras Star seguía en pie. NUNCA digas que no sabes qué pasó.
 - Si el usuario continúa una conversación previa, usa el historial de diálogo previo arriba.
 - Si hay INFORMACIÓN EN VIVO DE INTERNET o EVENTOS RECIENTES arriba, úsala para responder con precisión y humor.
@@ -782,7 +784,9 @@ DATOS DEL SISTEMA:
 
 REGLAS CRÍTICAS:
 - Usa SOLO el primer nombre ({sender_clean}).
+- CAPACIDADES OMNICANAL: Sí estás conectada a WhatsApp, Discord y Minecraft. Si te preguntan si puedes hablar o mandar mensajes por WhatsApp a Jack o al staff, responde que SÍ: tienes integración directa con WhatsApp y despachas alertas y tickets (con sticket) a Jack y al staff.
 - Si te piden un chiste o comentario sobre la caída global de los 3 modelos (OpenAI, Claude, Grok), tira un chiste épico, con humor dev/chileno y picardía (ej: el caos de los programadores volviendo a StackOverflow, el apocalipsis de las IAs mientras Star sigue en 20 TPS). JAMÁS digas que no te llegó la noticia.
+- Si preguntan por el reinicio del servidor, confirma con certeza que se está aplicando el lote de optimizaciones de la Tríada en Star.
 - NUNCA menciones uptime de Star, GB de disco, ni telemetría técnica si NO te lo preguntaron explícitamente.
 - Sé concisa, graciosa, ejecutiva y rápida."""
 
