@@ -24,11 +24,25 @@ yarn-error.log*
 log/
 logs/
 
-# Sensitive local configurations
+# Sensitive local configurations & Secrets
+.env
+.env.*
+*.env
+!.env.example
+!*.example
+!*.example.*
+*.key
+*.token
 avatar/config.json
 !avatar/config.example.json
+data/
+auth_info/
+saori_memory.json
+*.session
 
 # OS & Editor artifacts
 .DS_Store
 .vscode/
 .idea/
+*.swp
+*.tmp

@@ -243,24 +243,40 @@ async function startWhatsAppBot() {
                                textLower.includes('responde en audio') ||
                                textLower.includes('un audio');
 
-            // ⚡ COMANDOS RÁPIDOS EN WHATSAPP (shelp, sip, stienda, sweb, sguia, smusica, sstats, sping)
+            // ⚡ COMANDOS RÁPIDOS EN WHATSAPP (shelp, sticket, sip, stienda, sweb, sguia, smusica, sstats, sping)
             if (['!help', 'shelp', 'saohelp', '!comandos', 's!help', '/help'].includes(textLower)) {
-                const helpTxt = `🌸 *COMANDOS DE SAORI EN WHATSAPP*\n\n` +
-                                `🎮 *Minecraft DrakesCraft:*\n` +
+                const helpTxt = `🐺 *S.A.O.R.I. · COMANDOS EN WHATSAPP*\n` +
+                                `_Server Autonomous Orchestrator for Resilient Infrastructure_\n\n` +
+                                `🎫 *1. Tickets & Trinidad SRE:*\n` +
+                                `• *!ticket <problema>* o *sticket <problema>*\n` +
+                                `  _Registra un ticket formal (#TICKET-XXX) asignado a la Trinidad de Agentes (Claude Code, Codex y Antigravity). Notifica a Jack por WhatsApp cuando queda resuelto._\n\n` +
+                                `🎮 *2. Minecraft & Conexión:*\n` +
                                 `• *!ip* / *sip* · Datos de conexión Java y Bedrock\n` +
-                                `• *!tienda* / *stienda* · Tienda oficial y rangos\n` +
+                                `• *!tienda* / *stienda* · Tienda oficial y rangos con garantía\n` +
                                 `• *!web* / *sweb* · Portal web oficial\n` +
                                 `• *!guia* / *sguia* · Guías de Slimefun, economía y comandos\n\n` +
-                                `🖥️ *Telemetría & Servidores:*\n` +
+                                `🖥️ *3. Telemetría & Servidores:*\n` +
                                 `• *!stats* / *sstats* · Estado de DrakesCraft (TPS, jugadores)\n` +
                                 `• *!stats star* · Servidor de infraestructura Star\n` +
                                 `• *!stats nova* · Laptop de Jack\n` +
                                 `• *!stats nexus* · Estación PC de Jack\n` +
                                 `• *!ping* / *sping* · Latencia del bot y de Star\n\n` +
-                                `🎨 *Imágenes & Voz:*\n` +
-                                `• *!imagen <prompt>* · Generar arte con IA\n` +
-                                `• *Envía un audio* · SAORI te responderá con su voz chilena ✨`;
+                                `🎨 *4. Arte Neural & Voz:*\n` +
+                                `• *!imagen <descripción>* · Generar arte en vivo con IA\n` +
+                                `• *Envía un audio* · SAORI te responderá con su voz`;
                 await sock.sendMessage(from, { text: helpTxt }, { quoted: isGroup ? msg : undefined });
+                continue;
+            }
+
+            // 🎫 COMANDO DIRECTO !ticket EN WHATSAPP
+            if (textLower.startsWith('!ticket ') || textLower.startsWith('sticket ') || textLower.startsWith('/ticket ')) {
+                const ticketDesc = userText.replace(/^(!ticket|sticket|\/ticket)\s*/i, '').trim();
+                if (!ticketDesc || ticketDesc.length < 5) {
+                    await sock.sendMessage(from, { text: '❌ *Uso correcto:* `!ticket <descripción detallada del problema>`\n_Ejemplo:_ `!ticket Error al generar isla en OneBlock`' }, { quoted: isGroup ? msg : undefined });
+                    continue;
+                }
+                const ticketReply = await queryAIDaemon(`ticket: ${ticketDesc}`, senderName);
+                await sock.sendMessage(from, { text: ticketReply }, { quoted: isGroup ? msg : undefined });
                 continue;
             }
 
