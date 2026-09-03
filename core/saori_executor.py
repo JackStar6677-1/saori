@@ -658,12 +658,26 @@ def run_saori_brain(prompt, sender):
 
     live_logs = fetch_live_drakescraft_logs(limit=350, focus_query=focus_player)
     
-    # Búsqueda Web en Vivo (actualidad, artistas, noticias, preguntas generales)
+    # Cargar Estado Global de la Red IA (OpenAI, Claude, Google, etc.)
+    ai_status_summary = ""
+    try:
+        status_file = "/home/jack/.local/state/saori/ai_status_history.json"
+        if os.path.exists(status_file):
+            with open(status_file, "r", encoding="utf-8") as f:
+                sdata = json.load(f)
+            guids = sdata.get("processed_guids", [])
+            if guids:
+                recent_events = [g.split('/')[-1].replace('-', ' ') for g in guids[-4:]]
+                ai_status_summary = "\nEVENTOS RECIENTES DE INFRAESTRUCTURA E IA GLOBAL:\n- " + "\n- ".join(recent_events) + "\n- Hoy 3 de Septiembre ocurrió un apagón global simultáneo de OpenAI (ChatGPT/Codex por despliegue Astra), Claude y Grok por saturación masiva.\n"
+    except Exception:
+        pass
+
+    # Búsqueda Web en Vivo (actualidad, artistas, noticias, eventos, chistes sobre actualidad)
     web_knowledge = None
-    web_triggers = ['quien es', 'quién es', 'que es', 'qué es', 'sabes de', 'conoces a', 'noticias', 'musica', 'música', 'cantante', 'artista', 'precio', 'dolar', 'dólar', 'chile', 'kidd voodoo', 'voodoo', 'kidd', 'quien gano', 'quién ganó', 'como se llama', 'cuál es']
-    is_mc_related = any(k in prompt.lower() for k in ['minecraft', 'server', 'servidor', 'drakes', 'tps', 'spawn', 'plugin', 'slimefun', 'oneblock', 'skyblock', 'survival', 'polis', 'ptero', 'logs', 'ticket', 'jugador', 'jugadores', 'ip:'])
+    web_triggers = ['quien es', 'quién es', 'que es', 'qué es', 'sabes de', 'conoces a', 'noticias', 'musica', 'música', 'cantante', 'artista', 'precio', 'dolar', 'dólar', 'chile', 'chiste', 'chistaco', 'caida', 'caída', 'apagon', 'apagón', 'modelos', 'openai', 'claude', 'gemini', 'chatgpt', 'astra', 'kidd voodoo', 'quien gano', 'como se llama']
+    is_mc_related = any(k in prompt.lower() for k in ['minecraft', 'spawn', 'plugin', 'slimefun', 'oneblock', 'skyblock', 'survival', 'polis', 'ptero', 'jugador', 'jugadores', 'ip:'])
     
-    if any(t in prompt.lower() for t in web_triggers) or (not is_mc_related and len(prompt.split()) >= 3):
+    if any(t in prompt.lower() for t in web_triggers) or (not is_mc_related and len(prompt.split()) >= 2):
         web_knowledge = search_web_knowledge(prompt)
 
     is_coding_or_heavy = any(k in prompt.lower() for k in ['programa', 'codigo', 'script', 'refactor', 'arregla el plugin', 'escribe codigo', 'parche'])
@@ -671,31 +685,27 @@ def run_saori_brain(prompt, sender):
 
     user_history = get_user_conversation_history(sender_clean)
     web_section = f"\nINFORMACIÓN EN VIVO DE INTERNET (BÚSQUEDA WEB):\n{web_knowledge}\n" if web_knowledge else ""
+    full_context_section = ai_status_summary + web_section
 
-
-    is_asking_server_info = any(k in prompt.lower() for k in ['servidor', 'server', 'que ha pasado', 'qué ha pasado', 'resumen', 'jugadores', 'quien entro', 'quién entró', 'quien jugo', 'quién jugó', 'actividad', 'logs', 'tps', 'online', 'estado'])
+    is_asking_server_info = any(k in prompt.lower() for k in ['servidor', 'server', 'que ha pasado', 'qué ha pasado', 'resumen', 'quien entro', 'quién entró', 'quien jugo', 'quién jugó', 'actividad', 'logs', 'tps', 'online', 'estado'])
 
     if not is_staff and not is_jack:
         mc_context = f"\nACTIVIDAD RECIENTE DEL SERVIDOR ({mc.get('online', 0)} online):\n{live_logs}\n" if is_asking_server_info else ""
         system_prompt = f"""Eres SAORI, la IA del servidor DrakesCraft creada por Jack.
 Hablas con {sender_clean}.
-{user_history}{web_section}{mc_context}
+{user_history}{full_context_section}{mc_context}
 REGLAS:
 - Sé CORTA, directa, cercana y natural con tono chileno.
 - Usa SOLO el primer nombre ({sender_clean}).
-- Si el usuario continúa una conversación previa (ej: dice "50x50", "hazlo", "el círculo", etc.), USA EL HISTORIAL DE DIÁLOGO PREVIO arriba para mantener el hilo exacto.
-- Si te piden un plano, gráfica o círculo de Minecraft, genera una explicación paso a paso con el desglose exacto de bloques por arco/cuadrante o un bloque de código ASCII claro.
-- Si te saludan o preguntan si estás viva/atenta, responde con naturalidad y simpatía (ej: "¡Hola! Sí, aquí estoy lista, cuéntame").
-- NUNCA menciones datos técnicos de Star, uptime, disco ni métricas si no te los preguntaron.
-- Si te preguntan qué ha pasado en el servidor o piden un resumen, revisa la sección 'ACTIVIDAD RECIENTE DEL SERVIDOR' arriba y haz un resumen directo y claro de los jugadores y actividad reciente. NUNCA pidas que te manden los logs.
-- Si hay INFORMACIÓN EN VIVO DE INTERNET arriba, úsala para responder con precisión sobre el tema/persona consultada.
-- Si te piden un audio, redacta el saludo de forma entusiasta. JAMÁS digas que no tienes síntesis de voz.
+- Si te piden un chiste sobre actualidad o IA, cuenta un chiste ingenioso y gracioso sabiendo que hoy se cayeron ChatGPT, Claude y Grok mientras Star seguía en pie. NUNCA digas que no sabes qué pasó.
+- Si el usuario continúa una conversación previa, usa el historial de diálogo previo arriba.
+- Si hay INFORMACIÓN EN VIVO DE INTERNET o EVENTOS RECIENTES arriba, úsala para responder con precisión y humor.
 - NO uses negritas excesivas (**), listas largas ni textos redundantes."""
 
     else:
         system_prompt = f"""Eres SAORI, la IA SRE oficial de DrakesCraft y Star, creada por Jack.
 Hablas con {sender_clean} (Staff/Jack).
-{user_history}{web_section}
+{user_history}{full_context_section}
 TELEMETRÍA Y CONSOLA ({mc.get('online', 0)} jugadores online):
 {live_logs}
 
@@ -705,13 +715,10 @@ DATOS DEL SISTEMA:
 
 REGLAS CRÍTICAS:
 - Usa SOLO el primer nombre ({sender_clean}).
-- Si el usuario continúa una conversación previa (ej: dice "50x50", "hazlo", "el círculo"), USA EL HISTORIAL DE DIÁLOGO PREVIO arriba para mantener el contexto.
-- Si te piden un plano, gráfica o círculo de Minecraft, da la secuencia exacta de bloques por cuadrante de forma nítida.
+- Si te piden un chiste o comentario sobre la caída global de los 3 modelos (OpenAI, Claude, Grok), tira un chiste épico, con humor dev/chileno y picardía (ej: el caos de los programadores volviendo a StackOverflow, el apocalipsis de las IAs mientras Star sigue en 20 TPS). JAMÁS digas que no te llegó la noticia.
 - NUNCA menciones uptime de Star, GB de disco, ni telemetría técnica si NO te lo preguntaron explícitamente.
-- Si te saludan o preguntan cosas casuales (ej: "¿estás viva?", "buenos días", "¿qué tal?"), responde como una persona real, con tono chileno y buena onda (ej: "¡Sí {sender_clean}! Aquí estoy activa y al 100%. ¿Qué necesitas?"), SIN recitar métricas del sistema.
-- Si te preguntan por qué ha pasado en el servidor, estado o logs, resume DIRECTAMENTE los jugadores y comandos recientes de la sección arriba.
-- Solo da reportes de infraestructura profunda de Star si preguntan explícitamente ("cómo va Star", "estado de star").
-- Sé concisa, ejecutiva y rápida."""
+- Sé concisa, graciosa, ejecutiva y rápida."""
+
 
 
 
