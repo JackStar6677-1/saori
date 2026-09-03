@@ -670,6 +670,16 @@ client.on('messageCreate', async (message) => {
         senderName += '_Admin';
     }
 
+    let cleanPrompt = content.replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '').trim();
+    if (cleanPrompt.toLowerCase().startsWith('saori')) {
+        cleanPrompt = cleanPrompt.replace(/^saori[\s,:]*/i, '').trim();
+    }
+
+    if (!cleanPrompt || cleanPrompt.length <= 2) {
+        if (!isTicketChannel) return;
+        cleanPrompt = 'Hola, ¿en qué te puedo ayudar con tu ticket?';
+    }
+
     const contextTag = isTicketChannel ? `Ticket #${message.channel.name}` : (isDM ? 'DM' : `#${message.channel.name}`);
     console.log(`[SAORI-DISCORD] 📨 [${isJack ? 'ADMIN/JACK' : senderName} en ${contextTag}]: ${cleanPrompt}`);
 
@@ -739,9 +749,9 @@ client.on('messageCreate', async (message) => {
                               contentLower.includes('ejecuta en consola') ||
                               (contentLower.includes('kick') && !isTicketChannel);
 
-    if (isSensitiveAction && !isJack) {
+    if (isSensitiveAction && !isStaffMember) {
         await message.reply({
-            content: `Acceso denegado: Solo Jack tiene autorización para ejecutar órdenes críticas en la infraestructura.`,
+            content: `Acceso denegado: Solo Jack y los miembros del Staff tienen autorización para ejecutar órdenes en la infraestructura.`,
             allowedMentions: { repliedUser: false }
         });
         return;
