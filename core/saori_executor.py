@@ -275,27 +275,41 @@ def run_saori_brain(prompt, sender):
     is_staff = any(s in sender_clean for s in STAFF_MEMBERS)
     is_coding_or_heavy = any(k in prompt.lower() for k in ['programa', 'codigo', 'script', 'refactor', 'arregla el plugin', 'escribe codigo', 'parche'])
 
-    history_str = "\n".join([f"- [{h['sender']}]: {h['msg']} -> {h['reply']}" for h in mem.get("recent_dialogue", [])[-3:]])
+    plist = mc.get('players', [])
+    online_count = mc.get('online', 0)
+    players_summary = f"{online_count} online" + (f": {', '.join(plist[:15])}" if plist else "")
+
+    knowledge_base = f"""CONOCIMIENTO OFICIAL DE DRAKESCRAFT:
+- IP Java: mc.drakescraft.cl:25565 (o play.drakescraft.cl) | Bedrock: mc.drakescraft.cl Puerto: 25565.
+- Web: https://web.drakescraft.cl/ | Tienda: https://web.drakescraft.cl/store.html | Guías: https://web.drakescraft.cl/guia.html
+- SF / Slimefun: sf significa Slimefun. Guía inicial: mesa de crafteo reforzada, trituradora, generador de carbón o solar, polvos y lingotes mágicos/eléctricos, y automatización con Cargo o Networks.
+- Economía: Se gana dinero con /jobs (trabajos), /sellall (vender recursos), /qs (tiendas de cofres), /sbank (banco central con intereses pasivos), /sfmercado y /ah (subastas).
+- Música: En Discord usa bot Chip (/play) o Jockie Music (m!play). Dentro de Minecraft usa /musica.
+- Jugadores conectados ahora: {players_summary}."""
 
     if not is_staff and not is_jack:
-        system_prompt = f"""Eres SAORI, la IA compañera de DrakesCraft creada por Jack (tu padre y creador).
+        system_prompt = f"""Eres SAORI, la IA compañera oficial de DrakesCraft creada por Jack.
 Hablas con {sender}.
 
-REGLAS DE FORMATO Y TOKEN-SAVING:
-- Sé CORTA, directa, natural y con buena onda. Máximo 1 o 2 oraciones breves.
-- NO uses negritas excesivas (**), listas largas ni textos redundantes.
-- Si te piden un chiste, di uno corto y gracioso de una sola línea.
-- Si te preguntan algo simple, responde en una sola frase concisa."""
+{knowledge_base}
+
+REGLAS DE INTERACCIÓN:
+- Sé amigable, natural, divertida y CORTA (1 a 3 oraciones breves).
+- Si te piden un chiste, di uno gracioso y original de una sola línea.
+- Si te preguntan quién está conectado, menciona la lista de jugadores conectados arriba.
+- Si te preguntan sobre sf, tiendas, ips o música, responde con la información oficial de DrakesCraft.
+- NO uses negritas excesivas ni respuestas genéricas robóticas."""
 
     else:
         system_prompt = f"""Eres SAORI, la IA SRE oficial de DrakesCraft y Star, creada por Jack.
 Hablas con {sender} (Staff/Jack).
 
+{knowledge_base}
+Telemetría: {mesh} | Logs: {logs[:200]}
+Tareas Staff: {staff_tasks}
+
 REGLAS:
-- Sé concisa, ejecutiva, directa y rápida.
-- Telemetría: {mesh} | MC: {mc.get('online', 0)} online.
-- Tareas: {staff_tasks}
-- Responde en 1 a 2 párrafos breves sin relleno."""
+- Sé concisa, ejecutiva, directa y precisa."""
 
     if not is_coding_or_heavy:
         res = call_claude_haiku(system_prompt, prompt)

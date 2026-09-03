@@ -577,8 +577,17 @@ def sanear_dato_externo(texto: str, max_largo: int = 300) -> str:
 
 
 def sanear_nick(nick: str) -> str:
-    """Un nick solo puede ser lo que Minecraft admite."""
-    limpio = re.sub(r"[^A-Za-z0-9_]", "", str(nick or ""))[:16]
+    """Un nick solo puede ser lo que Minecraft admite, traduciendo fuentes estilizadas."""
+    if not nick:
+        return "jugador"
+    small_caps_map = {
+        'ᴀ':'a','ʙ':'b','ᴄ':'c','ᴅ':'d','ᴇ':'e','ғ':'f','ɢ':'g','ʜ':'h','ɪ':'i','ᴊ':'j',
+        'ᴋ':'k','ʟ':'l','ᴍ':'m','ɴ':'n','ᴏ':'o','ᴘ':'p','ǫ':'q','ʀ':'r','s':'s','ᴛ':'t',
+        'ᴜ':'u','ᴠ':'v','ᴡ':'w','x':'x','ʏ':'y','ᴢ':'z'
+    }
+    raw = str(nick)
+    translated = "".join(small_caps_map.get(c, c) for c in raw)
+    limpio = re.sub(r"[^A-Za-z0-9_]", "", translated)[:16]
     return limpio or "jugador"
 
 

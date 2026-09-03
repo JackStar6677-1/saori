@@ -225,16 +225,112 @@ client.on('guildMemberAdd', async (member) => {
     }
 });
 
+function normalizeDiscordName(name, fallback = 'amigo') {
+    if (!name) return fallback;
+    let s = name.replace(/\[.*?\]|\(.*?\)/g, '').replace(/[-–—|].*$/, '').trim();
+    const smallCapsMap = {
+        'ᴀ':'a','ʙ':'b','ᴄ':'c','ᴅ':'d','ᴇ':'e','ғ':'f','ɢ':'g','ʜ':'h','ɪ':'i','ᴊ':'j',
+        'ᴋ':'k','ʟ':'l','ᴍ':'m','ɴ':'n','ᴏ':'o','ᴘ':'p','ǫ':'q','ʀ':'r','s':'s','ᴛ':'t',
+        'ᴜ':'u','ᴠ':'v','ᴡ':'w','x':'x','ʏ':'y','ᴢ':'z'
+    };
+    let res = '';
+    for (const ch of s) {
+        res += smallCapsMap[ch] || ch;
+    }
+    res = res.replace(/[^a-zA-Z0-9_]/g, ' ').trim().split(/\s+/)[0];
+    if (!res || res.length < 2) {
+        return fallback;
+    }
+    return res.charAt(0).toUpperCase() + res.slice(1);
+}
+
 // Gestión de Mensajes y Tickets
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
 
     const isDM = !message.guild;
     const isJack = message.author.id === JACK_DISCORD_ID;
-    const botMentioned = message.mentions.has(client.user);
-    const isSaoriDedicatedChannel = message.channel.id === CHANNELS.SAORI_CHAT;
     const content = message.content.trim();
     const contentLower = content.toLowerCase();
+
+    // ⚡ COMANDOS RÁPIDOS DE DISCORD (!ip, !web, !tienda, !musica, !bots, !guia)
+    if (['!ip', '!server', '!servidor', '!conexion', '!mc', '!port', '!puerto'].includes(contentLower)) {
+        const ipEmbed = new EmbedBuilder()
+            .setColor(0x00D26A)
+            .setTitle('⚡ Conexión a DrakesCraft Network')
+            .setDescription('¡Conéctate y juega en la comunidad de DrakesCraft!')
+            .addFields(
+                { name: '☕ Java Edition', value: 'IP: `mc.drakescraft.cl:25565` *(o `play.drakescraft.cl`)*\nVersiones: `1.20.x - 1.21.x`', inline: false },
+                { name: '📱 Bedrock Edition (Móvil / Consolas)', value: 'IP: `mc.drakescraft.cl`\nPuerto: `25565`', inline: false },
+                { name: '🌐 Web & Tienda Oficial', value: '[Portal Web](https://web.drakescraft.cl/) · [Tienda de Rangos](https://web.drakescraft.cl/store.html)', inline: false }
+            )
+            .setFooter({ text: 'DrakesCraft Network · mc.drakescraft.cl', iconURL: client.user.displayAvatarURL() })
+            .setTimestamp();
+        await message.reply({ embeds: [ipEmbed], allowedMentions: { repliedUser: false } });
+        return;
+    }
+
+    if (['!web', '!portal', '!pagina'].includes(contentLower)) {
+        await message.reply({
+            content: `🌐 **Portal Web Oficial de DrakesCraft:** https://web.drakescraft.cl/`,
+            allowedMentions: { repliedUser: false }
+        });
+        return;
+    }
+
+    if (['!tienda', '!shop', '!store', '!comprar', '!rangos'].includes(contentLower)) {
+        const shopEmbed = new EmbedBuilder()
+            .setColor(0xF59E0B)
+            .setTitle('🛒 Tienda Oficial de DrakesCraft')
+            .setDescription('Adquiere Rangos VIP, Pases de Batalla, Dragmas y beneficios exclusivos para apoyar al servidor.')
+            .addFields(
+                { name: '🔗 Enlace Directo', value: 'https://web.drakescraft.cl/store.html' },
+                { name: '💎 Beneficios', value: '• Rangos VIP, Titan, Dios\n• Desbloqueos y pases cosméticos\n• Activación automática al instante' }
+            )
+            .setFooter({ text: 'DrakesCraft Store', iconURL: client.user.displayAvatarURL() });
+        await message.reply({ embeds: [shopEmbed], allowedMentions: { repliedUser: false } });
+        return;
+    }
+
+    if (['!guia', '!guias', '!wiki', '!comandos'].includes(contentLower)) {
+        await message.reply({
+            content: `📚 **Guía Completa de DrakesCraft (Economía, XP, Slimefun y Comandos):** https://web.drakescraft.cl/guia.html`,
+            allowedMentions: { repliedUser: false }
+        });
+        return;
+    }
+
+    if (['!musica', '!music', '!cancion', '!song'].includes(contentLower)) {
+        const musicEmbed = new EmbedBuilder()
+            .setColor(0x9B59B6)
+            .setTitle('🎵 Música en DrakesCraft')
+            .setDescription('Disfruta de música tanto en Discord como dentro del servidor Minecraft:')
+            .addFields(
+                { name: '🎧 Bot Chip (Voz)', value: 'Usa `/play <cancion/enlace>` en canales de voz.', inline: true },
+                { name: '🎸 Bot Jockie Music (Voz)', value: 'Usa `m!play <cancion/enlace>` en canales de voz.', inline: true },
+                { name: '📻 In-Game Jukebox', value: 'Escribe `/musica` dentro de Minecraft para abrir el reproductor musical.', inline: false }
+            )
+            .setFooter({ text: 'DrakesCraft Music System', iconURL: client.user.displayAvatarURL() });
+        await message.reply({ embeds: [musicEmbed], allowedMentions: { repliedUser: false } });
+        return;
+    }
+
+    if (['!bots', '!botlist'].includes(contentLower)) {
+        const botsEmbed = new EmbedBuilder()
+            .setColor(0x3498DB)
+            .setTitle('🤖 Bots Oficiales del Servidor')
+            .addFields(
+                { name: '🎵 Música', value: '• **Chip** (`/help`)\n• **Jockie Music** (`m!help`)', inline: true },
+                { name: '🛡️ Seguridad & Logs', value: '• **Wick** (Seguridad/Anti-Raid)\n• **Quark Logger** (Logs)\n• **ServerStats** (Estadísticas)', inline: true },
+                { name: '🎮 Utilidades & Minijuegos', value: '• **Mudae** (`$help` Waifus)\n• **Ticket King** (Tickets)\n• **Zira** (Auto-Roles)\n• **Xenon** (Backups)\n• **SAORI** (IA SRE & Soporte)', inline: true }
+            )
+            .setFooter({ text: 'DrakesCraft Discord Ecosystem', iconURL: client.user.displayAvatarURL() });
+        await message.reply({ embeds: [botsEmbed], allowedMentions: { repliedUser: false } });
+        return;
+    }
+
+    const botMentioned = message.mentions.has(client.user);
+    const isSaoriDedicatedChannel = message.channel.id === CHANNELS.SAORI_CHAT;
 
     // Filtro de mensajes ultra cortos
     if (content.length <= 2 || ['xd', 'xdxd', 'lol', 'ok', 'a', 'si', 'no', 'ui', 'wey', 'wena', 'f', 'gg'].includes(contentLower)) {
@@ -255,13 +351,11 @@ client.on('messageCreate', async (message) => {
 
     if (!shouldRespond) return;
 
-    let senderName = isJack ? 'Jack' : message.author.username;
+    let rawSender = isJack ? 'Jack' : message.author.username;
     if (!isJack && message.member && message.member.displayName) {
-        senderName = message.member.displayName;
+        rawSender = message.member.displayName;
     }
-    if (senderName.toLowerCase().includes('pablo')) {
-        senderName = 'Jack';
-    }
+    const senderName = isJack ? 'Jack' : normalizeDiscordName(rawSender, message.author.username);
 
     let cleanPrompt = content.replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '').trim();
     if (cleanPrompt.toLowerCase().startsWith('saori')) {
