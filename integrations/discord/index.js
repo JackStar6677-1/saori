@@ -577,33 +577,98 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
 });
 
 
+const mcStaffLastResponse = new Map();
+
+const MC_STAFF_TRIGGERS = [
+    /\bstaff\s*(here|online|around|available|present|pls|please|\?)/i,
+    /\bis\s+there\s+(a\s+)?(staff|admin|mod|owner)/i,
+    /\bany\s+(staff|admin|mod|owner)\s*(here|online|\?)/i,
+    /\bhay\s+(staff|alguien\s+del\s+staff|admin|un\s+admin)/i,
+    /\bstaff\s+(por\s+favor|pls|ayuda|help)/i,
+    /\b(admin|mod)\s*(here|online|\?)/i,
+    /\bnecesito\s+(un\s+)?(staff|admin|ayuda)/i,
+    /\bneed\s+(a\s+)?(staff|admin|mod|help)/i,
+    /\balguien\s+me\s+(puede\s+)?(ayudar|help)/i,
+    /\bcan\s+someone\s+help/i,
+    /\bhelp\s*\?/i,
+    /\bsupport\s*\?/i,
+    /\bsaori\b/i
+];
+
 // Gestión de Mensajes y Tickets
 client.on('messageCreate', async (message) => {
+    // 1. Detección y respuesta en Minecraft Chat (DiscordSRV Webhook / Bridge)
+    if (message.channel.id === CHANNELS.MINECRAFT_CHAT) {
+        if (message.author.id === client.user.id) return;
+
+        const isDM = !message.guild;
+        const isJack = message.author.id === JACK_DISCORD_ID;
+
+        // Si es un miembro de Discord humano (no webhook de DiscordSRV), moderar permisos de escritura
+        if (message.guild && !message.webhookId && !message.author.bot && !isJack) {
+            const memberRoles = message.member?.roles.cache.map(r => r.id) || [];
+            const hasPermission = ALLOWED_MC_CHAT_ROLES.some(rId => memberRoles.includes(rId));
+            
+            if (!hasPermission) {
+                try {
+                    await message.delete();
+                    const warnMsg = await message.channel.send({
+                        content: `⚠️ ${message.author}, solo miembros con rango **📜 OldSchool**, **Dioses/VIPs** o **Boosters** pueden enviar mensajes al chat de Minecraft. Los usuarios Polis tienen modo solo lectura.`
+                    });
+                    setTimeout(() => warnMsg.delete().catch(() => null), 7000);
+                } catch (e) {
+                    console.error('[SAORI-DISCORD] Error moderando #minecraft-chat:', e.message);
+                }
+                return;
+            }
+        }
+
+        // Interceptar si alguien llama al staff o a Saori en Minecraft
+        const text = message.content.trim();
+        const matchesStaffCall = MC_STAFF_TRIGGERS.some(rgx => rgx.test(text));
+
+        if (matchesStaffCall) {
+            let rawName = message.author.username;
+            let clean = rawName.replace(/\[.*?\]|✦.*?✦|[-|│︱•~]/g, '').trim();
+            let words = clean.split(/\s+/).filter(w => w.length > 0);
+            let player = words.length > 0 ? words[words.length - 1] : clean || 'Jugador';
+
+            const now = Date.now();
+            const lastResp = mcStaffLastResponse.get(player) || 0;
+            if (now - lastResp > 45000) {
+                mcStaffLastResponse.set(player, now);
+
+                const isEnglish = /\b(here|available|please|help|any|need|someone)\b/i.test(text);
+                const replyText = isEnglish
+                    ? `👋 Hi **${player}**! I'm **SAORI**, DrakesCraft's AI. Staff will be with you shortly. If urgent, open a ticket at <#${CHANNELS.TICKETS_SOPORTE}> (or type \`sticket <issue>\`). ✨`
+                    : `👋 ¡Hola **${player}**! Soy **SAORI**, la IA de DrakesCraft. Actualmente el Staff puede estar ocupado. Si necesitas ayuda o reportar un bug, abre un ticket en <#${CHANNELS.TICKETS_SOPORTE}> (o escribe \`sticket <problema>\`). ✨`;
+
+                await message.channel.send(replyText).catch(() => null);
+
+                // Enviar también /say a Minecraft para que el jugador lo lea in-game
+                const ingameSay = isEnglish
+                    ? `say ¡Hi ${player}! I am SAORI. If you need staff help or have an urgent issue, please open a ticket on our Discord!`
+                    : `say ¡Hola ${player}! Soy SAORI. Si necesitas ayuda del staff o reportar algo, abre un ticket en nuestro Discord!`;
+
+                fetch(AI_DAEMON_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt: `ejecuta /${ingameSay}`, sender: 'Staff' })
+                }).catch(() => null);
+
+                console.log(`[SAORI-MC-WATCHER] 🎮 Respondiendo a ${player} en Minecraft y Discord: "${text}"`);
+                return;
+            }
+        }
+
+        if (message.author.bot || message.webhookId) return;
+    }
+
     if (message.author.bot) return;
 
     const isDM = !message.guild;
     const isJack = message.author.id === JACK_DISCORD_ID;
 
-    // =========================================================================
-    // MODERACIÓN AUTOMÁTICA DE CANAL MINECRAFT-CHAT (Solo OldSchool, VIPs y Staff)
-    // =========================================================================
-    if (message.channel.id === CHANNELS.MINECRAFT_CHAT && !isDM && !isJack) {
-        const memberRoles = message.member?.roles.cache.map(r => r.id) || [];
-        const hasPermission = ALLOWED_MC_CHAT_ROLES.some(rId => memberRoles.includes(rId));
-        
-        if (!hasPermission) {
-            try {
-                await message.delete();
-                const warnMsg = await message.channel.send({
-                    content: `⚠️ ${message.author}, solo miembros con rango **📜 OldSchool**, **Dioses/VIPs** o **Boosters** pueden enviar mensajes al chat de Minecraft. Los usuarios Polis tienen modo solo lectura.`
-                });
-                setTimeout(() => warnMsg.delete().catch(() => null), 7000);
-            } catch (e) {
-                console.error('[SAORI-DISCORD] Error moderando #minecraft-chat:', e.message);
-            }
-            return;
-        }
-    }
 
     const botMentioned = message.mentions.has(client.user);
     const isSaoriDedicatedChannel = message.channel.id === CHANNELS.SAORI_CHAT;
