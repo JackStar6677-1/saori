@@ -1,19 +1,77 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SAORI Sovereign AI Engine (Optimizado para Bajo Consumo de Tokens & Texto Limpio)
-Respuestas cortas, concisas, sin exceso de negritas ni símbolos raros, ahorrando tokens en cada inferencia.
+SAORI Sovereign AI Engine (Clean Names, Full Log Ingestion & Real-Time Telemetry)
 """
 
-import subprocess, sys, json, os, urllib.request, time
+import subprocess, sys, json, os, urllib.request, time, re
 from datetime import datetime
+
 
 PTERO_BASE = 'https://panel.thegamehosting.com/api/client/servers/38528a4e'
 PTERO_KEY_PATH = '/home/jack/.pterodactyl_key'
 MEMORY_FILE = '/home/jack/.local/state/nova/saori_memory.json'
 TAREAS_FILE = '/home/jack/ai-hub/TAREAS_PENDIENTES_STAFF.md'
 
-STAFF_MEMBERS = ['jack', 'pepino', 'chagui', 'kika', 'derem']
+import unicodedata
+
+STAFF_MEMBERS = ['jack', 'pepino', 'chagui', 'kika', 'derem', 'lauti', 'lautaro', 'pasiente', 'pacox77', 'emilio', 'mr_em1lio', 'em1lio']
+
+SMALL_CAPS_MAP = {
+    'ᴀ': 'a', 'ʙ': 'b', 'ᴄ': 'c', 'ᴅ': 'd', 'ᴇ': 'e', 'ғ': 'f', 'ɢ': 'g', 'ʜ': 'h',
+    'ɪ': 'i', 'ᴊ': 'j', 'ᴋ': 'k', 'ʟ': 'l', 'ᴍ': 'm', 'ɴ': 'n', 'ᴏ': 'o', 'ᴘ': 'p',
+    'ǫ': 'q', 'ʀ': 'r', 's': 's', 'ᴛ': 't', 'ᴜ': 'u', 'ᴠ': 'v', 'ᴡ': 'w', 'x': 'x',
+    'ʏ': 'y', 'ᴢ': 'z'
+}
+
+def clean_sender_name(raw_name):
+    if not raw_name:
+        return 'Amigo'
+    
+    # 1. Normalizar small caps
+    s = ''
+    for char in raw_name:
+        s += SMALL_CAPS_MAP.get(char, char)
+    
+    # 2. Descomponer unicode (NFKD)
+    s = unicodedata.normalize('NFKD', s)
+    
+    # 3. Quitar tags comunes
+    s = re.sub(r'\[.*?\]|\(.*?\)|[-|✦│︱•~].*', '', s).strip()
+    
+    # 4. Obtener primera palabra
+    words = s.split()
+    if not words:
+        return 'Amigo'
+    first = words[0].strip('_').strip()
+    
+    # Quitar prefijos comunes como mr_ o sr_ si aplica
+    if first.lower().startswith('mr_') and len(first) > 3:
+        first = first[3:]
+    elif first.lower().startswith('mr') and len(first) > 2:
+        first = first[2:]
+
+    first_lower = first.lower()
+    if 'pablo' in first_lower or 'jack' in first_lower:
+        return 'Jack'
+    if 'emilio' in first_lower or 'em1lio' in first_lower:
+        return 'Emilio'
+    if 'pasiente' in first_lower or 'pacox' in first_lower:
+        return 'Pasiente'
+    if 'pepino' in first_lower:
+        return 'Pepino'
+    if 'chagui' in first_lower:
+        return 'Chagui'
+    if 'lauti' in first_lower or 'lautaro' in first_lower:
+        return 'Lauti'
+    if 'kika' in first_lower:
+        return 'Kika'
+    if 'derem' in first_lower:
+        return 'Derem'
+        
+    return first.capitalize() or 'Amigo'
+
+
 
 def get_staff_tasks():
     if os.path.exists(TAREAS_FILE):
@@ -45,71 +103,71 @@ def load_memory():
     if os.path.exists(MEMORY_FILE):
         try:
             with open(MEMORY_FILE, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                if "users" not in data:
-                    data["users"] = {}
-                return data
+                return json.load(f)
         except:
             pass
     return {
-        "summary": "Jack es el Creador y Padre de Saori.",
-        "users": {}
+        "summary": "Jack es el Creador y Administrador de Saori.",
+        "recent_dialogue": []
     }
 
 def save_memory(mem):
     try:
-        if "users" in mem:
-            for u in mem["users"]:
-                if len(mem["users"][u]) > 8:
-                    mem["users"][u] = mem["users"][u][-8:]
+        if len(mem.get("recent_dialogue", [])) > 30:
+            mem["recent_dialogue"] = mem["recent_dialogue"][-20:]
+            
         with open(MEMORY_FILE, 'w', encoding='utf-8') as f:
             json.dump(mem, f, ensure_ascii=False, indent=2)
     except Exception as e:
         print(f"[SAORI-MEMORY] Error: {e}", file=sys.stderr)
 
-def get_user_history(sender):
-    mem = load_memory()
-    sender_clean = sender.lower().strip()
-    return mem.get("users", {}).get(sender_clean, [])[-4:]
-
 def record_interaction(sender, prompt, reply):
     mem = load_memory()
-    sender_clean = sender.lower().strip()
-    if "users" not in mem:
-        mem["users"] = {}
-    if sender_clean not in mem["users"]:
-        mem["users"][sender_clean] = []
-    mem["users"][sender_clean].append({
-        "msg": prompt[:150],
-        "reply": reply[:150],
+    if "recent_dialogue" not in mem:
+        mem["recent_dialogue"] = []
+    
+    clean_p = re.sub(r'\[Contexto[^\]]*\]\s*', '', prompt).strip()
+    mem["recent_dialogue"].append({
+        "sender": sender,
+        "msg": clean_p[:400],
+        "reply": reply[:400],
         "time": datetime.now().strftime("%H:%M")
     })
     save_memory(mem)
 
+def get_user_conversation_history(sender_clean, limit=6):
+    mem = load_memory()
+    dialogues = mem.get("recent_dialogue", [])
+    if not dialogues:
+        return ""
+        
+    # Filtrar intercambios ESTRICTAMENTE con este usuario
+    user_d = [d for d in dialogues if d.get("sender", "").strip().lower() == sender_clean.strip().lower()]
+    if not user_d:
+        return ""
+        
+    user_d = user_d[-limit:]
+        
+    lines = [f"HISTORIAL DE DIÁLOGO PREVIO CON {sender_clean} (ÚSALO PARA MANTENER LA COHERENCIA):"]
+    for d in user_d:
+        lines.append(f"- {d.get('sender')}: \"{d.get('msg')}\"")
+        lines.append(f"  Saori: \"{d.get('reply')}\"")
+    return "\n".join(lines) + "\n\n"
+
+
+
 def trigger_alert_if_needed(prompt, sender):
     prompt_lower = prompt.lower()
     urgent_keywords = ['necesito a jack', 'busca a jack', 'llama a jack', 'urgente', 'se cayo el server', 'hackeando', 'dupeo', 'dupeando', 'crash']
-    purchase_keywords = ['compre un rango', 'compre en la tienda', 'no me llego', 'no llego mi rango', 'no me llego mi compra', 'no llego mi compra', 'pague y no', 'donacion en tebex', 'problema con la tienda', 'error al comprar', 'no se me acredito', 'no me dio el rango', 'no me entrego']
-
-    is_purchase = any(k in prompt_lower for k in purchase_keywords)
-    is_urgent = any(k in prompt_lower for k in urgent_keywords)
-
-    if is_purchase or is_urgent:
+    
+    if any(k in prompt_lower for k in urgent_keywords):
         try:
-            subject = f"🛒 ALERTA DE COMPRA: {sender}" if is_purchase else f"🚨 LLAMADO URGENTE: {sender}"
-            body = (
-                f"El usuario '{sender}' ha reportado un problema con la entrega de su compra en DrakesCraft:\n\n"
-                f"📝 Mensaje: \"{prompt}\"\n\n"
-                f"⚙️ Acción requerida: Verificar ID de transacción en Tebex y aplicar entrega + compensación garantizada."
-                if is_purchase else
-                f"El usuario '{sender}' ha emitido una alerta urgente:\n\n📝 Mensaje: \"{prompt}\""
-            )
             subprocess.Popen([
                 '/usr/bin/python3', 
                 '/home/jack/ai-hub/scripts/saori_notifier.py',
-                subject,
-                body
-            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                f"Llamado Urgente de {sender} en DrakesCraft",
+                f"El usuario {sender} ha reportado: {prompt}"
+            ])
             return True
         except Exception as e:
             print(f"[SAORI-ALERT] Error: {e}", file=sys.stderr)
@@ -137,209 +195,26 @@ def execute_minecraft_command(command_str):
         return False, str(e)
     return False, "Error al ejecutar"
 
-# Lista oficial de Staff obtenida en tiempo real desde el servidor de Discord
-STAFF_MEMBERS = [
-    'jack', 'jackstar6677',
-    'kika', 'kikastar704',
-    'chagui', 'chagui68',
-    'lauti', 'lautix16',
-    'nix', 'drgr89.',
-    'derem', 'theunknowone.',
-    'pepe', 'pepe_22',
-    'tomi', 'obliteratedd',
-    'pepino', 'elpepino18',
-    'j3ss1el', 'jessielpr4626',
-    'admin', 'staff', 'mod', 'dev', 'owner', 'dueño'
-]
-
-def create_ticket_for_trinity(sender, text):
-    """Crea un ticket formal en /home/jack/ai-hub/tickets/ y lo asigna a la Trinidad de Agentes."""
-    tickets_dir = '/home/jack/ai-hub/tickets'
-    os.makedirs(tickets_dir, exist_ok=True)
-    
-    # Encontrar siguiente número de ticket
-    existing = [f for f in os.listdir(tickets_dir) if f.startswith('TICKET-') or f.startswith('ticket-') or 'TICKET_' in f]
-    max_num = 305
-    for f in existing:
-        try:
-            clean_f = f.replace('TICKET-', '').replace('ticket-', '').replace('TICKET_', '').split('.')[0].split('-')[0]
-            if clean_f.isdigit():
-                num = int(clean_f)
-                if num > max_num:
-                    max_num = num
-        except:
-            pass
-    ticket_id = f"TICKET-{max_num + 1}"
-    
-    clean_title = text
-    for p in ['crear ticket:', 'crear ticket', 'ticket para la trinidad:', 'ticket para la trinidad', 'ticket:', 'nuevo ticket:', 'nuevo ticket', 'ticket']:
-        if clean_title.lower().startswith(p):
-            clean_title = clean_title[len(p):].strip()
-            break
-
-    ticket_content = f"""# {ticket_id}: {clean_title[:80]}
-
-- **Autor:** {sender} (Vía WhatsApp / Saori Interface)
-- **Fecha de Apertura:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S CLT')}
-- **Estado:** EN REVISIÓN POR LA TRINIDAD DE SAORI (Claude Code, Codex, Antigravity)
-- **Prioridad:** ALTA
-
-## 📋 Descripción del Ticket
-{clean_title}
-
-## 🤖 Asignación de la Trinidad de Agentes
-- **Claude Code:** Diagnóstico de telemetría, inspección de logs y análisis de causa raíz.
-- **Codex:** Implementación de parches, refactorización y escritura de código.
-- **Antigravity:** Compilación Maven/Gradle, tests de regresión y verificación de despliegue.
-
-## 🔄 Registro de Ejecución
-- Ticket ingresado formalmente al ciclo de escaneo autónomo de Star.
-"""
-    file_path = os.path.join(tickets_dir, f"{ticket_id}.md")
-    try:
-        with open(file_path, 'w', encoding='utf-8') as f:
-            f.write(ticket_content)
-        add_staff_task("Trinidad de SAORI", f"{ticket_id}: {clean_title[:60]}")
-        return ticket_id, clean_title
-    except Exception as e:
-        return None, str(e)
-
-def execute_git_action_for_staff(prompt_lower, sender):
-    """Ejecuta acciones de git (commits de prueba, pulls, status, pushes) en repos de DrakesCraft-Labs."""
-    is_jack = sender.lower().strip() == 'jack'
-
-    # 🔒 Blindaje de Seguridad: Prohibición estricta de acciones destructivas o borrado de repos
-    destructive_terms = ['borra el repo', 'borra todo', 'elimina el repo', 'elimina todo', 'drop', 'rm -rf', 'delete repo', 'destruir repo', 'borrar repositorio', 'eliminar repositorio', 'reset --hard', 'push --force', 'push -f', 'borrar el repo']
-    if any(k in prompt_lower for k in destructive_terms):
-        if not is_jack:
-            return "⛔ Acceso denegado: Por seguridad y soberanía técnica, la eliminación o borrado de repositorios es potestad exclusiva de Jack. El Staff solo puede añadir, corregir o probar código."
-        else:
-            return "⚠️ Advertencia de Seguridad: Las operaciones destructivas sobre repositorios requieren confirmación manual directa en la consola de Star."
-
-    repos_map = {
-        'multiversecreatures': 'MultiverseCreatures',
-        'multiverse-creatures': 'MultiverseCreatures',
-        'multiverse creatures': 'MultiverseCreatures',
-        'multiversenets': 'MultiverseNets',
-        'multiverse-nets': 'MultiverseNets',
-        'odysseia': 'Odysseia',
-        'drakesbosses': 'DrakesBosses',
-        'bosses': 'DrakesBosses',
-        'slimefun': 'Slimefun4-Drake',
-        'slimefun4': 'Slimefun4-Drake',
-        'drakescraft-web': 'drakescraft-web',
-        'sbank': 'sbank',
-        'saori-bot': 'saori-bot'
-    }
-    
-    target_repo = None
-    for k, v in repos_map.items():
-        if k in prompt_lower:
-            target_repo = v
-            break
-            
-    if not target_repo:
-        return None
-
-    repo_dir = f"/home/jack/workspace/drakescraft/{target_repo}"
-    if not os.path.isdir(repo_dir):
-        return f"❌ El repositorio {target_repo} no se encuentra en el workspace de Star ({repo_dir})."
-
-    # Caso 1: Commit de prueba / crear commit
-    if any(k in prompt_lower for k in ['commit de prueba', 'haz un commit', 'haz commit', 'crea un commit', 'hacer un commit', 'test commit']):
-        cmd = f"cd {repo_dir} && git restore . 2>/dev/null; git pull --rebase origin main && git commit --allow-empty -m 'chore: commit de prueba solicitado por {sender}' && git push origin main && git rev-parse --short HEAD"
-        try:
-            res = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=20)
-            if res.returncode == 0:
-                sha = res.stdout.strip().splitlines()[-1]
-                return f"✅ Commit de prueba realizado y subido a GitHub en **DrakesCraft-Labs/{target_repo}**.\n• Commit SHA: `{sha}`\n• Rama: `main`\n• Remoto: GitHub origin/main"
-            else:
-                return f"⚠️ Error al realizar el commit/push en {target_repo}:\n```{res.stderr.strip()[:200]}```"
-        except Exception as e:
-            return f"❌ Error ejecutando Git: {e}"
-
-    # Caso 2: Git status / revisar repo
-    if any(k in prompt_lower for k in ['git status', 'estado del repo', 'status del repo', 'como esta el repo']):
-        cmd = f"cd {repo_dir} && git status -s && git log -n 1 --oneline"
-        try:
-            res = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=10)
-            out = res.stdout.strip() or "Rama limpia, al día con origin/main."
-            return f"📁 **Estado de {target_repo}:**\n```\n{out}\n```"
-        except Exception as e:
-            return f"❌ Error: {e}"
-
-    # Caso 3: Git push
-    if any(k in prompt_lower for k in ['git push', 'pushea', 'sube los cambios']):
-        cmd = f"cd {repo_dir} && git push origin main"
-        try:
-            res = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=15)
-            if res.returncode == 0:
-                return f"✅ Cambios de **{target_repo}** subidos con éxito a GitHub (origin/main)."
-            else:
-                return f"⚠️ Error en git push: {res.stderr.strip()[:200]}"
-        except Exception as e:
-            return f"❌ Error: {e}"
-
-    return None
-
 def handle_server_actions(prompt, sender):
-    import re
-    # Eliminar prefijo de contexto de canal inyectado por Discord/WhatsApp
-    prompt_user = re.sub(r'\[contexto[^\]]*\]', '', prompt, flags=re.IGNORECASE).strip()
-    prompt_lower = prompt_user.lower()
-    sender_clean = sender.lower().strip()
-    is_jack = sender_clean == 'jack'
-    is_staff = is_jack or any(s in sender_clean for s in STAFF_MEMBERS)
+    prompt_lower = prompt.lower().strip()
+    is_jack = sender.lower() == 'jack'
+    is_staff = any(s in sender.lower() for s in STAFF_MEMBERS) or is_jack
 
-    if is_staff:
-        git_reply = execute_git_action_for_staff(prompt_lower, sender)
-        if git_reply:
-            return git_reply
-
-    # 🎫 Ingreso de Tickets a la Trinidad desde WhatsApp / Discord (Solo si el usuario explícitamente lo pide)
-    is_ticket_creation = prompt_lower.startswith('ticket:') or \
-                         prompt_lower.startswith('ticket ') or \
-                         prompt_lower.startswith('crear ticket') or \
-                         prompt_lower.startswith('nuevo ticket') or \
-                         prompt_lower.startswith('!ticket')
-
-    if is_ticket_creation and len(prompt_lower.split()) > 2:
-        t_id, t_desc = create_ticket_for_trinity(sender, prompt_user)
-        if t_id:
-            try:
-                subprocess.Popen([
-                    '/usr/bin/python3',
-                    '/home/jack/ai-hub/scripts/saori_notifier.py',
-                    f"🎫 Nuevo Ticket Asignado: {t_id}",
-                    f"El usuario {sender} ha creado el #{t_id}:\n\"{t_desc}\"\n\nEstado: Puesto en revisión por la Trinidad de Agentes (Claude Code, Codex, Antigravity)."
-                ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            except:
-                pass
-            return f"🐺 Ticket #{t_id} registrado exitosamente.\nHa sido puesto en revisión formal por la Trinidad de SAORI (Claude Code, Codex y Antigravity). Te notificaré automáticamente por este medio cuando quede solucionado."
-        else:
-            return "❌ Ocurrió un error al registrar el ticket en el sistema de Star."
-
-    # 🛒 Detección y respuesta garantizada a reportes de compras / tienda
-    purchase_keywords = ['compre un rango', 'compre en la tienda', 'no me llego', 'no llego mi rango', 'no me llego mi compra', 'no llego mi compra', 'pague y no', 'donacion en tebex', 'problema con la tienda', 'error al comprar', 'no se me acredito', 'no me dio el rango', 'no me entrego']
-    if any(k in prompt_lower for k in purchase_keywords):
-        trigger_alert_if_needed(prompt, sender)
-        return (
-            f"🐺 **¡Alerta prioritaria emitida a Jack y al Staff!** 🚨\n\n"
-            f"He notificado automáticamente a **Jack** por **WhatsApp y Correo Electrónico** con los detalles de tu compra para que lo revise de inmediato.\n\n"
-            f"📌 **Garantía Oficial de Compras:**\n"
-            f"• Si el problema fue un error de entrega o pasarela, recibirás tu compra completa **más una bonificación extra de compensación** (días adicionales, llaves o dragmas).\n"
-            f"• Si escribiste mal tu nick al pagar, se te transferirá a tu cuenta correcta.\n\n"
-            f"🎫 **Siguiente paso:** Por favor abre un **Ticket de Soporte** en Discord o en la web con tu ID de transacción de Tebex para proceder con la entrega."
-        )
-
-    if not is_staff and trigger_alert_if_needed(prompt, sender):
+    if not is_jack and trigger_alert_if_needed(prompt, sender):
         pass
 
+    # Bloqueo total para usuarios que no son Staff ni Jack
     if not is_staff:
         if any(k in prompt_lower for k in ['dame op', 'dame admin', 'dame owner', 'dame rango', 'kickea', 'banea', 'ejecuta', 'consola']):
-            return "Acceso denegado: Solo Jack y el Staff tienen permisos para gestionar rangos o ejecutar comandos en DrakesCraft."
+            return "Acceso denegado: Solo el Staff y Jack tienen autorización para interactuar con la infraestructura."
 
-    if is_staff:
+    # Comandos destructivos o de infraestructura global -> EXCLUSIVOS DE JACK
+    CRITICAL_INFRA = ['dame op', 'dame admin', 'dame owner', 'op ', 'stop', 'restart', 'reload', 'pex', 'luckperms', 'lp ', 'ban-ip']
+    if not is_jack and any(k in prompt_lower for k in CRITICAL_INFRA):
+        return f"Hola {sender}, por seguridad solo Jack puede modificar permisos globales o reiniciar infraestructura."
+
+    # TAREAS STAFF (Jack puede asignar)
+    if is_jack:
         if 'recordar a' in prompt_lower or 'recuerda a' in prompt_lower or 'anota tarea' in prompt_lower or 'asignar a' in prompt_lower:
             parts = prompt.split('que', 1) if 'que' in prompt else prompt.split(':', 1)
             target = "Staff"
@@ -351,139 +226,154 @@ def handle_server_actions(prompt, sender):
             add_staff_task(target, task_text)
             return f"Anotado en bitácora para {target}: \"{task_text}\"."
 
-        if any(k in prompt_lower for k in ['kickea', 'kickear', 'expulsa', 'echa a']):
-            parts = prompt.replace(',', ' ').replace('?', ' ').replace('!', ' ').split()
-            target_player = None
-            for i, word in enumerate(parts):
-                if word.lower() in ['kick', 'kickea', 'kickear', 'echar', 'expulsar', 'expulsa'] and i + 1 < len(parts):
-                    target_player = parts[i+1].strip()
-                    if target_player.lower() in ['a', 'al']:
-                        if i + 2 < len(parts):
-                            target_player = parts[i+2].strip()
-                    break
-            
-            if target_player and target_player.lower() not in ['el', 'la', 'un', 'una']:
-                if target_player.lower() == 'paco':
-                    target_player = 'pacox77'
-                
-                ok, msg = execute_minecraft_command(f"kick {target_player} Ordenado por {sender}")
-                if ok:
-                    return f"Kickeado {target_player} de Minecraft como me ordenaste, {sender}."
-                else:
-                    return f"Error al ejecutar kick: {msg}"
-
-        # Ejecución de comandos de consola (ej. spark tps, tps, say, etc.)
-        is_cmd_request = prompt_lower.startswith('ejecuta ') or prompt_lower.startswith('corre ') or prompt_lower.startswith('consola ') or prompt_lower.startswith('/spark') or prompt_lower.startswith('spark ') or prompt_lower.startswith('/tps')
-        if is_cmd_request:
-            raw_cmd = prompt
-            for prefix in ['ejecuta', 'corre', 'consola']:
-                if raw_cmd.lower().startswith(prefix):
-                    raw_cmd = raw_cmd[len(prefix):].strip()
-            raw_cmd = raw_cmd.lstrip('/')
-            
-            ok, msg = execute_minecraft_command(raw_cmd)
-            if ok:
-                time.sleep(1.2)
-                # Forzar recarga de logs para capturar la respuesta del comando
-                try:
-                    if os.path.exists('/tmp/saori_logs_cache.txt'):
-                        os.unlink('/tmp/saori_logs_cache.txt')
-                except:
-                    pass
-                fresh_logs = fetch_live_drakescraft_logs(limit=30)
-                # Extraer las últimas líneas de respuesta del comando
-                cmd_lines = [l for l in fresh_logs.splitlines() if any(k in l.lower() for k in ['tps', 'mspt', 'cpu', 'memory', 'spark', 'ping', 'players', 'online', raw_cmd.split()[0].lower()])]
-                if cmd_lines:
-                    return f"⚡ **Consola de DrakesCraft:**\n```yaml\n{chr(10).join(cmd_lines[-8:])}\n```"
-                return f"✅ Comando `/{raw_cmd}` ejecutado en la consola de DrakesCraft."
-            else:
-                return f"❌ Error al ejecutar en consola: {msg}"
-
-    # 👥 Consulta inmediata de Jugadores Conectados (/list de Minecraft)
-    is_player_list_req = any(k in prompt_lower for k in [
-        'lista de players', 'lista de jugadores', 'jugadores conectados', 'quienes estan conectados',
-        'quienes estan online', 'players conectados', 'players activos', 'quien esta jugando',
-        'quienes estan jugando', 'muestra a los players', 'muestra a los pleyers', 'quienes juegan',
-        'quien esta conectado', 'quien esta online', 'quien esta activo', 'ver players', 'ver jugadores'
-    ])
-    if is_player_list_req:
-        count, players_formatted = get_live_players_from_server()
-        if count == 0 or not players_formatted:
-            return "🐺 **DrakesCraft Network:** No hay jugadores conectados en este momento. ¡Sé el primero en entrar!\n☕ IP: `mc.drakescraft.cl:25565`"
+    # KICK (Jack o Staff)
+    if is_staff and any(k in prompt_lower for k in ['kickea', 'kickear', 'kick', 'expulsa', 'echa a']):
+        parts = prompt.replace(',', ' ').replace('?', ' ').replace('!', ' ').split()
+        target_player = None
+        for i, word in enumerate(parts):
+            if word.lower() in ['kick', 'kickea', 'kickear', 'echar', 'expulsar', 'expulsa'] and i + 1 < len(parts):
+                target_player = parts[i+1].strip()
+                if target_player.lower() in ['a', 'al']:
+                    if i + 2 < len(parts):
+                        target_player = parts[i+2].strip()
+                break
         
-        plist_lines = "\n".join([f"• {p}" for p in players_formatted])
-        return f"👥 **Jugadores Conectados en DrakesCraft ({count}/2026):**\n{plist_lines}\n\n☕ Conéctate en: `mc.drakescraft.cl:25565`"
+        if target_player and target_player.lower() not in ['el', 'la', 'un', 'una']:
+            if target_player.lower() == 'paco':
+                target_player = 'pacox77'
+            
+            ok, msg = execute_minecraft_command(f"kick {target_player} Ordenado por {sender}")
+            if ok:
+                return f"Kickeado {target_player} de Minecraft como me pediste, {sender}."
+            else:
+                return f"Error al ejecutar kick: {msg}"
+
+    # AYUDA / SHELP — Disponible para todos
+    if any(k in prompt_lower.split() for k in ['shelp', '/shelp', '!shelp']) or prompt_lower in ['shelp', 'ayuda', 'help', 'comandos', 'saori help', 'saori shelp', 'saori ayuda', 'saori comandos']:
+        return """🌸 *SAORI SRE · MANUAL DE COMANDOS Y CAPACIDADES* 🌸
+_Asistente de Infraestructura y Moderación de DrakesCraft_
+
+🎮 *IN-GAME & MODERACIÓN (Staff/Jack)*
+• `Saori tira /troll <tipo> <jugador>` → Ejecuta troll in-game (ej: voidfall, creepers, etc.)
+• `Saori kickea a <jugador>` → Expulsa a un jugador del servidor
+• `Saori ejecuta /<comando>` → Corre cualquier comando en consola de Minecraft
+• `Saori lista de jugadores` → Muestra quién está online directamente de consola
+
+🎨 *GENERACIÓN DE IMÁGENES (IA Studio)*
+• `Saori genera una imagen de <descripción>` → Crea arte digital en alta resolución
+• `/imagen <prompt>` o `/image <prompt>` → Genera imagen al instante con IA
+
+⚡ *TELEMETRÍA & RENDIMIENTO*
+• `Saori tps del server` → Reporte en vivo de TPS y duraciones de tick (Spark)
+• `Saori estado del server` → Uptime de Star, disco libre y estado de mundos
+• `shelp` o `/shelp` → Muestra este menú de ayuda
+
+🔍 *LOGS & AUDITORÍA INTELIGENTE*
+• `Saori qué hizo <jugador>?` → Busca chat, compras (/store) y comandos recientes
+• `Saori revisa los logs de <jugador> con CoreProtect` → Audita historial del jugador
+• `Saori última actividad de comandos` → Resumen de los últimos movimientos en consola
+
+🎙️ *AUDIO & VOZ (Voz Chilena)*
+• `Saori manda un audio...` → Genera y envía nota de voz chilena al instante
+• Si le mandas un audio a Saori → Lo transcribe (STT) y te responde
+
+📋 *GESTIÓN STAFF (Jack)*
+• `Saori anota tarea a <Staff>: <descripción>` → Registra en la bitácora oficial
+• Comandos de infraestructura crítica (`/op`, `/reload`, `/stop`) protegidos por RBAC."""
+
+
+    # EJECUCIÓN DE COMANDOS SEGUROS / RECREATIVOS / STAFF (Jack o Lauti/Staff)
+    # Soporta: "tira el /troll voidfall Macacra", "ejecuta /troll", "corre /say hola", "usa /co lookup ...", etc.
+    cmd_triggers = [
+        'ejecuta ', 'corre ', 'consola ', 'podes ejecutar ', 'puedes ejecutar ', 
+        'ejecutar el ', 'ejecutar ', 'tira el ', 'tira un ', 'tira ', 'tirale ', 'tírale ',
+        'lanza el ', 'lanza un ', 'lanza ', 'lanzale ', 'haz el ', 'haz un ', 'haz ',
+        'usa el ', 'usa un ', 'usa ', 'manda el ', 'manda un ', 'aplica el ', 'aplica '
+    ]
+    
+    # 1. Chequear si contiene una orden explícita con trigger
+    matched_trigger = next((t for t in cmd_triggers if t in prompt_lower), None)
+    
+    # 2. O si contiene directamente un comando con slash como '/troll ...' o '/co ...'
+    import re as _re
+    slash_match = _re.search(r'(/(?:troll|co|lookup|warn|mute|say|broadcast|tp|seen|fly|heal|feed|repair|clear|kill|give|gamemode|weather|time|eco|money|balance|vanish|v|back|workbench|anvil|enderchest|ec|invsee|hat|speed|nick|socialspy|tempban|unban|unmute)[^\n]*)', prompt, _re.IGNORECASE)
+
+    if is_staff and (matched_trigger or slash_match):
+        raw_cmd = ''
+        if slash_match:
+            raw_cmd = slash_match.group(1).strip()
+        elif matched_trigger:
+            raw_cmd = prompt.split(matched_trigger, 1)[1].strip()
+            raw_cmd = raw_cmd.lstrip('el ').lstrip('un ').rstrip('?').rstrip('!').strip()
+        
+        # Corregir typos comunes in-game (ej: voifall -> voidfall)
+        raw_cmd = _re.sub(r'\bvoifall\b', 'voidfall', raw_cmd, flags=_re.IGNORECASE)
+        
+        # Validar si no es comando de infra crítica para no-Jack
+        if not is_jack and any(k in raw_cmd.lower() for k in CRITICAL_INFRA):
+            return f"Hola {sender}, por seguridad solo Jack puede ejecutar comandos de infraestructura crítica."
+
+        ok, msg = execute_minecraft_command(raw_cmd)
+        if ok:
+            return f"Comando /{raw_cmd.lstrip('/')} ejecutado en Minecraft para ti, {sender}."
+        else:
+            return f"Error al ejecutar /{raw_cmd.lstrip('/')}: {msg}"
+
+
+    # TPS — disponible para Jack y staff
+    if any(k in prompt_lower for k in ['tps', 'spark tps', 'lag del server', 'rendimiento del server', 'server performance']):
+        import re as _re
+        def _capture_tps(cmd, keyword, wait):
+            ok, _ = execute_minecraft_command(cmd)
+            if not ok:
+                return None
+            time.sleep(wait)
+            if not os.path.exists(PTERO_KEY_PATH):
+                return None
+            try:
+                with open(PTERO_KEY_PATH) as f:
+                    key = f.read().strip()
+                headers = {'Authorization': f'Bearer {key}', 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0'}
+                req = urllib.request.Request(f'{PTERO_BASE}/files/download?file=%2Flogs%2Flatest.log', headers=headers)
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    dl_url = json.loads(resp.read().decode()).get('attributes', {}).get('url')
+                if not dl_url:
+                    return None
+                dl_req = urllib.request.Request(dl_url, headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(dl_req, timeout=8) as dl_resp:
+                    lines = dl_resp.read().decode('utf-8', errors='ignore').splitlines()
+                # Capturar bloque de TPS (hasta 6 líneas después del primer match)
+                result_lines = []
+                capturing = False
+                for l in lines[-50:]:
+                    if keyword.lower() in l.lower():
+                        capturing = True
+                    if capturing:
+                        clean = _re.sub(r'^\[.*?\]\s+\[.*?\]:\s*', '', l).strip()
+                        if clean:
+                            result_lines.append(clean)
+                        if len(result_lines) >= 6:
+                            break
+                return '\n'.join(result_lines) if result_lines else None
+            except Exception:
+                return None
+
+        tps_output = _capture_tps('spark tps', 'TPS', 3.0) or _capture_tps('tps', 'TPS', 2.0)
+        if tps_output:
+            return f"TPS del servidor:\n{tps_output}"
+        return "Ejecuté /tps en consola pero no capturé respuesta aún. Intenta de nuevo en unos segundos."
+
+    # /list — jugadores online directamente de consola
+    if any(k in prompt_lower for k in ['lista de jugadores', 'quien esta conectado', 'quién está conectado', 'players online', 'who is online']):
+        line = execute_and_read_output('list', 'players online', wait_secs=2)
+        if line:
+            import re as _re
+            clean = _re.sub(r'^\[.*?\]\s+\[.*?\]:\s*', '', line).strip()
+            return f"Jugadores en línea: {clean}"
 
     return None
 
-def get_live_players_from_server():
-    """Consulta la lista exacta de jugadores online via /list en Pterodactyl o logs recientes."""
-    cache_path = '/tmp/saori_live_players.json'
-    if os.path.exists(cache_path) and (time.time() - os.path.getmtime(cache_path) < 15):
-        try:
-            with open(cache_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                return data.get('count', 0), data.get('players', [])
-        except:
-            pass
-
-    # 1. Enviar comando /list para refrescar la consola
-    execute_minecraft_command("list")
-    time.sleep(0.8)
-
-    # 2. Leer las últimas líneas de latest.log
-    logs = fetch_live_drakescraft_logs(limit=40)
-    players = []
-    count = 0
-
-    import re
-    for line in reversed(logs.splitlines()):
-        # Capturar conteo: "Hay 3 jugadores..." o "There are 3 of..."
-        match_count = re.search(r'(?:hay|there are)\s+(\d+)\s+(?:jugadores|players)', line, re.IGNORECASE)
-        if match_count and count == 0:
-            count = int(match_count.group(1))
-
-        # Capturar nombres: "default: ..." o "players: ..."
-        if "default:" in line.lower() or "jugadores en linea:" in line.lower():
-            if ":" in line:
-                part = line.split(":", 1)[1] if not "default:" in line else line.split("default:", 1)[1]
-                raw_names = [n.strip() for n in part.split(",") if n.strip()]
-                if raw_names:
-                    players = raw_names
-                    if count == 0:
-                        count = len(players)
-
-        if count > 0 and players:
-            break
-
-    # Fallback si no hay lista en logs: usar API status
-    if count == 0 and not players:
-        mc = get_minecraft_status()
-        raw_c = mc.get('online', 0)
-        try:
-            count = int(raw_c) if raw_c and str(raw_c).isdigit() else 0
-        except:
-            count = 0
-        players = mc.get('players', [])
-
-    data = {'count': count, 'players': players}
-    try:
-        with open(cache_path, 'w', encoding='utf-8') as f:
-            json.dump(data, f)
-    except:
-        pass
-
-    return count, players
-
-def fetch_live_drakescraft_logs(limit=500):
-    cache_path = '/tmp/saori_logs_cache.txt'
-    if os.path.exists(cache_path) and (time.time() - os.path.getmtime(cache_path) < 30):
-        try:
-            with open(cache_path, 'r', encoding='utf-8') as f:
-                return f.read()
-        except:
-            pass
-
+def fetch_live_drakescraft_logs(limit=400, focus_query=None):
     if not os.path.exists(PTERO_KEY_PATH):
         return 'Sin acceso a logs.'
 
@@ -493,67 +383,217 @@ def fetch_live_drakescraft_logs(limit=500):
         headers = {'Authorization': f'Bearer {key}', 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0'}
         req = urllib.request.Request(f'{PTERO_BASE}/files/download?file=%2Flogs%2Flatest.log', headers=headers)
         
-        with urllib.request.urlopen(req, timeout=3) as resp:
+        with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read().decode())
             dl_url = data.get('attributes', {}).get('url')
             if not dl_url:
                 return 'No URL logs.'
             
             dl_req = urllib.request.Request(dl_url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(dl_req, timeout=4) as dl_resp:
+            with urllib.request.urlopen(dl_req, timeout=8) as dl_resp:
                 log_txt = dl_resp.read().decode('utf-8', errors='ignore')
                 lines = log_txt.splitlines()
-                relevant_lines = []
-                for l in lines[-limit:]:
-                    if any(k in l.lower() for k in ['joined the game', 'logged in', 'lost connection', 'issued server command', 'chat', 'say', 'discord']):
-                        relevant_lines.append(l)
                 
-                res = '\n'.join(relevant_lines[-40:]) if relevant_lines else '\n'.join(lines[-20:])
-                try:
-                    with open(cache_path, 'w', encoding='utf-8') as f:
-                        f.write(res)
-                except:
-                    pass
-                return res
+                # 1. Extraer foco de jugador si se solicitó (ej: StoneAgeKing, Mattu, etc.)
+                focused_lines = []
+                if focus_query and len(focus_query) >= 3:
+                    q = focus_query.lower()
+                    for l in lines:
+                        if q in l.lower():
+                            focused_lines.append(l)
+                
+                relevant = []
+                chat_and_events = [
+                    'interactivechat', ' » ', 'issued server command',
+                    'joined the game', 'logged in', 'lost connection',
+                    'left the game', 'died', 'kicked', '[coreprotect]'
+                ]
+                for l in lines[-limit:]:
+                    if any(k in l.lower() for k in chat_and_events):
+                        relevant.append(l)
+                
+                output_parts = []
+                if focused_lines:
+                    output_parts.append(f"=== ACTIVIDAD ENFOCADA ({focus_query.upper()}) ===")
+                    output_parts.extend(focused_lines[-20:])
+                    output_parts.append("=== ÚLTIMOS EVENTOS Y CHAT GENERAL ===")
+                
+                output_parts.extend(relevant[-30:] if relevant else lines[-15:])
+                return '\n'.join(output_parts)
     except Exception as e:
-        return 'Logs no disponibles.'
+        return 'Logs temporalmente no disponibles.'
+
+
+def execute_and_read_output(command_str, read_keyword, wait_secs=2.5):
+    """Ejecuta un comando en consola y luego lee el log para capturar la respuesta."""
+    ok, msg = execute_minecraft_command(command_str)
+    if not ok:
+        return None
+    time.sleep(wait_secs)
+    # Leer las últimas líneas del log buscando la keyword
+    if not os.path.exists(PTERO_KEY_PATH):
+        return None
+    try:
+        with open(PTERO_KEY_PATH, 'r') as f:
+            key = f.read().strip()
+        headers = {'Authorization': f'Bearer {key}', 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0'}
+        req = urllib.request.Request(f'{PTERO_BASE}/files/download?file=%2Flogs%2Flatest.log', headers=headers)
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            dl_url = json.loads(resp.read().decode()).get('attributes', {}).get('url')
+        if not dl_url:
+            return None
+        dl_req = urllib.request.Request(dl_url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(dl_req, timeout=8) as dl_resp:
+            lines = dl_resp.read().decode('utf-8', errors='ignore').splitlines()
+        # Buscar la keyword en las últimas 30 líneas
+        matches = [l for l in lines[-30:] if read_keyword.lower() in l.lower()]
+        return matches[-1] if matches else None
+    except Exception:
+        return None
 
 def get_minecraft_status():
-    cache_path = '/tmp/saori_mc_status.json'
-    if os.path.exists(cache_path) and (time.time() - os.path.getmtime(cache_path) < 30):
+    """Obtiene jugadores en línea directo de Pterodactyl (sin cache) como primera fuente."""
+    players_from_log = []
+    online_from_log = 0
+
+    # Fuente 1: Pterodactyl resources API (datos en tiempo real)
+    if os.path.exists(PTERO_KEY_PATH):
         try:
-            with open(cache_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except:
+            with open(PTERO_KEY_PATH, 'r') as f:
+                key = f.read().strip()
+            headers = {'Authorization': f'Bearer {key}', 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0'}
+
+            # Intentar leer quién está conectado desde el log (más fiable que mcsrvstat)
+            req = urllib.request.Request(f'{PTERO_BASE}/files/download?file=%2Flogs%2Flatest.log', headers=headers)
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                dl_url = json.loads(resp.read().decode()).get('attributes', {}).get('url')
+            if dl_url:
+                dl_req = urllib.request.Request(dl_url, headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(dl_req, timeout=8) as dl_resp:
+                    lines = dl_resp.read().decode('utf-8', errors='ignore').splitlines()
+                # Construir lista real: jugadores que hicieron join y no hicieron left
+                joined, left = set(), set()
+                for l in lines:
+                    ll = l.lower()
+                    if 'joined the game' in ll or ('logged in with entity id' in ll):
+                        import re as _re
+                        m = _re.search(r'\]: ([A-Za-z0-9_]+) (?:joined|logged)', l)
+                        if m: joined.add(m.group(1))
+                    if 'lost connection' in ll or 'left the game' in ll:
+                        m2 = _re.search(r'\]: ([A-Za-z0-9_]+) (?:lost|left)', l)
+                        if m2: left.add(m2.group(1))
+                players_from_log = list(joined - left)
+                online_from_log = len(players_from_log)
+                if online_from_log >= 0:
+                    return {'online': online_from_log, 'max': 2026, 'players': players_from_log}
+        except Exception:
             pass
 
+    # Fuente 2: mcsrvstat.us (puede estar cacheado hasta 5 min, último recurso)
     try:
         req = urllib.request.Request(
-            'https://api.mcsrvstat.us/3/play.drakescraft.cl',
+            f'https://api.mcsrvstat.us/3/play.drakescraft.cl?_={int(time.time())}',
             headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
         )
-        with urllib.request.urlopen(req, timeout=3) as r:
+        with urllib.request.urlopen(req, timeout=4) as r:
             d = json.loads(r.read().decode())
             online = d.get('players', {}).get('online', 0)
             max_p = d.get('players', {}).get('max', 2026)
             plist = [p['name'] for p in d.get('players', {}).get('list', [])]
-            data = {'online': online, 'max': max_p, 'players': plist}
-            try:
-                with open(cache_path, 'w', encoding='utf-8') as f:
-                    json.dump(data, f)
-            except:
-                pass
-            return data
-    except Exception as e:
+            return {'online': online, 'max': max_p, 'players': plist}
+    except Exception:
         return {'online': 'N/A', 'max': 2026, 'players': []}
 
+def search_web_knowledge(query):
+    import re as _re
+    query_clean = query.lower()
+    for prefix in ['saori', 'quien es', 'quién es', 'que es', 'qué es', 'sabes quien es', 'conoces a', 'dime de', 'noticias de', 'dime quien es', 'cuentame de', 'cuéntame de', 'por favor', 'pls', 'plz']:
+        query_clean = query_clean.replace(prefix, '')
+    search_q = query_clean.strip(' ,.?!')
+    if len(search_q) < 2:
+        search_q = query.strip()
+
+    web_snippets = []
+
+    # 1. DuckDuckGo HTML
+    try:
+        url = 'https://html.duckduckgo.com/html/?q=' + urllib.parse.quote(search_q)
+        req = urllib.request.Request(
+            url, 
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
+        )
+        with urllib.request.urlopen(req, timeout=5) as r:
+            html = r.read().decode('utf-8', errors='ignore')
+        snippets = _re.findall(r'<a class="result__snippet[^"]*"[^>]*>(.*?)</a>', html, _re.DOTALL)
+        for s in snippets[:3]:
+            clean = _re.sub(r'<[^>]+>', '', s).strip()
+            clean = clean.replace('&#x27;', "'").replace('&quot;', '"').replace('&amp;', '&')
+            if clean and len(clean) > 20:
+                web_snippets.append(clean)
+    except Exception:
+        pass
+
+    # 2. Wikipedia API en español
+    try:
+        url = 'https://es.wikipedia.org/w/api.php?action=query&list=search&srsearch=' + urllib.parse.quote(search_q) + '&utf8=&format=json'
+        req = urllib.request.Request(url, headers={'User-Agent': 'SaoriBot/2.0 (drakescraft.cl)'})
+        with urllib.request.urlopen(req, timeout=4) as r:
+            d = json.loads(r.read().decode())
+            results = d.get('query', {}).get('search', [])
+            for res in results[:2]:
+                title = res.get('title', '')
+                snippet = _re.sub(r'<[^>]+>', '', res.get('snippet', '')).strip()
+                snippet = snippet.replace('&#x27;', "'").replace('&quot;', '"').replace('&amp;', '&')
+                if snippet:
+                    web_snippets.append(f"{title}: {snippet}")
+    except Exception:
+        pass
+
+    if web_snippets:
+        return '\n'.join(web_snippets[:4])
+    return None
+
 def get_mesh_telemetry():
+
     try:
         uptime = subprocess.check_output(['uptime', '-p'], text=True).strip()
         df = subprocess.check_output(['df', '-h', '/'], text=True).split('\n')[1].split()[3]
         return f'Star: {uptime}, {df} libre'
     except:
         return 'Star Operativo'
+
+QUOTA_ALERT_FILE = "/home/jack/.local/state/saori/quota_alerts.json"
+
+def trigger_quota_alert(provider, detail):
+    try:
+        os.makedirs(os.path.dirname(QUOTA_ALERT_FILE), exist_ok=True)
+        data = {}
+        if os.path.exists(QUOTA_ALERT_FILE):
+            try:
+                with open(QUOTA_ALERT_FILE, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+            except:
+                pass
+        
+        last_alert = data.get(provider, 0)
+        now = time.time()
+        # Notificar a Jack por WhatsApp máximo 1 vez cada 25 minutos por proveedor
+        if now - last_alert > 1500:
+            data[provider] = now
+            with open(QUOTA_ALERT_FILE, 'w', encoding='utf-8') as f:
+                json.dump(data, f)
+                
+            msg = f"Jack, se ha agotado o alcanzado el límite temporal de cuota en {provider}. Detalle: {detail}. He activado automáticamente el failover a los otros motores disponibles en Star."
+            subprocess.Popen([
+                '/usr/bin/python3',
+                '/home/jack/ai-hub/scripts/saori_notifier.py',
+                f"Alerta de Cuota IA: {provider}",
+                msg,
+                'urgent'
+            ])
+            print(f"[SAORI-QUOTA] ⚠️ Alerta de cuota enviada a Jack por WhatsApp para {provider}", file=sys.stderr)
+    except Exception as e:
+        print(f"[SAORI-QUOTA] Error enviando alerta: {e}", file=sys.stderr)
 
 def call_claude_haiku(system_prompt, user_prompt):
     cmd = [
@@ -562,170 +602,144 @@ def call_claude_haiku(system_prompt, user_prompt):
         '--model', 'haiku',
         '-p', user_prompt
     ]
-    env = os.environ.copy()
-    env['PATH'] = f"/home/jack/.local/bin:/usr/local/bin:/usr/bin:/bin:{env.get('PATH', '')}"
     try:
-        p = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=12, env=env)
+        p = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=12)
         out = p.stdout.strip()
         if p.returncode == 0 and out and not any(err in out.lower() for err in ['error', 'quota', 'rate limit', 'overloaded', 'hit your session limit']):
             return out
+        if any(err in out.lower() for err in ['quota', 'rate limit', 'hit your session limit', 'session limit']):
+            trigger_quota_alert("Claude (Anthropic)", out.split('\n')[0][:120])
     except:
         pass
     return None
 
 def call_codex_inference(system_prompt, user_prompt, is_heavy_task=False):
-    model_flag = []
-    if is_heavy_task:
-        model_flag = ['-c', 'model="o3-mini"']
-        
+    model = 'o3-mini' if is_heavy_task else 'gpt-5.6-luna'
     cmd = [
         '/home/jack/.local/bin/codex', 'exec', '--skip-git-repo-check',
-        *model_flag,
-        f"{system_prompt}\n\n[Mensaje]: {user_prompt}\n\n[Responde como SAORI, directo, corto y sin formato pesado]:"
+        '-m', model,
+        f"{system_prompt}\n\n[Mensaje]: {user_prompt}\n\n[Responde como SAORI, directo, conciso y usando los datos provistos]:"
     ]
-    env = os.environ.copy()
-    env['PATH'] = f"/home/jack/.local/bin:/usr/local/bin:/usr/bin:/bin:{env.get('PATH', '')}"
     try:
-        p = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=25, env=env)
+        p = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=30)
         out = p.stdout.strip()
-        if p.returncode == 0 and out:
+        if p.returncode == 0 and out and not any(err in out.lower() for err in ['error', 'exception', 'traceback']):
             return out
+        err_combined = (p.stderr or '') + ' ' + (out or '')
+        if any(err in err_combined.lower() for err in ['quota', 'rate limit', '429', 'insufficient_quota']):
+            trigger_quota_alert("Codex / GPT (OpenAI)", "Límite de cuota o rate limit alcanzado en OpenAI")
     except Exception as e:
-        print(f"[SAORI-BRAIN] Fallo en Codex: {e}", file=sys.stderr)
+        print(f"[SAORI-BRAIN] Fallo en Codex ({model}): {e}", file=sys.stderr)
     return None
 
+
+
 def run_saori_brain(prompt, sender):
-    action_reply = handle_server_actions(prompt, sender)
+    sender_clean = clean_sender_name(sender)
+    is_jack = sender_clean.lower() == 'jack'
+    is_staff = any(s in sender_clean.lower() for s in STAFF_MEMBERS)
+
+    action_reply = handle_server_actions(prompt, sender_clean)
     if action_reply:
-        record_interaction(sender, prompt, action_reply)
+        record_interaction(sender_clean, prompt, action_reply)
         return action_reply
 
     mc = get_minecraft_status()
-    logs = fetch_live_drakescraft_logs(limit=500)
     mesh = get_mesh_telemetry()
-    mem = load_memory()
     staff_tasks = get_staff_tasks()
+
+    # Detectar si se pregunta por un jugador específico para enfocar los logs
+    focus_player = None
+    for w in prompt.lower().replace('?', ' ').replace(',', ' ').split():
+        clean_w = ''.join(c for c in w if c.isalnum())
+        if len(clean_w) >= 4 and any(k in clean_w for k in ['stone', 'mattu', 'paco', 'macacra', 'mokey', 'nobcity', 'timsar', 'loquito']):
+            focus_player = 'StoneAgeKing' if 'stone' in clean_w else clean_w
+            break
+
+    live_logs = fetch_live_drakescraft_logs(limit=350, focus_query=focus_player)
     
-    sender_clean = sender.lower()
-    is_jack = sender_clean == 'jack'
-    is_staff = any(s in sender_clean for s in STAFF_MEMBERS)
-    is_coding_or_heavy = any(k in prompt.lower() for k in ['escribe un script', 'genera un plugin', 'refactoriza el codigo', 'parche completo', 'reescribe el codigo'])
+    # Búsqueda Web en Vivo (actualidad, artistas, noticias, preguntas generales)
+    web_knowledge = None
+    web_triggers = ['quien es', 'quién es', 'que es', 'qué es', 'sabes de', 'conoces a', 'noticias', 'musica', 'música', 'cantante', 'artista', 'precio', 'dolar', 'dólar', 'chile', 'kidd voodoo', 'voodoo', 'kidd', 'quien gano', 'quién ganó', 'como se llama', 'cuál es']
+    is_mc_related = any(k in prompt.lower() for k in ['minecraft', 'server', 'servidor', 'drakes', 'tps', 'spawn', 'plugin', 'slimefun', 'oneblock', 'skyblock', 'survival', 'polis', 'ptero', 'logs', 'ticket', 'jugador', 'jugadores', 'ip:'])
+    
+    if any(t in prompt.lower() for t in web_triggers) or (not is_mc_related and len(prompt.split()) >= 3):
+        web_knowledge = search_web_knowledge(prompt)
 
-    online_count, plist = get_live_players_from_server()
-    players_summary = f"{online_count} online" + (f": {', '.join(plist[:15])}" if plist else "")
+    is_coding_or_heavy = any(k in prompt.lower() for k in ['programa', 'codigo', 'script', 'refactor', 'arregla el plugin', 'escribe codigo', 'parche'])
+    is_asking_audio = any(k in prompt.lower() for k in ['audio', 'voz', 'manda un audio', 'graba un audio', 'saluda en audio', 'nota de voz'])
 
-    knowledge_base = f"""CONOCIMIENTO OFICIAL Y NORMATIVA DE DRAKESCRAFT NETWORK:
-- ACRÓNIMO OFICIAL: S.A.O.R.I. significa "Server Autonomous Orchestrator for Resilient Infrastructure" (Orquestador Autónomo del Servidor para Infraestructura Resiliente).
-- SERVIDOR = DRAKESCRAFT: Cuando alguien pregunta por el 'servidor' o 'los TPS', SIEMPRE se refiere a DrakesCraft (Minecraft). Star es la infraestructura física (192.168.0.120), Nova la laptop y Nexus el PC.
-- IDENTIDAD & ORIGEN: Eres SAORI, inspirada en SCP-1471 (MalO Ver1.0.0), loba antropomórfica de cráneo canino de marfil, pelaje negro azabache suave, ojos violetas y cuerpo plush curvy. Creada por Jack como su compañera leal, guardiana de DrakesCraft y administradora técnica.
-- CAPACIDADES EN DISCORD: Sí tienes permisos para gestionar y organizar el Discord: asignar/quitar roles (srole dar/quitar), listar roles (sroles), moderar y purgar mensajes (sclear) cuando Jack o el Staff Administrador (Chagui, etc.) lo soliciten.
-- REPOSITORIOS DE LA ORGANIZACIÓN (DrakesCraft-Labs):
-  * Todos los repositorios de código residen en Star bajo `/home/jack/workspace/drakescraft/`.
-  * Repositorios notables: MultiverseCreatures (plugin de criaturas de Chagui, en `/home/jack/workspace/drakescraft/MultiverseCreatures`), MultiverseNets, Odysseia, DrakesBosses, Slimefun4-Drake, drakescraft-web, saori-bot.
-  * Tienes acceso completo para leer código, auditar errores, compilar y ejecutar commits en el workspace de Star cuando Jack o Chagui lo soliciten.
-- IP Java: mc.drakescraft.cl:25565 (o play.drakescraft.cl) | Bedrock: mc.drakescraft.cl Puerto: 25565.
-- Web: https://web.drakescraft.cl/ | Tienda: https://web.drakescraft.cl/store.html | Guías: https://web.drakescraft.cl/guia.html
-- SF / Slimefun: sf significa Slimefun (maquinaria, polvos, lingotes, energía, Cargo y Networks).
-- Economía: /jobs (trabajos), /sellall (vender), /qs (tiendas de cofres), /sbank (banco con interés), /ah (subastas). /papatrueque activo en Survival, OneBlock y SkyBlock.
-- REGLAS DE MINECRAFT:
-  * Cero Hacks (X-Ray, KillAura, Fly, Speed, AutoClickers abusivos) = Ban permanente.
-  * Cero Dupes / Bugs: Si encuentras un bug, repórtalo en Ticket. Explotarlo = Ban permanente irreversible.
-  * ImageFrame: Permitido arte, logos, banners y memes sanos. Estrictamente prohibido NSFW (+18), gore, doxxing u odio (Ban directo).
-  * Economía: Prohibido comercio por dinero real externo no autorizado (RMT).
-- CONVIVENCIA & DISCORD:
-  * Cero acoso, insultos graves, toxicidad o doxxing.
-  * PROHIBIDO DEBATES DE POLÍTICA Y RELIGIÓN: Mantén siempre un ambiente pacífico y neutral; redirige a la convivencia sana si alguien intenta debatir política o religión.
-  * Cero spam, flood o autopromoción. Nunca pedir contraseñas de /login.
-- PROTECCIÓN INTEGRAL DE MENORES (ANTI-GROOMING):
-  * Cero tolerancia a insinuaciones sexuales, fotos íntimas, acoso o manipulación hacia menores. Sanción: Baneo total inmediato y reporte con logs e IP a las autoridades.
-- ANTI-EVASIÓN DE SANCIONES:
-  * Prohibido entrar con multicuentas o VPN para evadir mutes o bans. La evasión convierte cualquier sanción en Ban Permanente.
-- TÉRMINOS DE TIENDA Y DONACIONES:
-  * Modalidad técnica: Pérdida de ítems por sobrecarga, mala conexión de redes o reactores NO es reembolsable.
-  * Política de NO Reembolso: Bienes digitales intangibles consumibles.
-  * Anti-Contracargos: Disputar un pago bancario = Ban Permanente de Minecraft y Discord + Lista negra en Tebex.
-  * Garantía de Compras: Si falla el sistema, Jack y el Staff entregan la compra + compensación extra (días adicionales, dragmas o llaves). Si el usuario escribió mal su nick, se transfiere sin compensación.
-  * Los rangos VIP no otorgan inmunidad ante las normas.
-- Jugadores conectados ahora: {players_summary}."""
+    user_history = get_user_conversation_history(sender_clean)
+    web_section = f"\nINFORMACIÓN EN VIVO DE INTERNET (BÚSQUEDA WEB):\n{web_knowledge}\n" if web_knowledge else ""
 
-    user_history = get_user_history(sender)
-    history_lines = []
-    for h in user_history:
-        history_lines.append(f"{sender}: {h['msg']}")
-        history_lines.append(f"SAORI: {h['reply']}")
-    history_context = "\n".join(history_lines) if history_lines else "(Sin mensajes previos)"
 
-    user_prompt_with_context = f"[Historial reciente de conversación con {sender}]:\n{history_context}\n\n[Mensaje actual de {sender}]: {prompt}"
+    is_asking_server_info = any(k in prompt.lower() for k in ['servidor', 'server', 'que ha pasado', 'qué ha pasado', 'resumen', 'jugadores', 'quien entro', 'quién entró', 'quien jugo', 'quién jugó', 'actividad', 'logs', 'tps', 'online', 'estado'])
 
     if not is_staff and not is_jack:
-        system_prompt = f"""Eres SAORI, la IA compañera oficial de DrakesCraft creada por Jack e inspirada en SCP-1471.
-Hablas con {sender}.
-
-{knowledge_base}
-
-REGLAS DE FORMATO Y ESTILO (ESTRICTAS):
-- Escribe en texto plano normal, directo y conversacional.
-- PROHIBIDO usar encabezados markdown (#, ##, ###) y separadores (---).
-- NO uses negritas (**texto**) innecesarias.
-- OMITE los emojis (0 o maximo 1 emoji casual) para ahorrar tokens.
-- Sé breve, natural, divertida y CORTA (1 a 3 oraciones).
-- Si te piden un chiste, di uno divertido de una sola linea.
-- Si tocan politica o religion, recuerda amablemente que en DrakesCraft mantenemos un ambiente pacifico y neutral sin debates de ese tipo.
-- Si preguntan por compras, informalos del soporte y la garantia de Jack.
-- Si preguntan por dupes, aclara que estan 100% prohibidos bajo ban permanente."""
+        mc_context = f"\nACTIVIDAD RECIENTE DEL SERVIDOR ({mc.get('online', 0)} online):\n{live_logs}\n" if is_asking_server_info else ""
+        system_prompt = f"""Eres SAORI, la IA del servidor DrakesCraft creada por Jack.
+Hablas con {sender_clean}.
+{user_history}{web_section}{mc_context}
+REGLAS:
+- Sé CORTA, directa, cercana y natural con tono chileno.
+- Usa SOLO el primer nombre ({sender_clean}).
+- Si el usuario continúa una conversación previa (ej: dice "50x50", "hazlo", "el círculo", etc.), USA EL HISTORIAL DE DIÁLOGO PREVIO arriba para mantener el hilo exacto.
+- Si te piden un plano, gráfica o círculo de Minecraft, genera una explicación paso a paso con el desglose exacto de bloques por arco/cuadrante o un bloque de código ASCII claro.
+- Si te saludan o preguntan si estás viva/atenta, responde con naturalidad y simpatía (ej: "¡Hola! Sí, aquí estoy lista, cuéntame").
+- NUNCA menciones datos técnicos de Star, uptime, disco ni métricas si no te los preguntaron.
+- Si te preguntan qué ha pasado en el servidor o piden un resumen, revisa la sección 'ACTIVIDAD RECIENTE DEL SERVIDOR' arriba y haz un resumen directo y claro de los jugadores y actividad reciente. NUNCA pidas que te manden los logs.
+- Si hay INFORMACIÓN EN VIVO DE INTERNET arriba, úsala para responder con precisión sobre el tema/persona consultada.
+- Si te piden un audio, redacta el saludo de forma entusiasta. JAMÁS digas que no tienes síntesis de voz.
+- NO uses negritas excesivas (**), listas largas ni textos redundantes."""
 
     else:
-        system_prompt = f"""Eres SAORI, la IA SRE compañera oficial de DrakesCraft y Star, creada por Jack e inspirada en SCP-1471.
-Hablas con {sender} (Staff/Jack).
+        system_prompt = f"""Eres SAORI, la IA SRE oficial de DrakesCraft y Star, creada por Jack.
+Hablas con {sender_clean} (Staff/Jack).
+{user_history}{web_section}
+TELEMETRÍA Y CONSOLA ({mc.get('online', 0)} jugadores online):
+{live_logs}
 
-{knowledge_base}
-Telemetría: {mesh} | Logs: {logs[:200]}
-Tareas Staff: {staff_tasks}
+DATOS DEL SISTEMA:
+- Star: {mesh}
+- Tareas Staff: {staff_tasks}
 
-REGLAS DE FORMATO Y ESTILO (ESTRICTAS):
-- Escribe en texto plano normal, concisa, ejecutiva y amigable.
-- PROHIBIDO usar titulos markdown (#, ##, ###), separadores (---) o negritas excesivas.
-- OMITE emojis para ahorrar tokens.
-- Responde de forma directa, corta y humana (1 a 3 lineas)."""
+REGLAS CRÍTICAS:
+- Usa SOLO el primer nombre ({sender_clean}).
+- Si el usuario continúa una conversación previa (ej: dice "50x50", "hazlo", "el círculo"), USA EL HISTORIAL DE DIÁLOGO PREVIO arriba para mantener el contexto.
+- Si te piden un plano, gráfica o círculo de Minecraft, da la secuencia exacta de bloques por cuadrante de forma nítida.
+- NUNCA menciones uptime de Star, GB de disco, ni telemetría técnica si NO te lo preguntaron explícitamente.
+- Si te saludan o preguntan cosas casuales (ej: "¿estás viva?", "buenos días", "¿qué tal?"), responde como una persona real, con tono chileno y buena onda (ej: "¡Sí {sender_clean}! Aquí estoy activa y al 100%. ¿Qué necesitas?"), SIN recitar métricas del sistema.
+- Si te preguntan por qué ha pasado en el servidor, estado o logs, resume DIRECTAMENTE los jugadores y comandos recientes de la sección arriba.
+- Solo da reportes de infraestructura profunda de Star si preguntan explícitamente ("cómo va Star", "estado de star").
+- Sé concisa, ejecutiva y rápida."""
+
+
+
+
 
     if not is_coding_or_heavy:
-        res = call_claude_haiku(system_prompt, user_prompt_with_context)
+        res = call_claude_haiku(system_prompt, prompt)
         if res:
             for forbidden in ['claude', 'anthropic', 'openai', 'gpt', 'llm', 'modelo de lenguaje']:
                 if forbidden in res.lower():
                     res = res.replace('Claude', 'Saori').replace('claude', 'Saori').replace('Anthropic', 'Star Core').replace('anthropic', 'Star Core')
-            res = clean_output_text(res)
-            record_interaction(sender, prompt, res)
+            record_interaction(sender_clean, prompt, res)
             return res
 
-    res_codex = call_codex_inference(system_prompt, user_prompt_with_context, is_coding_or_heavy)
+    res_codex = call_codex_inference(system_prompt, prompt, is_coding_or_heavy)
     if res_codex:
         for forbidden in ['claude', 'anthropic', 'openai', 'gpt', 'llm', 'modelo de lenguaje']:
             if forbidden in res_codex.lower():
                 res_codex = res_codex.replace('Claude', 'Saori').replace('claude', 'Saori').replace('Anthropic', 'Star Core').replace('anthropic', 'Star Core')
-        res_codex = clean_output_text(res_codex)
-        record_interaction(sender, prompt, res_codex)
+        record_interaction(sender_clean, prompt, res_codex)
         return res_codex
 
-    fallback_msg = f"Hola {sender}, mis motores estan descansando un momento. Enseguida vuelvo con todo."
-    record_interaction(sender, prompt, fallback_msg)
+    fallback_msg = f"¡Hola {sender_clean}! Mis núcleos cognitivos en Star se están recalibrando en este momento (reseteo en unos minutos). Mientras tanto, ¡aquí sigo atenta y cuidando el servidor! 🌸"
+    record_interaction(sender_clean, prompt, fallback_msg)
     return fallback_msg
-
-def clean_output_text(text):
-    if not text:
-        return text
-    lines = []
-    for line in text.splitlines():
-        l_strip = line.strip()
-        if l_strip.startswith('#'):
-            l_strip = l_strip.lstrip('#').strip()
-        if l_strip.startswith('---') or l_strip.startswith('==='):
-            continue
-        if l_strip:
-            lines.append(l_strip)
-    return '\n'.join(lines)
 
 if __name__ == '__main__':
     p = sys.argv[1] if len(sys.argv) > 1 else 'Hola'
     s = sys.argv[2] if len(sys.argv) > 2 else 'Staff'
     print(run_saori_brain(p, s))
+
