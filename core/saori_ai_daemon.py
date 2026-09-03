@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-import json, subprocess, os, time
-from http.server import HTTPServer, BaseHTTPRequestHandler
+import json, subprocess, os, time, sys
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 class SaoriAIHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         content_len = int(self.headers.get('Content-Length', 0))
-        body = self.rfile.read(content_len).decode('utf-8')
+        body = self.rfile.read(content_len).decode('utf-8', errors='ignore')
         
         if self.path == '/chat':
             try:
@@ -16,13 +16,21 @@ class SaoriAIHandler(BaseHTTPRequestHandler):
                 p = subprocess.run(
                     ['/usr/bin/python3', '/home/jack/ai-hub/scripts/saori_executor.py', prompt, sender],
                     stdin=subprocess.DEVNULL,
-                    capture_output=True, text=True, timeout=30
+                    capture_output=True, text=True, timeout=25
                 )
                 res_text = p.stdout.strip()
                 if not res_text:
-                    res_text = 'Hola, estoy procesando en Star. Enseguida te respondo.'
+                    res_text = f"Hola {sender}, estoy procesando la información en Star. ¿Qué necesitas?"
                 
                 resp = json.dumps({'response': res_text}, ensure_ascii=False).encode('utf-8')
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json; charset=utf-8')
+                self.send_header('Content-Length', str(len(resp)))
+                self.end_headers()
+                self.wfile.write(resp)
+            except subprocess.TimeoutExpired:
+                fallback = f"Hola {sender}, la consulta tardó más de lo esperado en responder. Inténtalo de nuevo en unos segundos."
+                resp = json.dumps({'response': fallback}, ensure_ascii=False).encode('utf-8')
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json; charset=utf-8')
                 self.send_header('Content-Length', str(len(resp)))
@@ -58,7 +66,7 @@ class SaoriAIHandler(BaseHTTPRequestHandler):
             try:
                 data = json.loads(body)
                 text = data.get('text', 'Hola')
-                out_path = data.get('out_path', '/tmp/saori_speech.opus')
+                out_path = data.get('out_path', f'/tmp/saori_speech_{int(time.time() * 1000)}.opus')
                 
                 subprocess.run(
                     ['/usr/bin/python3', '/home/jack/ai-hub/scripts/saori_tts.py', text, out_path],
@@ -102,8 +110,8 @@ class SaoriAIHandler(BaseHTTPRequestHandler):
         self.wfile.write(err_resp)
 
 def run():
-    server = HTTPServer(('127.0.0.1', 8089), SaoriAIHandler)
-    print('Saori AI Daemon (Chat + Voice + Image Engine) corriendo en http://127.0.0.1:8089')
+    server = ThreadingHTTPServer(('127.0.0.1', 8089), SaoriAIHandler)
+    print('Saori AI Daemon (Multithreaded Concurrent Engine) corriendo en http://127.0.0.1:8089')
     server.serve_forever()
 
 if __name__ == '__main__':

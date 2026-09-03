@@ -237,6 +237,10 @@ function normalizeDiscordName(name, fallback = 'amigo') {
     for (const ch of s) {
         res += smallCapsMap[ch] || ch;
     }
+    // Normalizar fuentes matematicas, cursivas, negritas y diacriticos
+    try {
+        res = res.normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+    } catch (e) {}
     res = res.replace(/[^a-zA-Z0-9_]/g, ' ').trim().split(/\s+/)[0];
     if (!res || res.length < 2) {
         return fallback;
