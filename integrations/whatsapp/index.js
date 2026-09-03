@@ -48,12 +48,18 @@ function detectLanguage(text) {
 }
 
 // ------------------------------------------------------------------
-// SANITIZACIÓN Y NORMALIZACIÓN DE NOMBRE DE STAFF / USUARIO
+// SANITIZACIÓN Y NORMALIZACIÓN DE NOMBRE DE STAFF / USUARIO (ANTI-SPOOFING)
 // ------------------------------------------------------------------
-function cleanSenderName(raw) {
-    if (!raw) return 'Staff';
+function cleanSenderName(raw, isVerifiedJack = false) {
+    if (isVerifiedJack) return 'Jack';
+    if (!raw) return 'Usuario';
     const lower = raw.toLowerCase();
-    if (JACK_NAMES.some(n => lower.includes(n))) return 'Jack';
+
+    // BLOQUEO ANTI-SPOOFING: Si alguien intenta llamarse Jack o Pablo sin ser el teléfono verificado de Jack
+    if (JACK_NAMES.some(n => lower.includes(n))) {
+        return 'Usuario';
+    }
+
     if (lower.includes('emilio') || lower.includes('em1lio')) return 'Emilio';
     if (lower.includes('pasient') || lower.includes('pacox')) return 'Pasiente';
     if (lower.includes('pepino'))  return 'Pepino';
@@ -70,7 +76,7 @@ function cleanSenderName(raw) {
 
     const first = s.trim().split(/[\s_\-|✦✧]/)[0];
     const cleanFirst = first.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ]/g, '').trim();
-    return cleanFirst ? (cleanFirst.charAt(0).toUpperCase() + cleanFirst.slice(1).toLowerCase()) : 'Staff';
+    return cleanFirst ? (cleanFirst.charAt(0).toUpperCase() + cleanFirst.slice(1).toLowerCase()) : 'Usuario';
 }
 
 // ------------------------------------------------------------------
@@ -207,8 +213,8 @@ function startWebhookServer() {
             res.writeHead(404); res.end();
         }
     });
-    server.listen(WEBHOOK_PORT, '0.0.0.0', () => {
-        console.log(`[SAORI-WA] Webhook escuchando en :${WEBHOOK_PORT}`);
+    server.listen(WEBHOOK_PORT, '127.0.0.1', () => {
+        console.log(`[SAORI-WA] Webhook seguro escuchando localmente en 127.0.0.1:${WEBHOOK_PORT}`);
     });
 }
 
@@ -297,8 +303,10 @@ async function startWhatsAppBot() {
             // Ignorar mensajes internos de SAORI
             if (['SAORI Core Status', 'INFORME SRE', 'ALERTA DE TICKET'].some(s => messageContent.includes(s))) continue;
 
-            const senderName  = cleanSenderName(msg.pushName || '');
-            const isJack      = senderName === 'Jack';
+            const senderJid   = msg.key.participant || msg.key.remoteJid || '';
+            const senderPhone = senderJid.replace(/[^0-9]/g, '');
+            const isJack      = senderPhone === '56963477776' || senderPhone.endsWith('63477776');
+            const senderName  = cleanSenderName(msg.pushName || '', isJack);
             const textLower   = messageContent.toLowerCase();
 
             console.log(`[SAORI-WA] 📨 [${senderName} en ${isGroup ? 'grupo' : 'privado'}]: ${messageContent}`);

@@ -207,6 +207,15 @@ def execute_minecraft_command(command_str):
     if not os.path.exists(PTERO_KEY_PATH):
         return False, "Falta llave Pterodactyl"
     try:
+        # Sanitizar estrictamente: remover saltos de línea, carriage return y caracteres nulos
+        cmd_clean = command_str.replace('\r', ' ').replace('\n', ' ').replace('\0', '').strip().lstrip('/')
+        
+        # Bloqueo anti-inyección de escalado de privilegios o destrucción de servidor
+        cmd_lower = cmd_clean.lower()
+        FORBIDDEN_CONSOLE = ['op ', 'deop ', 'pex ', 'lp user', 'luckperms user', 'sudo ']
+        if any(cmd_lower.startswith(f) or f" {f}" in cmd_lower for f in FORBIDDEN_CONSOLE):
+            return False, "Comando bloqueado por el cortafuegos de seguridad de Saori"
+
         with open(PTERO_KEY_PATH, 'r') as f:
             key = f.read().strip()
         headers = {
@@ -215,7 +224,6 @@ def execute_minecraft_command(command_str):
             'Content-Type': 'application/json',
             'User-Agent': 'Mozilla/5.0'
         }
-        cmd_clean = command_str.lstrip('/')
         data = json.dumps({'command': cmd_clean}).encode()
         req = urllib.request.Request(f'{PTERO_BASE}/command', data=data, headers=headers)
         with urllib.request.urlopen(req, timeout=5) as resp:

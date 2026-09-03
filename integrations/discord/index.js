@@ -81,7 +81,7 @@ const SMALL_CAPS_MAP = {
     'ʏ': 'y', 'ᴢ': 'z'
 };
 
-function cleanUserName(rawName, isJack) {
+function cleanUserName(rawName, isJack, isStaff = false) {
     if (isJack) return 'Jack';
     if (!rawName) return 'Usuario';
     
@@ -107,7 +107,28 @@ function cleanUserName(rawName, isJack) {
     }
     
     let firstLower = first.toLowerCase();
-    if (firstLower.includes('pablo') || firstLower.includes('jack')) return 'Jack';
+
+    // BLOQUEO ANTI-SPOOFING: Nadie excepto Jack real puede ser reconocido como Jack
+    if (firstLower.includes('pablo') || firstLower.includes('jack')) {
+        return isJack ? 'Jack' : 'Usuario';
+    }
+
+    // Para nombres de Staff, si no tiene rol de Staff en el servidor, no asignarle privilegios de Staff
+    const isStaffName = (
+        firstLower.includes('emilio') || firstLower.includes('em1lio') ||
+        firstLower.includes('pasiente') || firstLower.includes('pacox') ||
+        firstLower.includes('pepino') || firstLower.includes('chagui') ||
+        firstLower.includes('lauti') || firstLower.includes('lautaro') ||
+        firstLower.includes('macgyver') || firstLower.includes('tomi') ||
+        firstLower.includes('bytomixd') || firstLower.includes('tomixd') ||
+        firstLower.includes('tomas') || firstLower.includes('kika') ||
+        firstLower.includes('derem')
+    );
+
+    if (isStaffName && !isStaff) {
+        return 'Usuario';
+    }
+
     if (firstLower.includes('emilio') || firstLower.includes('em1lio')) return 'Emilio';
     if (firstLower.includes('pasiente') || firstLower.includes('pacox')) return 'Pasiente';
     if (firstLower.includes('pepino')) return 'Pepino';
@@ -715,7 +736,11 @@ client.on('messageCreate', async (message) => {
     if (!shouldRespond) return;
 
     let rawSender = message.member?.displayName || message.author.username;
-    let senderName = cleanUserName(rawSender, isJack);
+    const isStaffMember = isJack || (message.member?.roles.cache.some(r => {
+        const rn = r.name.toLowerCase();
+        return rn.includes('staff') || rn.includes('admin') || rn.includes('mod') || rn.includes('builder') || rn.includes('dev');
+    }) ?? false);
+    let senderName = cleanUserName(rawSender, isJack, isStaffMember);
 
     // =========================================================================
     // COMANDO SHELP (GUÍA COMPLETA DE COMANDOS SAORI)
