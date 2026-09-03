@@ -13,13 +13,12 @@ const {
     Events
 } = require('discord.js');
 const fetch = require('node-fetch');
-const { execFile } = require('child_process');
+const { spawn, execFile } = require('child_process');
+const http = require('http');
 const fs = require('fs');
 const os = require('os');
-const { DisTube } = require('distube');
+const { DisTube, PlayableExtractorPlugin, Song } = require('distube');
 const { SpotifyPlugin } = require('@distube/spotify');
-const { YouTubePlugin } = require('@distube/youtube');
-const { YtDlpPlugin } = require('@distube/yt-dlp');
 
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const AI_DAEMON_URL = process.env.AI_DAEMON_URL || 'http://127.0.0.1:8089/chat';
@@ -193,20 +192,107 @@ const client = new Client({
     partials: [Partials.Channel, Partials.Message, Partials.GuildMember, Partials.User]
 });
 
-// Instanciar motor de música DisTube con soporte Spotify y YouTube
+// Micro-servidor interno de streaming de audio (Proxy resiliente anti-403 para YouTube / Spotify)
+const LOCAL_STREAM_PORT = 8099;
+let audioStreamServer = null;
+try {
+    audioStreamServer = http.createServer((req, res) => {
+        try {
+            const reqUrl = new URL(req.url, `http://127.0.0.1:${LOCAL_STREAM_PORT}`);
+            const videoTarget = reqUrl.searchParams.get('url');
+            if (!videoTarget) {
+                res.writeHead(400);
+                return res.end('Missing url');
+            }
+            res.writeHead(200, {
+                'Content-Type': 'audio/webm',
+                'Transfer-Encoding': 'chunked'
+            });
+            const ytdlpProc = spawn('yt-dlp', [
+                '--extractor-args', 'youtube:player_client=mweb',
+                '-o', '-',
+                '-f', 'ba/ba*/18',
+                '--quiet',
+                '--no-warnings',
+                videoTarget
+            ]);
+            ytdlpProc.stdout.pipe(res);
+            req.on('close', () => {
+                try { ytdlpProc.kill('SIGKILL'); } catch (_) {}
+            });
+            ytdlpProc.on('error', (err) => {
+                console.error('[AUDIO-STREAM] Error en proceso yt-dlp:', err.message);
+                res.end();
+            });
+        } catch (e) {
+            console.error('[AUDIO-STREAM] Error procesando petición:', e.message);
+            res.writeHead(500);
+            res.end();
+        }
+    });
+
+    audioStreamServer.listen(LOCAL_STREAM_PORT, '127.0.0.1', () => {
+        console.log(`✅ [SAORI-AUDIO] Micro-servidor de streaming local activo en 127.0.0.1:${LOCAL_STREAM_PORT}`);
+    }).on('error', (err) => {
+        console.warn('[SAORI-AUDIO] Advertencia servidor streaming:', err.message);
+    });
+} catch (e) {
+    console.error('[SAORI-AUDIO] Error inicializando servidor local de streaming:', e.message);
+}
+
+// Plugin personalizado para DisTube que conecta directamente con nuestro streamer local
+class SaoriStreamPlugin extends PlayableExtractorPlugin {
+    validate(url) {
+        if (typeof url !== 'string') return false;
+        return url.includes('youtube.com') || url.includes('youtu.be') || url.includes('music.youtube.com') || url.startsWith('http');
+    }
+
+    async resolve(url, options) {
+        return new Promise((resolve, reject) => {
+            execFile('yt-dlp', ['--extractor-args', 'youtube:player_client=mweb', '-j', '--no-warnings', url], (err, stdout) => {
+                if (err) return reject(err);
+                try {
+                    const info = JSON.parse(stdout);
+                    resolve(new Song({
+                        plugin: this,
+                        source: 'saori-stream',
+                        playFromSource: true,
+                        name: info.title || 'Audio Stream',
+                        id: info.id || 'track',
+                        url: info.webpage_url || url,
+                        duration: info.duration || 0,
+                        thumbnail: info.thumbnail,
+                        uploader: { name: info.uploader || 'YouTube' }
+                    }, options));
+                } catch (e) {
+                    reject(e);
+                }
+            });
+        });
+    }
+
+    async getStreamURL(song) {
+        return `http://127.0.0.1:${LOCAL_STREAM_PORT}/stream?url=` + encodeURIComponent(song.url);
+    }
+
+    getRelatedSongs() {
+        return [];
+    }
+}
+
+// Instanciar motor de música DisTube con soporte de streaming local
 let distube = null;
 try {
-    const ffmpegPath = require('ffmpeg-static');
+    const ffmpegPath = fs.existsSync('/usr/bin/ffmpeg') ? '/usr/bin/ffmpeg' : (require('ffmpeg-static') || 'ffmpeg');
     distube = new DisTube(client, {
         emitNewSongOnly: true,
         emitAddSongWhenCreatingQueue: false,
         emitAddListWhenCreatingQueue: false,
         ffmpeg: {
-            path: ffmpegPath || 'ffmpeg'
+            path: ffmpegPath
         },
         plugins: [
-            new SpotifyPlugin(),
-            new YtDlpPlugin({ update: false })
+            new SaoriStreamPlugin()
         ]
     });
 
@@ -938,6 +1024,24 @@ client.on('messageCreate', async (message) => {
             return message.reply({ content: '❌ El motor de música no está disponible en este momento.', allowedMentions: { repliedUser: false } });
         }
 
+        // Si no es URL directa, buscar en YouTube via yt-dlp con cliente mweb
+        if (!query.startsWith('http')) {
+            try {
+                await message.react('🔍').catch(() => {});
+                const ytUrl = await new Promise((resolve, reject) => {
+                    execFile('yt-dlp', ['--extractor-args', 'youtube:player_client=mweb', '--print', 'webpage_url', 'ytsearch1:' + query], (err, stdout) => {
+                        if (err) return reject(err);
+                        const cleanUrl = stdout.trim().split('\n')[0];
+                        if (cleanUrl && cleanUrl.startsWith('http')) resolve(cleanUrl);
+                        else reject(new Error('No se encontró enlace en YouTube'));
+                    });
+                });
+                query = ytUrl;
+            } catch (err) {
+                console.warn('[SEARCH-BRIDGE] Error buscando:', err.message);
+            }
+        }
+
         // Si es enlace de Spotify, resolver metadata y buscar stream en YouTube de forma resiliente
         if (query.includes('spotify.com/track/')) {
             try {
@@ -946,7 +1050,7 @@ client.on('messageCreate', async (message) => {
                 const data = await spotifyHelper.api.getData(query);
                 const title = data.name + ' ' + (data.artists?.[0]?.name || '');
                 const ytUrl = await new Promise((resolve, reject) => {
-                    execFile('yt-dlp', ['--print', 'webpage_url', 'ytsearch1:' + title], (err, stdout) => {
+                    execFile('yt-dlp', ['--extractor-args', 'youtube:player_client=mweb', '--print', 'webpage_url', 'ytsearch1:' + title], (err, stdout) => {
                         if (err) return reject(err);
                         const cleanUrl = stdout.trim().split('\n')[0];
                         if (cleanUrl && cleanUrl.startsWith('http')) resolve(cleanUrl);
