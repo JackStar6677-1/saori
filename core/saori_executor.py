@@ -91,7 +91,7 @@ def clean_sender_name(raw_name):
         return 'Lauti'
     if 'macgyver' in first_lower:
         return 'Macgyver'
-    if 'tomi' in first_lower or 'bytomixd' in first_lower or 'tomixd' in first_lower:
+    if 'tomi' in first_lower or 'bytomixd' in first_lower or 'tomixd' in first_lower or 'tomas' in first_lower:
         return 'Tomi'
     if 'kika' in first_lower:
         return 'Kika'

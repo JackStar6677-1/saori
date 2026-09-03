@@ -123,26 +123,34 @@ graph TD
 
 ```text
 saori/
-├── assets/                  # Banners, avatares y recursos visuales oficiales
-├── core/                    # Núcleo de inferencia, ejecutores y scripts de Star
-│   ├── saori_ai_daemon.py   # Servidor HTTP local multi-endpoint (:8089)
-│   ├── saori_executor.py    # Orquestador cognitivo, telemetría y RBAC
-│   ├── saori_tts.py         # Motor de síntesis vocal (es-CL-CatalinaNeural)
-│   ├── saori_stt.py         # Transcriptor neural de audio a texto
-│   ├── saori_img_gen.py     # Generador de imágenes asistido por Codex
-│   ├── dispatch_ticket.py   # Radicador de tickets para la Trinidad SRE
-│   └── saori_notifier.py    # Despachador de alertas SMTP y WhatsApp
-├── integrations/            # Microservicios de mensajería y plataformas
-│   ├── discord/             # Bot de Discord (v4.0 Fortress, Tickets & Stats)
-│   │   ├── Dockerfile       # Contenedor optimizado de Node.js 20
-│   │   ├── package.json     # Dependencias de Discord.js v14, DisTube y plugins
-│   │   ├── .env.example     # Plantilla de variables de entorno seguras
-│   │   ├── README.md        # Documentación de la integración de Discord
-│   │   └── index.js         # Motor principal de Discord (2300+ líneas)
-│   └── whatsapp/            # Bot de WhatsApp (Baileys v2)
-├── docker-compose.yml       # Orquestador Docker unificado con auto-restart
-├── .env.example             # Plantilla global de variables de entorno
-└── README.md                # Documentación oficial de la arquitectura v4.0
+├── assets/                       # Banners, avatares y recursos visuales oficiales
+├── avatar/                       # Avatar autónomo in-game en Minecraft (Mineflayer + IPC + Supervisor)
+│   ├── src/                      # Módulos cognitivos, percepción, supervivencia y chat seguro
+│   └── test/                     # 19 suites de tests (anti-inyección, estados, reconexión)
+├── core/                         # Núcleo de inferencia, ejecutores y scripts de Star
+│   ├── saori_ai_daemon.py        # Daemon multithreading HTTP (:8089 /chat, /ticket, /image, /tts, /stt, /health)
+│   ├── saori_executor.py         # Cascada 3-Tier (Claude Haiku -> Codex GPT -> Antigravity Gemini), telemetría y RBAC
+│   ├── saori_tts.py              # Motor de síntesis vocal chilena con sanitización regex (CatalinaNeural)
+│   ├── saori_stt.py              # Transcriptor neural de audio a texto thread-safe
+│   ├── saori_img_gen.py          # Generador de arte canónico asistido por Codex y Pollinations
+│   ├── dispatch_ticket.py        # Radicador atómico de tickets para la Trinidad SRE
+│   ├── saori_notifier.py         # Despachador de alertas críticas y cuota (SMTP + WhatsApp directo a Jack)
+│   └── saori_ai_status_watcher.py# Monitor de RSS/Atom de OpenAI, Anthropic y Google AI Studio
+├── integrations/                 # Microservicios de mensajería y plataformas
+│   ├── discord/                  # Bot de Discord (v4.0 Fortress, Tickets, Auditoría & Minecraft Bridge)
+│   │   ├── Dockerfile            # Contenedor optimizado de Node.js 20
+│   │   ├── package.json          # Dependencias oficiales de Discord.js
+│   │   └── index.js              # Motor principal de Discord
+│   └── whatsapp/                 # Bot de WhatsApp (Baileys multi-auth, audio PTT, comandos SRE)
+│       ├── Dockerfile            # Contenedor optimizado de Node.js 20
+│       ├── package.json          # Dependencias de Baileys
+│       └── index.js              # Motor principal de WhatsApp
+├── runners/                      # Runners de ejecución en Star y sockets de conversación
+│   ├── runner_star.py            # Ciclo autónomo de agentes CLI con monitor de cuota y aviso a Jack
+│   └── chat_service.py           # Servicio conversacional socket UNIX para el avatar in-game
+├── tests/                        # Tests unitarios del orquestador y subsistemas
+├── docker-compose.yml            # Orquestador Docker unificado con volúmenes /tmp compartidos
+└── README.md                     # Documentación oficial de la arquitectura v4.0
 ```
 
 ---

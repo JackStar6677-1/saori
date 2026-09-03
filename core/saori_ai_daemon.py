@@ -3,6 +3,23 @@ import json, subprocess, os, time, sys
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 class SaoriAIHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path in ('/health', '/', '/status'):
+            payload = json.dumps({
+                'status': 'ok',
+                'service': 'saori-ai-daemon',
+                'port': 8089,
+                'endpoints': ['/chat', '/ticket', '/image', '/tts', '/stt', '/health']
+            }, ensure_ascii=False).encode('utf-8')
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Content-Length', str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+        else:
+            self.send_response(404)
+            self.end_headers()
+
     def do_POST(self):
         content_len = int(self.headers.get('Content-Length', 0))
         body = self.rfile.read(content_len).decode('utf-8', errors='ignore')

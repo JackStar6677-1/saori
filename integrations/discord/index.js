@@ -9,7 +9,8 @@ const {
     EmbedBuilder,
     AttachmentBuilder,
     PermissionsBitField,
-    AuditLogEvent
+    AuditLogEvent,
+    Events
 } = require('discord.js');
 const fetch = require('node-fetch');
 const { execFile } = require('child_process');
@@ -369,7 +370,7 @@ async function sendAuditLog(embed) {
     }
 }
 
-client.once('ready', async () => {
+client.once(Events.ClientReady, async () => {
     console.log(`✅ [SAORI-DISCORD] ¡Conectada como ${client.user.tag}! Voice, Images (3/h), Purge, Auditoría (#${CHANNELS.AUDITORIA}) & Channel #${CHANNELS.SAORI_CHAT} activos.`);
     client.user.setActivity('DrakesCraft SRE & Auditoría 🛡️', { type: ActivityType.Watching });
 
@@ -382,6 +383,10 @@ client.once('ready', async () => {
                 await ch.messages.fetch({ limit: 40 }).catch(() => {});
             }
             console.log(`[AUDIT-CACHE] ✅ Mensajes recientes pre-cacheados en ${textChannels.size} canales.`);
+
+            // Sincronización inicial y periódica de rangos Minecraft <-> Discord cada 10 minutos
+            setTimeout(() => syncPlayerRanksWithDiscord(guild), 5000);
+            setInterval(() => syncPlayerRanksWithDiscord(guild), 10 * 60 * 1000);
         }
     } catch (e) {
         console.error('[AUDIT-CACHE] Error pre-cacheando mensajes:', e.message);
@@ -1078,13 +1083,7 @@ async function syncPlayerRanksWithDiscord(guild) {
     }
 }
 
-// Sincronización periódica cada 10 minutos
-client.once('ready', () => {
-    setInterval(() => {
-        const guild = client.guilds.cache.first();
-        if (guild) syncPlayerRanksWithDiscord(guild);
-    }, 10 * 60 * 1000);
-});
+
 
 function anyKeyword(text, list) {
     return list.some(k => text.includes(k));
