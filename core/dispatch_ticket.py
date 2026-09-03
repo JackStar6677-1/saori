@@ -45,7 +45,7 @@ Los agentes autónomos pueden analizar logs, estado de plugins o infraestructura
     with open(file_path, 'w', encoding='utf-8') as f:
         f.write(content)
         
-    print(f"[TICKET-DISPATCH] Ticket #{ticket_num} creado en {file_path}")
+    print(f"[TICKET-DISPATCH] Ticket #{ticket_num} creado en {file_path}", file=sys.stderr)
 
     # Notificar al webhook de WhatsApp
     try:
@@ -59,7 +59,7 @@ Los agentes autónomos pueden analizar logs, estado de plugins o infraestructura
         req = urllib.request.Request(WEBHOOK_URL, data=payload, headers={'Content-Type': 'application/json'})
         urllib.request.urlopen(req, timeout=3)
     except Exception as e:
-        print(f"[TICKET-DISPATCH] Error notificando webhook: {e}")
+        print(f"[TICKET-DISPATCH] Error notificando webhook: {e}", file=sys.stderr)
 
     return ticket_num
 

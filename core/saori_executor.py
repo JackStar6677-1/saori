@@ -265,13 +265,18 @@ def handle_server_actions(prompt, sender):
         return f"Hola {clean_sender_name(sender)}, actualmente apareces como usuario/jugador. Si eres Staff, pídele a Jack que te registre en la lista oficial."
 
     # BROADCAST / SAY EN MINECRAFT (Jack o Staff)
-    # Soporta: "pone esto en el servidor de minecraft, ...", "pon esto en el server", "anuncia en minecraft ...", "manda al chat de mc: ..."
+    # Soporta: "pone esto en el servidor de minecraft, ...", "pon esto en el server", "anuncia en minecraft ...", "informa a los usuarios ...", "manda al chat de mc: ..."
     broadcast_triggers = [
         'pone esto en el servidor de minecraft', 'pon esto en el servidor de minecraft',
         'pone esto en el servidor', 'pon esto en el servidor', 'pone en el servidor', 'pon en el servidor',
         'pone esto en minecraft', 'pon esto en minecraft', 'pone en minecraft', 'pon en minecraft',
         'anuncia en el servidor', 'anuncia en minecraft', 'avisa en el servidor', 'avisa en minecraft',
-        'di en el server', 'di en el servidor', 'di en minecraft', 'manda al chat de minecraft'
+        'informa a los usuarios', 'informa a los jugadores', 'informa en el servidor', 'informa en minecraft', 'informa en el server',
+        'manda al servidor de minecraft', 'manda al servidor', 'manda al server', 'manda a minecraft',
+        'di en el server', 'di en el servidor', 'di en minecraft', 'di a los usuarios',
+        'escribe en el servidor', 'escribe en minecraft', 'escribe en el chat',
+        'publica en el servidor', 'publica en minecraft', 'notifica en el servidor', 'notifica en minecraft',
+        'manda al chat de minecraft'
     ]
     matched_broadcast = next((t for t in broadcast_triggers if t in prompt_lower), None)
     if is_staff and matched_broadcast:
@@ -440,53 +445,66 @@ _Asistente de Infraestructura y Moderación de DrakesCraft_
 
     return None
 
-def fetch_live_drakescraft_logs(limit=400, focus_query=None):
+_LOGS_CACHE = {"ts": 0, "lines": []}
+
+def _get_cached_latest_log_lines(ttl_secs=15):
+    now = time.time()
+    if _LOGS_CACHE["lines"] and (now - _LOGS_CACHE["ts"] < ttl_secs):
+        return _LOGS_CACHE["lines"]
+
     if not os.path.exists(PTERO_KEY_PATH):
-        return 'Sin acceso a logs.'
+        return []
 
     try:
         with open(PTERO_KEY_PATH, 'r') as f:
             key = f.read().strip()
         headers = {'Authorization': f'Bearer {key}', 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0'}
         req = urllib.request.Request(f'{PTERO_BASE}/files/download?file=%2Flogs%2Flatest.log', headers=headers)
-        
         with urllib.request.urlopen(req, timeout=5) as resp:
-            data = json.loads(resp.read().decode())
-            dl_url = data.get('attributes', {}).get('url')
-            if not dl_url:
-                return 'No URL logs.'
-            
-            dl_req = urllib.request.Request(dl_url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(dl_req, timeout=8) as dl_resp:
-                log_txt = dl_resp.read().decode('utf-8', errors='ignore')
-                lines = log_txt.splitlines()
-                
-                # 1. Extraer foco de jugador si se solicitó (ej: StoneAgeKing, Mattu, etc.)
-                focused_lines = []
-                if focus_query and len(focus_query) >= 3:
-                    q = focus_query.lower()
-                    for l in lines:
-                        if q in l.lower():
-                            focused_lines.append(l)
-                
-                relevant = []
-                chat_and_events = [
-                    'interactivechat', ' » ', 'issued server command',
-                    'joined the game', 'logged in', 'lost connection',
-                    'left the game', 'died', 'kicked', '[coreprotect]'
-                ]
-                for l in lines[-limit:]:
-                    if any(k in l.lower() for k in chat_and_events):
-                        relevant.append(l)
-                
-                output_parts = []
-                if focused_lines:
-                    output_parts.append(f"=== ACTIVIDAD ENFOCADA ({focus_query.upper()}) ===")
-                    output_parts.extend(focused_lines[-20:])
-                    output_parts.append("=== ÚLTIMOS EVENTOS Y CHAT GENERAL ===")
-                
-                output_parts.extend(relevant[-30:] if relevant else lines[-15:])
-                return '\n'.join(output_parts)
+            dl_url = json.loads(resp.read().decode()).get('attributes', {}).get('url')
+        if not dl_url:
+            return _LOGS_CACHE["lines"]
+        dl_req = urllib.request.Request(dl_url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(dl_req, timeout=8) as dl_resp:
+            lines = dl_resp.read().decode('utf-8', errors='ignore').splitlines()
+            _LOGS_CACHE["ts"] = now
+            _LOGS_CACHE["lines"] = lines
+            return lines
+    except Exception:
+        return _LOGS_CACHE["lines"]
+
+def fetch_live_drakescraft_logs(limit=400, focus_query=None):
+    lines = _get_cached_latest_log_lines(ttl_secs=15)
+    if not lines:
+        return 'Sin acceso a logs.'
+
+    try:
+        # 1. Extraer foco de jugador si se solicitó (ej: StoneAgeKing, Mattu, etc.)
+        focused_lines = []
+        if focus_query and len(focus_query) >= 3:
+            q = focus_query.lower()
+            for l in lines:
+                if q in l.lower():
+                    focused_lines.append(l)
+        
+        relevant = []
+        chat_and_events = [
+            'interactivechat', ' » ', 'issued server command',
+            'joined the game', 'logged in', 'lost connection',
+            'left the game', 'died', 'kicked', '[coreprotect]'
+        ]
+        for l in lines[-limit:]:
+            if any(k in l.lower() for k in chat_and_events):
+                relevant.append(l)
+        
+        output_parts = []
+        if focused_lines:
+            output_parts.append(f"=== ACTIVIDAD ENFOCADA ({focus_query.upper()}) ===")
+            output_parts.extend(focused_lines[-20:])
+            output_parts.append("=== ÚLTIMOS EVENTOS Y CHAT GENERAL ===")
+        
+        output_parts.extend(relevant[-30:] if relevant else lines[-15:])
+        return '\n'.join(output_parts)
     except Exception as e:
         return 'Logs temporalmente no disponibles.'
 
@@ -497,62 +515,31 @@ def execute_and_read_output(command_str, read_keyword, wait_secs=2.5):
     if not ok:
         return None
     time.sleep(wait_secs)
-    # Leer las últimas líneas del log buscando la keyword
-    if not os.path.exists(PTERO_KEY_PATH):
+    lines = _get_cached_latest_log_lines(ttl_secs=2)
+    if not lines:
         return None
-    try:
-        with open(PTERO_KEY_PATH, 'r') as f:
-            key = f.read().strip()
-        headers = {'Authorization': f'Bearer {key}', 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0'}
-        req = urllib.request.Request(f'{PTERO_BASE}/files/download?file=%2Flogs%2Flatest.log', headers=headers)
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            dl_url = json.loads(resp.read().decode()).get('attributes', {}).get('url')
-        if not dl_url:
-            return None
-        dl_req = urllib.request.Request(dl_url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(dl_req, timeout=8) as dl_resp:
-            lines = dl_resp.read().decode('utf-8', errors='ignore').splitlines()
-        # Buscar la keyword en las últimas 30 líneas
-        matches = [l for l in lines[-30:] if read_keyword.lower() in l.lower()]
-        return matches[-1] if matches else None
-    except Exception:
-        return None
+    matches = [l for l in lines[-30:] if read_keyword.lower() in l.lower()]
+    return matches[-1] if matches else None
 
 def get_minecraft_status():
-    """Obtiene jugadores en línea directo de Pterodactyl (sin cache) como primera fuente."""
-    players_from_log = []
-    online_from_log = 0
-
-    # Fuente 1: Pterodactyl resources API (datos en tiempo real)
-    if os.path.exists(PTERO_KEY_PATH):
+    """Obtiene jugadores en línea directo de Pterodactyl (con cache corta) como primera fuente."""
+    lines = _get_cached_latest_log_lines(ttl_secs=15)
+    if lines:
         try:
-            with open(PTERO_KEY_PATH, 'r') as f:
-                key = f.read().strip()
-            headers = {'Authorization': f'Bearer {key}', 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0'}
-
-            # Intentar leer quién está conectado desde el log (más fiable que mcsrvstat)
-            req = urllib.request.Request(f'{PTERO_BASE}/files/download?file=%2Flogs%2Flatest.log', headers=headers)
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                dl_url = json.loads(resp.read().decode()).get('attributes', {}).get('url')
-            if dl_url:
-                dl_req = urllib.request.Request(dl_url, headers={'User-Agent': 'Mozilla/5.0'})
-                with urllib.request.urlopen(dl_req, timeout=8) as dl_resp:
-                    lines = dl_resp.read().decode('utf-8', errors='ignore').splitlines()
-                # Construir lista real: jugadores que hicieron join y no hicieron left
-                joined, left = set(), set()
-                for l in lines:
-                    ll = l.lower()
-                    if 'joined the game' in ll or ('logged in with entity id' in ll):
-                        import re as _re
-                        m = _re.search(r'\]: ([A-Za-z0-9_]+) (?:joined|logged)', l)
-                        if m: joined.add(m.group(1))
-                    if 'lost connection' in ll or 'left the game' in ll:
-                        m2 = _re.search(r'\]: ([A-Za-z0-9_]+) (?:lost|left)', l)
-                        if m2: left.add(m2.group(1))
-                players_from_log = list(joined - left)
-                online_from_log = len(players_from_log)
-                if online_from_log >= 0:
-                    return {'online': online_from_log, 'max': 2026, 'players': players_from_log}
+            joined, left = set(), set()
+            for l in lines:
+                ll = l.lower()
+                if 'joined the game' in ll or ('logged in with entity id' in ll):
+                    import re as _re
+                    m = _re.search(r'\]: ([A-Za-z0-9_]+) (?:joined|logged)', l)
+                    if m: joined.add(m.group(1))
+                if 'lost connection' in ll or 'left the game' in ll:
+                    m2 = _re.search(r'\]: ([A-Za-z0-9_]+) (?:lost|left)', l)
+                    if m2: left.add(m2.group(1))
+            players_from_log = list(joined - left)
+            online_from_log = len(players_from_log)
+            if online_from_log >= 0:
+                return {'online': online_from_log, 'max': 2026, 'players': players_from_log}
         except Exception:
             pass
 

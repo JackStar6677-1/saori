@@ -112,6 +112,8 @@ function cleanUserName(rawName, isJack) {
     if (firstLower.includes('pepino')) return 'Pepino';
     if (firstLower.includes('chagui')) return 'Chagui';
     if (firstLower.includes('lauti') || firstLower.includes('lautaro')) return 'Lauti';
+    if (firstLower.includes('macgyver')) return 'Macgyver';
+    if (firstLower.includes('tomi') || firstLower.includes('bytomixd') || firstLower.includes('tomixd') || firstLower.includes('tomas')) return 'Tomi';
     if (firstLower.includes('kika')) return 'Kika';
     if (firstLower.includes('derem')) return 'Derem';
 
@@ -236,16 +238,22 @@ async function generateVoiceAudio(text) {
     return null;
 }
 
-function dispatchTicketToTriad(title, desc, author, channelName) {
-    return new Promise((resolve) => {
-        execFile('/usr/bin/python3', ['/home/jack/ai-hub/scripts/dispatch_ticket.py', title, desc, author, channelName], (err, stdout) => {
-            if (err) {
-                console.error('[SAORI-DISCORD] Error ejecutando dispatch_ticket.py:', err);
-                return resolve(null);
-            }
-            resolve(stdout.trim());
+async function dispatchTicketToTriad(title, desc, author, channelName) {
+    try {
+        const res = await fetch('http://127.0.0.1:8089/ticket', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title, desc, author, channel: channelName }),
+            timeout: 15000
         });
-    });
+        if (res.ok) {
+            const data = await res.json();
+            return data.ticket_id || null;
+        }
+    } catch (e) {
+        console.error('[SAORI-DISCORD] Error enviando ticket al daemon:', e.message);
+    }
+    return null;
 }
 
 // -----------------------------------------------------------------------------

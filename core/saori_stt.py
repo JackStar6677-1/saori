@@ -5,11 +5,11 @@ SAORI Voice Transcriber (STT)
 Transcribe audios entrantes de WhatsApp o Discord a texto en español usando SpeechRecognition / Google STT.
 """
 
-import sys, os, subprocess, speech_recognition as sr
+import sys, os, subprocess, time, speech_recognition as sr
 
 def transcribe_audio(input_audio_path):
     # Convertir a WAV 16kHz mono para compatibilidad universal con SpeechRecognition
-    wav_path = '/tmp/saori_in_transcribe.wav'
+    wav_path = f'/tmp/saori_in_transcribe_{os.getpid()}_{int(time.time() * 1000)}.wav'
     try:
         subprocess.run([
             'ffmpeg', '-y', '-i', input_audio_path,

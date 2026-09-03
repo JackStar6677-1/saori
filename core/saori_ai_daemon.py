@@ -16,7 +16,7 @@ class SaoriAIHandler(BaseHTTPRequestHandler):
                 p = subprocess.run(
                     ['/usr/bin/python3', '/home/jack/ai-hub/scripts/saori_executor.py', prompt, sender],
                     stdin=subprocess.DEVNULL,
-                    capture_output=True, text=True, timeout=25
+                    capture_output=True, text=True, timeout=45
                 )
                 res_text = p.stdout.strip()
                 if not res_text:
@@ -31,6 +31,29 @@ class SaoriAIHandler(BaseHTTPRequestHandler):
             except subprocess.TimeoutExpired:
                 fallback = f"Hola {sender}, la consulta tardó más de lo esperado en responder. Inténtalo de nuevo en unos segundos."
                 resp = json.dumps({'response': fallback}, ensure_ascii=False).encode('utf-8')
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json; charset=utf-8')
+                self.send_header('Content-Length', str(len(resp)))
+                self.end_headers()
+                self.wfile.write(resp)
+            except Exception as e:
+                self.send_error_response(e)
+
+        elif self.path == '/ticket':
+            try:
+                data = json.loads(body)
+                title = data.get('title', 'Ticket de Soporte')
+                desc = data.get('desc', '')
+                author = data.get('author', 'Usuario')
+                channel = data.get('channel', 'general')
+
+                p = subprocess.run(
+                    ['/usr/bin/python3', '/home/jack/ai-hub/scripts/dispatch_ticket.py', title, desc, author, channel],
+                    stdin=subprocess.DEVNULL,
+                    capture_output=True, text=True, timeout=15
+                )
+                ticket_id = p.stdout.strip()
+                resp = json.dumps({'ok': True, 'ticket_id': ticket_id}, ensure_ascii=False).encode('utf-8')
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json; charset=utf-8')
                 self.send_header('Content-Length', str(len(resp)))

@@ -13,6 +13,7 @@ services:
     volumes:
       - saori_whatsapp_auth:/app/data/auth_info
       - ./whatsapp/src:/app/src
+      - /tmp:/tmp
 
   saori-discord:
     build:
@@ -25,6 +26,7 @@ services:
       - .env
     volumes:
       - ./discord/src:/app/src
+      - /tmp:/tmp
 
 volumes:
   saori_whatsapp_auth:

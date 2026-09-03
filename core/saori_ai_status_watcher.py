@@ -21,6 +21,19 @@ from datetime import datetime, timezone
 
 STATE_FILE = "/home/jack/.local/state/saori/ai_status_history.json"
 DISCORD_TOKEN = os.getenv("DISCORD_BOT_TOKEN", "")
+if not DISCORD_TOKEN:
+    for env_path in ["/opt/stacks/saori-unified/.env", "/home/jack/.env"]:
+        if os.path.exists(env_path):
+            try:
+                with open(env_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        if line.strip().startswith("DISCORD_BOT_TOKEN="):
+                            DISCORD_TOKEN = line.strip().split("=", 1)[1].strip('"\'')
+                            break
+            except Exception:
+                pass
+            if DISCORD_TOKEN:
+                break
 CHANNEL_STATUS_ID = "1539636713675038751"  # 📡・ᴇsᴛᴀᴅᴏ-sᴇʀᴠɪᴅᴏʀ
 
 FEEDS = [

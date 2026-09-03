@@ -1,4 +1,4 @@
-// SAORI WhatsApp Bridge · Omnichannel Engine with Voice In/Out Support (Chilean Voice)
+// SAORI WhatsApp Bridge · Full SRE Capabilities (Minecraft Console, Live Logs, TTS/STT & Quick Commands)
 
 const {
     default: makeWASocket,
@@ -8,44 +8,124 @@ const {
     makeCacheableSignalKeyStore,
     downloadMediaMessage
 } = require('@whiskeysockets/baileys');
-const pino = require('pino');
-const path = require('path');
-const fs = require('fs');
-const http = require('http');
-const fetch = require('node-fetch');
+const pino   = require('pino');
+const path   = require('path');
+const fs     = require('fs');
+const http   = require('http');
+const fetch  = require('node-fetch');
 
-const AUTH_DIR = process.env.AUTH_DIR || path.join(__dirname, '../data/auth_info');
-const AI_DAEMON_URL = 'http://127.0.0.1:8089/chat';
-const TTS_URL = 'http://127.0.0.1:8089/tts';
-const STT_URL = 'http://127.0.0.1:8089/stt';
-const WEBHOOK_PORT = 8088;
+const AUTH_DIR         = process.env.AUTH_DIR || path.join(__dirname, '../data/auth_info');
+const AI_DAEMON_URL    = 'http://127.0.0.1:8089/chat';
+const IMAGE_DAEMON_URL = 'http://127.0.0.1:8089/image';
+const TTS_URL          = 'http://127.0.0.1:8089/tts';
+const STT_URL          = 'http://127.0.0.1:8089/stt';
+const WEBHOOK_PORT     = 8088;
+
+const JACK_NAMES       = ['jack', 'pablo', 'jackstar'];
+const STAFF_GROUP_JID  = '120363422906663864@g.us';
 
 const logger = pino({ level: 'error' });
 let globalSock = null;
 
 const processedMessages = new Set();
-const lastReplies = new Map();
+const lastReplies       = new Map();
 
-// Inferencia con Claude Brain
-async function getClaudeResponse(prompt, senderName) {
+// ------------------------------------------------------------------
+// DETECCIÓN DE IDIOMA
+// ------------------------------------------------------------------
+function detectLanguage(text) {
+    const t = text.toLowerCase();
+    const enWords = ['i ', 'the ', 'is ', 'are ', 'my ', 'you ', 'it ', 'have ', 'want ',
+                     'need ', 'can ', 'would ', 'like ', 'please ', 'hello', 'hi ', 'how ',
+                     'what ', 'where ', 'when ', 'this ', 'that ', 'with ', 'for ', 'and ',
+                     'but ', 'staff', 'server', 'players'];
+    const esWords = ['yo ', 'el ', 'la ', 'es ', 'son ', 'mi ', 'tu ', 'quiero ', 'necesito ',
+                     'puedo ', 'hola', 'como ', 'donde ', 'cuando ', 'esto ', 'eso ', 'con ',
+                     'para ', 'y ', 'pero ', 'tengo ', 'saori', 'servidor', 'jugadores'];
+    const enScore = enWords.filter(w => t.includes(w)).length;
+    const esScore = esWords.filter(w => t.includes(w)).length;
+    return enScore > esScore ? 'en' : 'es';
+}
+
+// ------------------------------------------------------------------
+// SANITIZACIÓN Y NORMALIZACIÓN DE NOMBRE DE STAFF / USUARIO
+// ------------------------------------------------------------------
+function cleanSenderName(raw) {
+    if (!raw) return 'Staff';
+    const lower = raw.toLowerCase();
+    if (JACK_NAMES.some(n => lower.includes(n))) return 'Jack';
+    if (lower.includes('emilio') || lower.includes('em1lio')) return 'Emilio';
+    if (lower.includes('pasient') || lower.includes('pacox')) return 'Pasiente';
+    if (lower.includes('pepino'))  return 'Pepino';
+    if (lower.includes('chagui'))  return 'Chagui';
+    if (lower.includes('lauti') || lower.includes('lautaro')) return 'Lauti';
+    if (lower.includes('macgyver')) return 'Macgyver';
+    if (lower.includes('tomi') || lower.includes('bytomixd') || lower.includes('tomixd') || lower.includes('tomas')) return 'Tomi';
+    if (lower.includes('kika'))    return 'Kika';
+    if (lower.includes('derem'))   return 'Derem';
+
+    let s = raw.trim();
+    if (s.toLowerCase().startsWith('mr_') && s.length > 3) s = s.slice(3);
+    else if (s.toLowerCase().startsWith('mr') && s.length > 2) s = s.slice(2);
+
+    const first = s.trim().split(/[\s_\-|✦✧]/)[0];
+    const cleanFirst = first.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ]/g, '').trim();
+    return cleanFirst ? (cleanFirst.charAt(0).toUpperCase() + cleanFirst.slice(1).toLowerCase()) : 'Staff';
+}
+
+// ------------------------------------------------------------------
+// LLAMADA AL DAEMON HTTP (saori_ai_daemon en :8089)
+// ------------------------------------------------------------------
+async function askSaori(prompt, senderName) {
     try {
+        const lang = detectLanguage(prompt);
+        const langHint = lang === 'en'
+            ? 'IMPORTANT: Reply in English only.'
+            : 'Responde siempre en español.';
+        const contextualPrompt = `[WhatsApp Staff Group · ${langHint}]\n${prompt}`;
         const res = await fetch(AI_DAEMON_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt, sender: senderName }),
-            timeout: 35000
+            body: JSON.stringify({ prompt: contextualPrompt, sender: senderName }),
+            timeout: 45000
         });
         if (res.ok) {
             const data = await res.json();
             if (data.response) return data.response;
         }
     } catch (e) {
-        console.error('[SAORI-AI] Error invocando Claude Daemon:', e.message);
+        console.error('[SAORI-AI] Error daemon:', e.message);
     }
-    return `🌸 **Saori:** ¡Hola ${senderName}! Tuve un pequeño lapso procesando en Star. ¿Me repites tu consulta? ✨`;
+    return `Hola ${senderName}, tuve un lapso procesando en Star. ¿Me repites tu consulta?`;
 }
 
-// Generar nota de voz con acento chileno
+// ------------------------------------------------------------------
+// GENERACIÓN DE IMÁGENES
+// ------------------------------------------------------------------
+async function generateImageViaDaemon(prompt) {
+    try {
+        const outPath = `/tmp/saori_wa_img_${Date.now()}.png`;
+        const res = await fetch(IMAGE_DAEMON_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt, out_path: outPath }),
+            timeout: 45000
+        });
+        if (res.ok) {
+            const data = await res.json();
+            if (data.ok && fs.existsSync(outPath)) {
+                return outPath;
+            }
+        }
+    } catch (e) {
+        console.error('[SAORI-IMG] Error generando imagen:', e.message);
+    }
+    return null;
+}
+
+// ------------------------------------------------------------------
+// TTS (Voz Chilena)
+// ------------------------------------------------------------------
 async function generateVoiceAudio(text) {
     try {
         const outPath = `/tmp/saori_wa_voice_${Date.now()}.opus`;
@@ -57,17 +137,17 @@ async function generateVoiceAudio(text) {
         });
         if (res.ok) {
             const data = await res.json();
-            if (data.ok && fs.existsSync(outPath)) {
-                return outPath;
-            }
+            if (data.ok && fs.existsSync(outPath)) return outPath;
         }
     } catch (e) {
-        console.error('[SAORI-TTS] Error generando voz:', e.message);
+        console.error('[SAORI-TTS] Error:', e.message);
     }
     return null;
 }
 
-// Transcribir audio entrante a texto
+// ------------------------------------------------------------------
+// STT (Transcripción)
+// ------------------------------------------------------------------
 async function transcribeAudioFile(filePath) {
     try {
         const res = await fetch(STT_URL, {
@@ -81,12 +161,14 @@ async function transcribeAudioFile(filePath) {
             return data.text || '';
         }
     } catch (e) {
-        console.error('[SAORI-STT] Error transcribiendo:', e.message);
+        console.error('[SAORI-STT] Error:', e.message);
     }
     return '';
 }
 
-// Webhook de notificaciones de tickets
+// ------------------------------------------------------------------
+// WEBHOOK DE ALERTAS
+// ------------------------------------------------------------------
 function startWebhookServer() {
     const server = http.createServer(async (req, res) => {
         if (req.method === 'POST' && req.url === '/notify-ticket') {
@@ -94,53 +176,51 @@ function startWebhookServer() {
             req.on('data', chunk => { body += chunk.toString(); });
             req.on('end', async () => {
                 try {
-                    const data = JSON.parse(body);
-                    const ticketId = data.ticket_id || data.id || 'N/A';
-                    const agente = data.agente || 'SAORI SRE';
-                    const titulo = data.titulo || data.title || 'Ticket Resuelto';
-                    const detalle = data.detalle || data.resumen || '';
-                    const targetGroup = data.group_jid || '120363422906663864@g.us';
+                    const data      = JSON.parse(body);
+                    const ticketId  = data.ticket_id || 'ALERTA';
+                    const agente    = data.agente    || 'SAORI SRE';
+                    const titulo    = data.titulo    || data.title   || 'Alerta';
+                    const detalle   = data.resumen   || data.detalle || '';
+                    const targetJid = data.group_jid || STAFF_GROUP_JID;
 
-                    const notifMsg = `🎫 *[ALERTA DE TICKET · DRAKES REPORTE]*\n\n` +
-                                     `📌 *Ticket:* #${ticketId}\n` +
-                                     `🤖 *Agente:* ${agente}\n` +
-                                     `✅ *Estado:* Solucionado / Cerrado\n` +
-                                     `📝 *Detalle:* ${titulo}\n` +
-                                     (detalle ? `🔍 *Resumen:* ${detalle}\n` : '') +
-                                     `\n_Notificación sincronizada automáticamente._`;
+                    const notifMsg =
+                        `🚨 *[DRAKES · ALERTA]*\n\n` +
+                        `📌 *${ticketId}*\n` +
+                        `🤖 *Agente:* ${agente}\n` +
+                        `📝 *${titulo}*\n` +
+                        (detalle ? `🔍 ${detalle.slice(0, 280)}\n` : '') +
+                        `\n_SAORI · ${new Date().toLocaleTimeString('es-CL')}_`;
 
-                    if (globalSock && targetGroup) {
-                        await globalSock.sendMessage(targetGroup, { text: notifMsg }).catch(() => {});
-                        console.log(`[SAORI-WA] 📢 Alerta de ticket #${ticketId} enviada a ${targetGroup}.`);
+                    if (globalSock && targetJid) {
+                        await globalSock.sendMessage(targetJid, { text: notifMsg }).catch(() => {});
+                        console.log(`[SAORI-WA] 🚨 Alerta enviada a ${targetJid}`);
                     }
 
                     res.writeHead(200, { 'Content-Type': 'application/json' });
-                    res.end(JSON.stringify({ ok: true, message: 'Ticket notificado exitosamente' }));
+                    res.end(JSON.stringify({ ok: true }));
                 } catch (e) {
-                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.writeHead(400);
                     res.end(JSON.stringify({ ok: false, error: e.message }));
                 }
             });
         } else {
-            res.writeHead(404);
-            res.end();
+            res.writeHead(404); res.end();
         }
     });
-
     server.listen(WEBHOOK_PORT, '0.0.0.0', () => {
-        console.log(`[SAORI-WA] Webhook escuchando en puerto ${WEBHOOK_PORT}`);
+        console.log(`[SAORI-WA] Webhook escuchando en :${WEBHOOK_PORT}`);
     });
 }
 
+// ------------------------------------------------------------------
+// BOT PRINCIPAL
+// ------------------------------------------------------------------
 async function startWhatsAppBot() {
-    if (!fs.existsSync(AUTH_DIR)) {
-        fs.mkdirSync(AUTH_DIR, { recursive: true });
-    }
+    if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true });
 
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
     const { version } = await fetchLatestBaileysVersion();
-
-    console.log(`[SAORI-WA] Iniciando Baileys v${version.join('.')}...`);
+    console.log(`[SAORI-WA] Baileys v${version.join('.')} iniciando...`);
 
     const sock = makeWASocket({
         version,
@@ -164,22 +244,17 @@ async function startWhatsAppBot() {
         if (connection === 'close') {
             const shouldReconnect = (lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut);
             console.log(`[SAORI-WA] Conexión cerrada. Reconectando: ${shouldReconnect}`);
-            if (shouldReconnect) {
-                setTimeout(startWhatsAppBot, 5000);
-            }
+            if (shouldReconnect) setTimeout(startWhatsAppBot, 5000);
         } else if (connection === 'open') {
-            console.log('✅ [SAORI-WA] ¡Conexión establecida exitosamente con WhatsApp!');
+            console.log('✅ [SAORI-WA] WhatsApp conectado.');
         }
     });
 
     sock.ev.on('messages.upsert', async (m) => {
         if (m.type !== 'notify') return;
 
-        const messages = m.messages || [];
-
-        for (const msg of messages) {
-            if (!msg.message) continue;
-            if (msg.key.fromMe) continue;
+        for (const msg of (m.messages || [])) {
+            if (!msg.message || msg.key.fromMe) continue;
 
             const msgId = msg.key.id;
             if (processedMessages.has(msgId)) continue;
@@ -189,93 +264,96 @@ async function startWhatsAppBot() {
                 for (let i = 0; i < 500; i++) processedMessages.delete(iter.next().value);
             }
 
-            const from = msg.key.remoteJid || '';
+            const from    = msg.key.remoteJid || '';
             const isGroup = from.endsWith('@g.us');
 
-            let isAudio = false;
-            let messageContent = msg.message.conversation || 
-                                 msg.message.extendedTextMessage?.text || 
-                                 msg.message.imageMessage?.caption ||
-                                 msg.message.videoMessage?.caption || '';
+            // ---- Extrae texto del mensaje ----
+            let messageContent =
+                msg.message.conversation ||
+                msg.message.extendedTextMessage?.text ||
+                msg.message.imageMessage?.caption ||
+                msg.message.videoMessage?.caption || '';
 
-            // 1. Detectar si es una nota de voz o audio
+            let isAudio = false;
+
+            // ---- STT: Nota de voz entrante ----
             if (msg.message.audioMessage) {
                 isAudio = true;
                 try {
-                    const buffer = await downloadMediaMessage(msg, 'buffer', {});
-                    const tempAudioPath = `/tmp/wa_in_${Date.now()}.ogg`;
-                    fs.writeFileSync(tempAudioPath, buffer);
-                    const transcript = await transcribeAudioFile(tempAudioPath);
-                    if (fs.existsSync(tempAudioPath)) fs.removeSync ? fs.removeSync(tempAudioPath) : fs.unlinkSync(tempAudioPath);
-                    
-                    console.log(`[SAORI-WA] 🎙️ Audio recibido de ${msg.pushName}: "${transcript}"`);
+                    const buffer      = await downloadMediaMessage(msg, 'buffer', {});
+                    const tempPath    = `/tmp/wa_in_${Date.now()}.ogg`;
+                    fs.writeFileSync(tempPath, buffer);
+                    const transcript  = await transcribeAudioFile(tempPath);
+                    if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+                    console.log(`[SAORI-WA] 🎙️ Audio STT: "${transcript}"`);
                     messageContent = transcript;
                 } catch (e) {
-                    console.error('[SAORI-WA] Error descargando/procesando audio:', e.message);
+                    console.error('[SAORI-WA] Error STT:', e.message);
                 }
             }
 
             if (!messageContent || messageContent.trim().length === 0) continue;
 
-            if (messageContent.includes('SAORI Core Status') || 
-                messageContent.includes('INFORME SRE CONSOLIDADO') || 
-                messageContent.includes('ALERTA DE TICKET')) {
-                continue;
-            }
+            // Ignorar mensajes internos de SAORI
+            if (['SAORI Core Status', 'INFORME SRE', 'ALERTA DE TICKET'].some(s => messageContent.includes(s))) continue;
 
-            let senderName = msg.pushName || 'Staff';
-            if (senderName.toLowerCase().includes('pablo')) {
-                senderName = 'Jack';
-            }
+            const senderName  = cleanSenderName(msg.pushName || '');
+            const isJack      = senderName === 'Jack';
+            const textLower   = messageContent.toLowerCase();
 
-            console.log(`[SAORI-WA] 📨 [${senderName} en ${from}]: ${messageContent}`);
+            console.log(`[SAORI-WA] 📨 [${senderName} en ${isGroup ? 'grupo' : 'privado'}]: ${messageContent}`);
 
+            // Cooldown anti-spam (2s)
             const now = Date.now();
-            if (lastReplies.has(from) && (now - lastReplies.get(from) < 2000)) {
-                continue;
+            if (lastReplies.has(from) && (now - lastReplies.get(from) < 2000)) continue;
+
+            // ---- En grupos: responder si mencionan a Saori, usan comandos o es audio ----
+            if (isGroup) {
+                const isMentioned =
+                    isAudio ||
+                    textLower.includes('saori') ||
+                    textLower.includes('@saori') ||
+                    textLower.startsWith('/') ||
+                    textLower.startsWith('!') ||
+                    textLower.startsWith('shelp') ||
+                    textLower === 'help' ||
+                    textLower === 'ayuda';
+                if (!isMentioned) continue;
             }
 
-            const textLower = messageContent.toLowerCase();
-            const wantsAudio = isAudio || 
-                               textLower.includes('manda audio') || 
-                               textLower.includes('envia audio') || 
-                               textLower.includes('en audio') || 
-                               textLower.includes('responde en audio') ||
-                               textLower.includes('un audio');
+            lastReplies.set(from, Date.now());
 
-            // ⚡ COMANDOS RÁPIDOS EN WHATSAPP (shelp, sticket, sip, stienda, sweb, sguia, smusica, sstats, sping)
-            if (['!help', 'shelp', 'saohelp', '!comandos', 's!help', '/help'].includes(textLower)) {
-                const helpTxt = `🐺 *S.A.O.R.I. · COMANDOS EN WHATSAPP*\n` +
+            // ⚡ COMANDOS RÁPIDOS EN WHATSAPP (shelp, sticket, sip, stienda, sweb, sguia, sstats, sping)
+            if (['!help', 'shelp', 'saohelp', '!comandos', 's!help', '/help', 'ayuda'].includes(textLower)) {
+                const helpTxt = `🌸 *S.A.O.R.I. · COMANDOS EN WHATSAPP*\n` +
                                 `_Server Autonomous Orchestrator for Resilient Infrastructure_\n\n` +
-                                `🎫 *1. Tickets & Trinidad SRE:*\n` +
+                                `🎫 *1. Tickets & Tríada SRE:*\n` +
                                 `• *!ticket <problema>* o *sticket <problema>*\n` +
-                                `  _Registra un ticket formal (#TICKET-XXX) asignado a la Trinidad de Agentes (Claude Code, Codex y Antigravity). Notifica a Jack por WhatsApp cuando queda resuelto._\n\n` +
+                                `  _Registra un ticket formal (#TICKET-XXX) asignado a la Tríada de Agentes (Claude Code, Codex y Antigravity)._\n\n` +
                                 `🎮 *2. Minecraft & Conexión:*\n` +
                                 `• *!ip* / *sip* · Datos de conexión Java y Bedrock\n` +
-                                `• *!tienda* / *stienda* · Tienda oficial y rangos con garantía\n` +
+                                `• *!tienda* / *stienda* · Tienda oficial y rangos\n` +
                                 `• *!web* / *sweb* · Portal web oficial\n` +
-                                `• *!guia* / *sguia* · Guías de Slimefun, economía y comandos\n\n` +
+                                `• *!guia* / *sguia* · Guías de Slimefun y economía\n\n` +
                                 `🖥️ *3. Telemetría & Servidores:*\n` +
-                                `• *!stats* / *sstats* · Estado de DrakesCraft (TPS, jugadores)\n` +
-                                `• *!stats star* · Servidor de infraestructura Star\n` +
-                                `• *!stats nova* · Laptop de Jack\n` +
-                                `• *!stats nexus* · Estación PC de Jack\n` +
-                                `• *!ping* / *sping* · Latencia del bot y de Star\n\n` +
-                                `🎨 *4. Arte Neural & Voz:*\n` +
-                                `• *!imagen <descripción>* · Generar arte en vivo con IA\n` +
-                                `• *Envía un audio* · SAORI te responderá con su voz`;
+                                `• *!stats* / *sstats* · Rendimiento del servidor Minecraft\n` +
+                                `• *!stats star* · Servidor Star\n` +
+                                `• *!ping* / *sping* · Latencia de la red\n\n` +
+                                `🎨 *4. Arte & Voz:*\n` +
+                                `• *!imagen <prompt>* · Generar imagen con IA\n` +
+                                `• *Envía un audio* · Saori responderá con voz chilena`;
                 await sock.sendMessage(from, { text: helpTxt }, { quoted: isGroup ? msg : undefined });
                 continue;
             }
 
             // 🎫 COMANDO DIRECTO !ticket EN WHATSAPP
             if (textLower.startsWith('!ticket ') || textLower.startsWith('sticket ') || textLower.startsWith('/ticket ')) {
-                const ticketDesc = userText.replace(/^(!ticket|sticket|\/ticket)\s*/i, '').trim();
+                const ticketDesc = messageContent.replace(/^(!ticket|sticket|\/ticket)\s*/i, '').trim();
                 if (!ticketDesc || ticketDesc.length < 5) {
                     await sock.sendMessage(from, { text: '❌ *Uso correcto:* `!ticket <descripción detallada del problema>`\n_Ejemplo:_ `!ticket Error al generar isla en OneBlock`' }, { quoted: isGroup ? msg : undefined });
                     continue;
                 }
-                const ticketReply = await queryAIDaemon(`ticket: ${ticketDesc}`, senderName);
+                const ticketReply = await askSaori(`ticket: ${ticketDesc}`, senderName);
                 await sock.sendMessage(from, { text: ticketReply }, { quoted: isGroup ? msg : undefined });
                 continue;
             }
@@ -292,7 +370,7 @@ async function startWhatsAppBot() {
 
             if (['!tienda', 'stienda', 'sshop', '!shop', '!store', '/tienda'].includes(textLower)) {
                 const tiendaTxt = `🛒 *TIENDA OFICIAL DE DRAKESCRAFT*\n\n` +
-                                  `Adquiere Rangos VIP, Titan, Dios, Dragmas y beneficios exclusivos:\n` +
+                                  `Adquiere Rangos VIP, Titán, Dioses y beneficios exclusivos:\n` +
                                   `🔗 https://web.drakescraft.cl/store.html`;
                 await sock.sendMessage(from, { text: tiendaTxt }, { quoted: isGroup ? msg : undefined });
                 continue;
@@ -304,7 +382,7 @@ async function startWhatsAppBot() {
             }
 
             if (['!guia', 'sguia', '!wiki', '/guia'].includes(textLower)) {
-                await sock.sendMessage(from, { text: `📚 *Guía Completa (Economía, XP, Slimefun):*\nhttps://web.drakescraft.cl/guia.html` }, { quoted: isGroup ? msg : undefined });
+                await sock.sendMessage(from, { text: `📚 *Guía Completa (Economía, Slimefun):*\nhttps://web.drakescraft.cl/guia.html` }, { quoted: isGroup ? msg : undefined });
                 continue;
             }
 
@@ -312,7 +390,7 @@ async function startWhatsAppBot() {
                 const pingTxt = `🏓 *PONG! LATENCIA DE SAORI*\n\n` +
                                 `⚡ *Tiempo de Respuesta:* \`<50 ms\`\n` +
                                 `🖥️ *Servidor Star:* \`ONLINE · 192.168.0.120\`\n` +
-                                `🤖 *Motores:* Claude Haiku + Baileys WhatsApp`;
+                                `🤖 *Motores:* Claude Haiku + Codex GPT + Star Core`;
                 await sock.sendMessage(from, { text: pingTxt }, { quoted: isGroup ? msg : undefined });
                 continue;
             }
@@ -321,25 +399,10 @@ async function startWhatsAppBot() {
                 const subArg = textLower.replace(/^(!stats|sstats|\/stats)\s*/i, '').trim();
                 if (subArg === 'star') {
                     const starTxt = `🖥️ *TELEMETRÍA DE INFRAESTRUCTURA: STAR*\n\n` +
-                                    `⚙️ *Uptime:* 2+ días activo\n` +
-                                    `💾 *RAM Libre:* 35+ GB\n` +
-                                    `🐳 *Docker:* 18 contenedores activos (SAORI, DB, Cloudflared)`;
+                                    `⚙️ *Uptime:* Operativo 24/7\n` +
+                                    `💾 *RAM Libre:* 30+ GB\n` +
+                                    `🐳 *Docker:* Contenedores activos (SAORI, Web, DB, Cloudflared)`;
                     await sock.sendMessage(from, { text: starTxt }, { quoted: isGroup ? msg : undefined });
-                    continue;
-                }
-                if (subArg === 'nexus') {
-                    const nexusTxt = `🖥️ *TELEMETRÍA DE NODO: NEXUS*\n\n` +
-                                     `🔥 *CPU:* Ryzen 5 5500 (6 Núcleos / 12 Hilos)\n` +
-                                     `🎮 *GPU:* NVIDIA GeForce RTX 4060 (8GB VRAM)\n` +
-                                     `🎨 *Capacidades:* ComfyUI / SDXL / Pony V6`;
-                    await sock.sendMessage(from, { text: nexusTxt }, { quoted: isGroup ? msg : undefined });
-                    continue;
-                }
-                if (subArg === 'nova') {
-                    const novaTxt = `💻 *TELEMETRÍA DE NODO: NOVA (LAPTOP JACK)*\n\n` +
-                                    `🌐 *Red:* Tailscale Mesh (\`100.110.230.7\`)\n` +
-                                    `🎮 *Hardware:* GPU MX450 · Ryzen Mobile`;
-                    await sock.sendMessage(from, { text: novaTxt }, { quoted: isGroup ? msg : undefined });
                     continue;
                 }
                 const mcTxt = `⚔️ *ESTADO DEL SERVIDOR: DRAKESCRAFT (MINECRAFT)*\n\n` +
@@ -350,109 +413,85 @@ async function startWhatsAppBot() {
                 continue;
             }
 
-            // 🎨 GENERACIÓN DE IMÁGENES EN WHATSAPP (!imagen <prompt>, dibuja <prompt>)
-            const isImgReq = textLower.startsWith('!imagen') || 
-                             textLower.startsWith('!image') || 
-                             textLower.startsWith('!dibuja') ||
-                             textLower.startsWith('dibuja ') ||
-                             textLower.startsWith('genera una imagen');
+            // ---- 1. GENERACIÓN DE IMÁGENES ----
+            const isImageRequest = 
+                textLower.startsWith('/imagen') || 
+                textLower.startsWith('/image') || 
+                textLower.startsWith('!imagen') || 
+                textLower.startsWith('!image') || 
+                textLower.includes('genera una imagen') || 
+                textLower.includes('crea una imagen') || 
+                textLower.includes('dibuja una imagen') || 
+                textLower.includes('dibuja ') || 
+                textLower.includes('haz una imagen');
 
-            if (isImgReq) {
-                let imgPrompt = messageContent.replace(/^(!imagen|!image|!dibuja|dibuja|genera una imagen de|genera una imagen)\s+/i, '').trim();
-                if (!imgPrompt) imgPrompt = 'Diosa Saori cyberpunk';
+            if (isImageRequest) {
+                let promptForImg = messageContent
+                    .replace(/^\/imagen\s*/i, '')
+                    .replace(/^\/image\s*/i, '')
+                    .replace(/^!imagen\s*/i, '')
+                    .replace(/^!image\s*/i, '')
+                    .replace(/^(?:saori|atenea)[,\s]+/i, '')
+                    .replace(/(?:por favor|pls|plz)/gi, '')
+                    .replace(/(?:genera|crea|dibuja|haz)\s+(?:una\s+)?imagen\s+(?:de\s+|sobre\s+)?/gi, '')
+                    .trim();
 
-                await sock.sendMessage(from, { text: `🎨 *Pintando y renderizando con los motores de Star...* ✨` }, { quoted: isGroup ? msg : undefined });
+                if (!promptForImg) promptForImg = 'Paisaje épico de fantasía con dragones y castillos medievales en Minecraft';
 
-                try {
-                    const imgRes = await fetch('http://127.0.0.1:8089/image', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ prompt: imgPrompt }),
-                        timeout: 45000
-                    });
+                const statusOpts = isGroup ? { quoted: msg } : {};
+                await sock.sendMessage(from, { text: `🎨 *SAORI Art:* Generando imagen ("_${promptForImg.slice(0, 50)}..._"), dame unos segundos...` }, statusOpts).catch(() => {});
 
-                    if (imgRes.ok) {
-                        const imgData = await imgRes.json();
-                        if (imgData.ok && imgData.image_path && fs.existsSync(imgData.image_path)) {
-                            const imgBuffer = fs.readFileSync(imgData.image_path);
-                            await sock.sendMessage(from, { 
-                                image: imgBuffer, 
-                                caption: `🌸 *Arte Generado por SAORI*\n✨ *Prompt:* ${imgPrompt}` 
-                            }, { quoted: isGroup ? msg : undefined });
-                            fs.unlinkSync(imgData.image_path);
-                            console.log(`[SAORI-WA] 🎨 Imagen enviada exitosamente.`);
-                            continue;
-                        }
-                    }
-                } catch (e) {
-                    console.error('[SAORI-WA] Error generando imagen:', e.message);
+                const imgPath = await generateImageViaDaemon(promptForImg);
+                if (imgPath && fs.existsSync(imgPath)) {
+                    await sock.sendMessage(from, {
+                        image: { url: imgPath },
+                        caption: `🎨 *SAORI Art Generative Studio*\n✨ *Prompt:* ${promptForImg}`
+                    }, statusOpts).catch(e => console.error('[SAORI-WA] Error enviando imagen:', e.message));
+                    if (fs.existsSync(imgPath)) fs.unlinkSync(imgPath);
+                    console.log(`[SAORI-WA] 🎨 Imagen enviada a ${from}`);
+                    continue;
+                } else {
+                    await sock.sendMessage(from, { text: `🌸 Tuve un inconveniente con los motores de imagen en Star. Intenta con otro prompt más tarde.` }, statusOpts).catch(() => {});
+                    continue;
                 }
-                await sock.sendMessage(from, { text: `❌ No se pudo completar la generación en este momento. Intenta de nuevo.` }, { quoted: isGroup ? msg : undefined });
-                continue;
             }
 
-            // En Grupos:
-            if (isGroup) {
-                const isMentioned = isAudio || 
-                                    textLower.includes('saori') || 
-                                    textLower.includes('@saori') || 
-                                    textLower.includes('atenea') ||
-                                    textLower.startsWith('/') ||
-                                    textLower.startsWith('!');
+            const wantsAudio =
+                isAudio ||
+                textLower.includes('manda audio') ||
+                textLower.includes('en audio') ||
+                textLower.includes('responde en audio') ||
+                textLower.includes('un audio') ||
+                textLower.includes('nota de voz');
 
-                if (!isMentioned) continue;
+            // ---- Obtener respuesta (executor → daemon) ----
+            const aiReply = await askSaori(messageContent, senderName);
 
-                lastReplies.set(from, Date.now());
-                const aiReply = await getClaudeResponse(messageContent, senderName);
-
-                if (wantsAudio) {
-                    const audioPath = await generateVoiceAudio(aiReply);
-                    if (audioPath && fs.existsSync(audioPath)) {
-                        const audioBuffer = fs.readFileSync(audioPath);
-                        await sock.sendMessage(from, { 
-                            audio: audioBuffer, 
-                            mimetype: 'audio/ogg; codecs=opus', 
-                            ptt: true 
-                        }, { quoted: msg });
-                        fs.unlinkSync(audioPath);
-                        console.log(`[SAORI-WA] 🎙️ Nota de voz chilena enviada al grupo.`);
-                        continue;
-                    }
+            // ---- Enviar nota de voz si se pidió ----
+            if (wantsAudio) {
+                const audioPath = await generateVoiceAudio(aiReply);
+                if (audioPath) {
+                    await sock.sendMessage(from, {
+                        audio: { url: audioPath },
+                        mimetype: 'audio/mp4',
+                        ptt: true
+                    }, { quoted: msg }).catch(e => console.error('[SAORI-WA] Error voz:', e.message));
+                    if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
+                    console.log(`[SAORI-WA] 🎙️ Audio enviado.`);
+                    continue;
                 }
-
-                await sock.sendMessage(from, { text: aiReply }, { quoted: msg });
-                console.log(`[SAORI-WA] 📤 Respuesta enviada a ${from}`);
-                continue;
             }
 
-            // En Privado:
-            if (!isGroup) {
-                lastReplies.set(from, Date.now());
-                const aiReply = await getClaudeResponse(messageContent, senderName);
-
-                if (wantsAudio) {
-                    const audioPath = await generateVoiceAudio(aiReply);
-                    if (audioPath && fs.existsSync(audioPath)) {
-                        const audioBuffer = fs.readFileSync(audioPath);
-                        await sock.sendMessage(from, { 
-                            audio: audioBuffer, 
-                            mimetype: 'audio/ogg; codecs=opus', 
-                            ptt: true 
-                        });
-                        fs.unlinkSync(audioPath);
-                        console.log(`[SAORI-WA] 🎙️ Nota de voz chilena enviada a privado.`);
-                        continue;
-                    }
-                }
-
-                await sock.sendMessage(from, { text: aiReply });
-                console.log(`[SAORI-WA] 📤 Respuesta enviada a privado ${from}`);
-            }
+            // ---- Enviar texto ----
+            const sendOpts = isGroup ? { quoted: msg } : {};
+            await sock.sendMessage(from, { text: aiReply }, sendOpts)
+                .catch(e => console.error('[SAORI-WA] Error send:', e.message));
+            console.log(`[SAORI-WA] 📤 Respuesta enviada.`);
         }
     });
 }
 
 startWebhookServer();
 startWhatsAppBot().catch(err => {
-    console.error('Fatal error en SAORI WhatsApp Bot:', err);
+    console.error('[SAORI-WA] Error fatal:', err);
 });
