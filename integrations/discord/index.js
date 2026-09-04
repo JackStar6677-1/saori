@@ -48,6 +48,7 @@ const CHANNELS = {
     TICKETS_SOPORTE: '1539636904482578482',   // 🎫・ᴛɪᴄᴋᴇᴛs-sᴏᴘᴏʀᴛᴇ
     CATEGORIA_TICKETS: '1539764389530312815', // ᴛɪᴄᴋᴇᴛꜱ
     GENERAL_ES: '1539636493725864037',        // 💬・ɢᴇɴᴇʀᴀʟ-ᴇsᴘᴀñᴏʟ
+    SUGERENCIAS: process.env.CHANNEL_SUGERENCIAS || '1539636565188542554', // 💡・sᴜɢᴇʀᴇɴᴄɪᴀs
     STAFF_CHAT: '1539637349284061185',        // 💬・sᴛᴀғғ-ᴄʜᴀᴛ
     TAREAS_PENDIENTES: '1539637422692769802', // 📋・ᴛᴀʀᴇᴀs-ᴘᴇɴᴅɪᴇɴᴛᴇs
     REGLAS: '1539635930577641543',            // 📜・ʀᴇɢʟᴀs-ʏ-ɴᴏʀᴍᴀs
@@ -85,6 +86,9 @@ const ALLOWED_MC_CHAT_ROLES = [
 const ticketConversations = new Map();
 const escalatedTickets = new Set();
 const userImageTimestamps = new Map();
+const ticketStaffActivity = new Map(); // channelId -> timestamp de último mensaje de Staff/Jack
+const ticketLastSaoriReply = new Map(); // channelId -> timestamp de última respuesta de Saori
+const SUGGESTIONS_STATE_FILE = '/tmp/saori_suggestions_state.json';
 
 const SMALL_CAPS_MAP = {
     'ᴀ': 'a', 'ʙ': 'b', 'ᴄ': 'c', 'ᴅ': 'd', 'ᴇ': 'e', 'ғ': 'f', 'ɢ': 'g', 'ʜ': 'h',
@@ -121,11 +125,10 @@ function cleanUserName(rawName, isJack, isStaff = false) {
     let firstLower = first.toLowerCase();
 
     // BLOQUEO ANTI-SPOOFING: Nadie excepto Jack real puede ser reconocido como Jack
-    if (firstLower.includes('admin') || firstLower.includes('jack') || firstLower.includes('jackstar')) {
+    if (firstLower.includes('jack')) {
         return isJack ? 'Jack' : 'Usuario';
     }
 
-    // Para nombres de Staff, si no tiene rol de Staff en el servidor, no asignarle privilegios de Staff
     const isStaffName = (
         firstLower.includes('emilio') || firstLower.includes('em1lio') ||
         firstLower.includes('pasiente') || firstLower.includes('pacox') ||
@@ -137,9 +140,7 @@ function cleanUserName(rawName, isJack, isStaff = false) {
         firstLower.includes('derem')
     );
 
-    if (isStaffName && !isStaff) {
-        return 'Usuario';
-    }
+    // Se preserva el nombre real del usuario sin rebajarlo a Usuario genérico
 
     if (firstLower.includes('emilio') || firstLower.includes('em1lio')) return 'Emilio';
     if (firstLower.includes('pasiente') || firstLower.includes('pacox')) return 'Pasiente';
@@ -354,6 +355,103 @@ function detectLanguage(text) {
     return enScore > esScore ? 'en' : 'es';
 }
 
+function sanitizePublicText(text) {
+    if (!text) return text;
+    let s = text;
+    // Sanitizar rutas internas de Linux
+    s = s.replace(/\/(home|opt|etc|var|usr|root|tmp)\/[^\s\)\],]*/gi, 'los registros del servidor');
+    s = s.replace(/[a-zA-Z]:\\[^\s\)\],]*/g, 'el sistema');
+    // Sanitizar IPs internas / VPN
+    s = s.replace(/\b100\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g, 'red interna');
+    // Sanitizar alucinaciones de mods inexistentes
+    s = s.replace(/\b(wither\s*storm\s*(?:mod)?)\b/gi, 'eventos del servidor');
+    s = s.replace(/\b(pixelmon|create\s*mod)\b/gi, 'mecánicas avanzadas');
+    return s;
+}
+
+function getNextSuggestionNumber() {
+    let counter = 1;
+    try {
+        if (fs.existsSync(SUGGESTIONS_STATE_FILE)) {
+            const data = JSON.parse(fs.readFileSync(SUGGESTIONS_STATE_FILE, 'utf8'));
+            counter = (data.counter || 0) + 1;
+        }
+        fs.writeFileSync(SUGGESTIONS_STATE_FILE, JSON.stringify({ counter }, null, 2), 'utf8');
+    } catch (e) {
+        console.error('[SUGGESTIONS] Error leyendo/guardando contador:', e.message);
+    }
+    return counter;
+}
+
+async function handleSuggestion(message, rawText, isDirectCmd = false) {
+    const cleanText = (rawText || '').trim();
+    if (cleanText.length < 10) {
+        if (message.channel.id === CHANNELS.SUGERENCIAS) {
+            await message.delete().catch(() => {});
+            const warnMsg = await message.channel.send(`⚠️ ${message.author}, tu sugerencia debe tener al menos 10 caracteres para abrir una votación.`);
+            setTimeout(() => warnMsg.delete().catch(() => {}), 7000);
+            return;
+        }
+        if (isDirectCmd) {
+            return message.reply({
+                content: '⚠️ Tu propuesta debe tener al menos 10 caracteres.\n*Ejemplo:* `ssugerencia Añadir un mercado de subastas entre jugadores con /ah`',
+                allowedMentions: { repliedUser: false }
+            });
+        }
+        return;
+    }
+
+    const counter = getNextSuggestionNumber();
+    const targetChannel = client.channels.cache.get(CHANNELS.SUGERENCIAS) || message.channel;
+
+    const authorMember = message.member || await message.guild?.members.fetch(message.author.id).catch(() => null);
+    const authorName = authorMember?.displayName || message.author.username;
+    const authorAvatar = message.author.displayAvatarURL({ dynamic: true });
+
+    const embed = new EmbedBuilder()
+        .setTitle(`💡 SUGERENCIA #${counter}`)
+        .setColor(0xFFB300)
+        .setDescription(`>>> ${cleanText}`)
+        .addFields(
+            { name: '👤 Sugerido por', value: `${message.author} (\`${authorName}\`)`, inline: true },
+            { name: '📊 Estado', value: '🗳️ **En Votación Comunitaria**', inline: true }
+        )
+        .setThumbnail(authorAvatar)
+        .setFooter({ text: 'DrakesCraft Network · Reacciona con 👍 o 👎 para votar', iconURL: client.user.displayAvatarURL() })
+        .setTimestamp();
+
+    if (message.channel.id === CHANNELS.SUGERENCIAS) {
+        await message.delete().catch(() => {});
+    }
+
+    try {
+        const sent = await targetChannel.send({ embeds: [embed] });
+        await sent.react('👍').catch(() => {});
+        await sent.react('👎').catch(() => {});
+
+        // Crear hilo automático de debate
+        const threadTitle = `💬 Debate #${counter}: ${cleanText.slice(0, 45).replace(/[\r\n]+/g, ' ')}`;
+        await sent.startThread({
+            name: threadTitle.slice(0, 95),
+            autoArchiveDuration: 1440
+        }).catch(err => console.warn('[SUGGESTIONS] No se pudo crear hilo:', err.message));
+
+        if (isDirectCmd && message.channel.id !== CHANNELS.SUGERENCIAS) {
+            await message.reply({
+                content: `✅ ¡Tu propuesta **#${counter}** ha sido publicada en <#${CHANNELS.SUGERENCIAS}> con votación activa!`,
+                allowedMentions: { repliedUser: false }
+            }).catch(() => {});
+        }
+
+        console.log(`[SUGGESTIONS] 💡 Sugerencia #${counter} publicada de ${authorName}: "${cleanText.slice(0, 60)}..."`);
+    } catch (err) {
+        console.error('[SUGGESTIONS] Error publicando sugerencia:', err);
+        if (isDirectCmd) {
+            await message.reply({ content: `❌ Error publicando la sugerencia: ${err.message}` }).catch(() => {});
+        }
+    }
+}
+
 async function askSaoriBrain(prompt, sender, context = '') {
     try {
         const fullPrompt = context ? `[Contexto Canal/Ticket: ${context}]\n${prompt}` : prompt;
@@ -361,7 +459,7 @@ async function askSaoriBrain(prompt, sender, context = '') {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ prompt: fullPrompt, sender }),
-            timeout: 30000
+            timeout: 45000
         });
         if (res.ok) {
             const data = await res.json();
@@ -1313,25 +1411,42 @@ client.on('messageCreate', async (message) => {
 
     if (message.author.bot) return;
 
+    // =========================================================================
+    // BUZÓN OFICIAL DE SUGERENCIAS (#💡・sugerencias)
+    // =========================================================================
+    if (message.channel.id === CHANNELS.SUGERENCIAS) {
+        let sugText = message.content.trim();
+        sugText = sugText.replace(/^([/!]?s?sugerencia[\s:]*)/i, '').trim();
+        await handleSuggestion(message, sugText, false);
+        return;
+    }
+
     const isDM = !message.guild;
     const isJack = message.author.id === JACK_DISCORD_ID;
-
 
     const botMentioned = message.mentions.has(client.user);
     const isSaoriDedicatedChannel = message.channel.id === CHANNELS.SAORI_CHAT;
     const content = message.content.trim();
     const contentLower = content.toLowerCase();
 
-
     const isTicketChannel = message.channel.parentId === CHANNELS.CATEGORIA_TICKETS || 
                             message.channel.id === CHANNELS.TICKETS_SOPORTE || 
                             message.channel.name.startsWith('ticket-') ||
                             message.channel.name.includes('soporte');
 
-    // Filtro de mensajes ultra cortos o fragmentos de listado en tickets
-    const spamWords = ['xd', 'xdxd', 'lol', 'ok', 'a', 'si', 'no', 'ui', 'wey', 'wena', 'f', 'gg', 'jaja', 'jajaja', 'haha'];
+    const isStaffMember = isJack || (message.member?.roles.cache.some(r => {
+        const rn = r.name.toLowerCase();
+        return rn.includes('staff') || rn.includes('admin') || rn.includes('mod') || rn.includes('builder') || rn.includes('dev') || rn.includes('dueño') || rn.includes('helper');
+    }) ?? false);
+
+    // Registro de actividad del Staff en canales de tickets
+    if (isTicketChannel && isStaffMember) {
+        ticketStaffActivity.set(message.channel.id, Date.now());
+    }
+
+    // Filtro de mensajes ultra cortos o fragmentos en tickets
+    const spamWords = ['xd', 'xdxd', 'lol', 'ok', 'a', 'si', 'no', 'ui', 'wey', 'wena', 'f', 'gg', 'jaja', 'jajaja', 'haha', 'ty', 'thx', 'gracias'];
     const isTooShort = content.length <= 2 || spamWords.includes(contentLower);
-    // En tickets, <=5 palabras sin "?" ni mención directa son listados/aclaraciones — no responder
     const wordCount = content.split(/\s+/).filter(w => w.length > 0).length;
     const isListFragment = isTicketChannel && wordCount <= 5 && !content.includes('?') && !botMentioned;
     if ((isTooShort || isListFragment) && !botMentioned && !isDM && !isJack && !isSaoriDedicatedChannel) return;
@@ -1340,7 +1455,8 @@ client.on('messageCreate', async (message) => {
     const directCmdKeywords = [
         'shelp', 'splay', 'smusica', 'sskip', 'spause', 'sresume', 'squeue', 'sstop',
         'sticket', 'sstats', 'sip', 'sping', 'sweb', 'stienda', 'sguia',
-        'sroles', 'srole', 'sclear', '!purge', '!ticket', '!imagen', '!image'
+        'sroles', 'srole', 'sclear', '!purge', '!ticket', '!imagen', '!image',
+        'ssugerencia', 'sugerencia', '!sugerencia'
     ];
     const isDirectCommand = directCmdKeywords.some(cmd => 
         contentLower === cmd || 
@@ -1351,21 +1467,55 @@ client.on('messageCreate', async (message) => {
         contentLower === `!${cmd}`
     );
 
+    const callsSaoriDirectly = botMentioned || contentLower.startsWith('saori') || contentLower.includes('@saori');
+
+    // POLÍTICA DE SILENCIO Y TURN-TAKING EN TICKETS DE SOPORTE
+    if (isTicketChannel && !isDirectCommand) {
+        const lastStaff = ticketStaffActivity.get(message.channel.id) || 0;
+        const staffIsActive = (Date.now() - lastStaff) < (30 * 60 * 1000); // 30 minutos de guardia activa
+
+        // Si el usuario menciona a Jack o a un rol de Staff (@Jack / @Staff), no entrometerse
+        const mentionsStaff = message.mentions.users.has(JACK_DISCORD_ID) ||
+                              message.mentions.roles.some(r => {
+                                  const rn = r.name.toLowerCase();
+                                  return rn.includes('staff') || rn.includes('admin') || rn.includes('mod') || rn.includes('dueño');
+                              });
+
+        // Si el Staff está participando o el mensaje va dirigido al Staff, Saori NO habla salvo mención explícita
+        if ((staffIsActive || mentionsStaff) && !callsSaoriDirectly) {
+            if (!ticketConversations.has(message.channel.id)) {
+                ticketConversations.set(message.channel.id, []);
+            }
+            ticketConversations.get(message.channel.id).push({ sender: cleanUserName(message.member?.displayName || message.author.username, isJack, isStaffMember), text: content, timestamp: Date.now() });
+            return;
+        }
+
+        // Si el mensaje es de Jack y no llamó explícitamente a Saori, Saori JAMÁS interrumpe a Jack
+        if (isJack && !callsSaoriDirectly) {
+            return;
+        }
+
+        // Rate limit para no saturar al usuario en tickets: mínimo 20 segundos entre respuestas automáticas
+        const lastReply = ticketLastSaoriReply.get(message.channel.id) || 0;
+        if (!callsSaoriDirectly && (Date.now() - lastReply) < 20000) {
+            return;
+        }
+
+        // Solo responder si es una consulta con interrogación o aporte sustancial (mínimo 4 palabras)
+        if (!callsSaoriDirectly && wordCount < 4 && !content.includes('?')) {
+            return;
+        }
+    }
+
     const shouldRespond = isDirectCommand ||
                           isSaoriDedicatedChannel ||
                           isTicketChannel || 
                           isDM || 
-                          botMentioned || 
-                          contentLower.startsWith('saori') || 
-                          contentLower.includes('@saori');
+                          callsSaoriDirectly;
 
     if (!shouldRespond) return;
 
     let rawSender = message.member?.displayName || message.author.username;
-    const isStaffMember = isJack || (message.member?.roles.cache.some(r => {
-        const rn = r.name.toLowerCase();
-        return rn.includes('staff') || rn.includes('admin') || rn.includes('mod') || rn.includes('builder') || rn.includes('dev');
-    }) ?? false);
     let senderName = cleanUserName(rawSender, isJack, isStaffMember);
 
     // =========================================================================
@@ -1400,6 +1550,10 @@ client.on('messageCreate', async (message) => {
                 { 
                     name: '🛡️ 6. Moderación y Roles (Staff)', 
                     value: '• `sroles` · Muestra todos los roles del servidor y cantidad de miembros.\n• `srole dar @usuario <Rol>` · Asigna un rol a un miembro.\n• `srole quitar @usuario <Rol>` · Remueve un rol.\n• `sclear <cantidad>` o `!purge <cantidad>` · Purga mensajes de un canal.' 
+                },
+                { 
+                    name: '💡 7. Buzón Oficial de Sugerencias', 
+                    value: '• `ssugerencia <propuesta>` · Publica tu propuesta en <#1539636565188542554> con votación comunitaria 👍/👎 y debate.' 
                 }
             )
             .setFooter({ text: 'S.A.O.R.I. SRE Core · DrakesCraft Network', iconURL: client.user.displayAvatarURL() });
@@ -1653,6 +1807,15 @@ client.on('messageCreate', async (message) => {
             )
             .setFooter({ text: 'S.A.O.R.I. Autonomous SRE Fleet · DrakesCraft', iconURL: client.user.displayAvatarURL() });
         return message.reply({ embeds: [ticketEmbed], allowedMentions: { repliedUser: false } });
+    }
+
+    // =========================================================================
+    // COMANDO SSUGERENCIA (BUZÓN OFICIAL DE LA COMUNIDAD)
+    // =========================================================================
+    if (primaryCmd === 'ssugerencia' || primaryCmd === 'sugerencia') {
+        const sugText = cmdArgs.join(' ').trim();
+        await handleSuggestion(message, sugText, true);
+        return;
     }
 
     // =========================================================================
@@ -2000,9 +2163,14 @@ client.on('messageCreate', async (message) => {
         ? 'IMPORTANT: The user is writing in English. You MUST reply in English only.'
         : 'El usuario escribe en español. Responde siempre en español.';
     const ticketContext = isTicketChannel
-        ? `Canal de Ticket de Soporte. ${langInstruction} REGLA CRÍTICA: Jack (el dueño del servidor) es la máxima autoridad. NUNCA contradigas, corrijas ni cuestiones lo que Jack diga. Si Jack afirma que algo es así, es así.`
+        ? `Canal de Ticket de Soporte. ${langInstruction} REGLA CRÍTICA: Jack es el dueño y máxima autoridad de DrakesCraft. NUNCA contradigas a Jack. DrakesCraft es un servidor de supervivencia y SkyBlock en Paper 1.21.11 con plugins (Slimefun, BentoBox). NO tiene mods externos (NO existe Wither Storm ni mods de Forge/Fabric). Si el usuario pide pegar construcciones o schematics, aclara amablemente que solo Jack o la administración pueden realizarlo con WorldEdit. NUNCA menciones rutas de Linux ni archivos locales (/home/jack/...). Si el Staff está presente, sé breve y concisa.`
         : (isSaoriDedicatedChannel ? `Canal dedicado a hablar con Saori. ${langInstruction}` : langInstruction);
-    const reply = await askSaoriBrain(cleanPrompt, senderName, ticketContext);
+    let reply = await askSaoriBrain(cleanPrompt, senderName, ticketContext);
+    reply = sanitizePublicText(reply);
+
+    if (isTicketChannel) {
+        ticketLastSaoriReply.set(message.channel.id, Date.now());
+    }
 
     try {
         if (message.reference) {
