@@ -831,7 +831,9 @@ client.once(Events.ClientReady, async () => {
             // Sincronización inicial y periódica de rangos Minecraft <-> Discord cada 10 minutos
             setTimeout(() => syncPlayerRanksWithDiscord(guild), 5000);
             setTimeout(() => syncAutoRolesChannel(guild), 8000);
+            setTimeout(() => updateServerStats(guild), 12000);
             setInterval(() => syncPlayerRanksWithDiscord(guild), 10 * 60 * 1000);
+            setInterval(() => updateServerStats(guild), 10 * 60 * 1000);
         }
     } catch (e) {
         console.error('[AUDIT-CACHE] Error pre-cacheando mensajes:', e.message);
