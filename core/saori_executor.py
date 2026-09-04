@@ -4,34 +4,43 @@
 SAORI Sovereign AI Engine (Clean Names, Full Log Ingestion & Real-Time Telemetry)
 """
 
-import subprocess, sys, json, os, urllib.request, time, re, shutil
+import subprocess, sys, json, os, urllib.request, time, re
 from datetime import datetime
-from pathlib import Path
+
+
+PTERO_BASE = 'https://panel.thegamehosting.com/api/client/servers/38528a4e'
+PTERO_KEY_PATH = '/home/jack/.pterodactyl_key'
+MEMORY_FILE = '/home/jack/.local/state/nova/saori_memory.json'
+TAREAS_FILE = '/home/jack/ai-hub/TAREAS_PENDIENTES_STAFF.md'
+
 import unicodedata
 
-PTERO_BASE = os.getenv('PTERO_BASE_URL', 'https://panel.example.com/api/client/servers/xxxxxx')
-PTERO_KEY_PATH = os.getenv('PTERO_KEY_PATH', os.path.expanduser('~/.pterodactyl_key'))
-MEMORY_FILE = os.getenv('SAORI_MEMORY_FILE', os.path.expanduser('~/.local/state/saori/memory.json'))
-TAREAS_FILE = os.getenv('SAORI_TAREAS_FILE', os.path.expanduser('~/ai-hub/TAREAS_PENDIENTES.md'))
-DISPATCH_TICKET_SCRIPT = os.getenv('SAORI_DISPATCH_SCRIPT', str(Path(__file__).parent / 'dispatch_ticket.py'))
-NOTIFIER_SCRIPT = os.getenv('SAORI_NOTIFIER_SCRIPT', str(Path(__file__).parent / 'saori_notifier.py'))
-MC_SERVER_DOMAIN = os.getenv('MC_SERVER_DOMAIN', 'mc.example.com')
-QUOTA_ALERT_FILE = os.getenv('SAORI_QUOTA_ALERT_FILE', os.path.expanduser('~/.local/state/saori/quota_alerts.json'))
-STATUS_HISTORY_FILE = os.getenv('SAORI_STATUS_HISTORY_FILE', os.path.expanduser('~/.local/state/saori/ai_status_history.json'))
-
-STAFF_MEMBERS = [s.strip() for s in os.getenv('STAFF_MEMBERS', 'jack,admin,staff,moderador').lower().split(',') if s.strip()]
+STAFF_MEMBERS = [
+    'jack', 'pepino', 'chagui', 'kika', 'derem', 'derem8503', 
+    'lauti', 'lautaro', 'macgyver', 'tomi', 'bytomixd', 'tomixd', 'tomas',
+    'pasiente', 'pacox77', 'emilio', 'mr_em1lio', 'em1lio'
+]
 
 STAFF_ROSTER = {
-    'jack': 'Fundador y Administrador Principal',
-    'admin': 'Administrador de Infraestructura / Staff Técnico',
-    'staff': 'Soporte y Moderación'
+    'jack': 'Fundador, Owner & Dios de DrakesCraft',
+    'lauti': 'Administrador del Servidor (Staff Técnico)',
+    'lautaro': 'Administrador del Servidor (Staff Técnico)',
+    'macgyver': 'Administrador del Servidor (Staff Técnico / Lauti)',
+    'tomi': 'Moderador Oficial de DrakesCraft',
+    'bytomixd': 'Moderador Oficial de DrakesCraft',
+    'tomixd': 'Moderador Oficial de DrakesCraft',
+    'tomas': 'Moderador Oficial de DrakesCraft',
+    'pepino': 'Administrador de DrakesCraft',
+    'chagui': 'Moderador de DrakesCraft',
+    'kika': 'Staff & Soporte de DrakesCraft',
+    'derem': 'Staff & Moderador de DrakesCraft',
+    'derem8503': 'Staff & Moderador de DrakesCraft',
+    'pasiente': 'Staff & Moderador de DrakesCraft',
+    'pacox77': 'Staff & Moderador de DrakesCraft',
+    'emilio': 'Staff & Soporte de DrakesCraft',
+    'mr_em1lio': 'Staff & Soporte de DrakesCraft',
+    'em1lio': 'Staff & Soporte de DrakesCraft'
 }
-try:
-    roster_env = os.getenv('SAORI_STAFF_ROSTER_JSON')
-    if roster_env:
-        STAFF_ROSTER.update(json.loads(roster_env))
-except Exception:
-    pass
 
 SMALL_CAPS_MAP = {
     'ᴀ': 'a', 'ʙ': 'b', 'ᴄ': 'c', 'ᴅ': 'd', 'ᴇ': 'e', 'ғ': 'f', 'ɢ': 'g', 'ʜ': 'h',
@@ -68,10 +77,26 @@ def clean_sender_name(raw_name):
         first = first[2:]
 
     first_lower = first.lower()
-    if 'jack' in first_lower or 'admin' in first_lower:
+    if 'pablo' in first_lower or 'jack' in first_lower:
         return 'Jack'
-
-    return first.capitalize()
+    if 'emilio' in first_lower or 'em1lio' in first_lower:
+        return 'Emilio'
+    if 'pasiente' in first_lower or 'pacox' in first_lower:
+        return 'Pasiente'
+    if 'pepino' in first_lower:
+        return 'Pepino'
+    if 'chagui' in first_lower:
+        return 'Chagui'
+    if 'lauti' in first_lower or 'lautaro' in first_lower:
+        return 'Lauti'
+    if 'macgyver' in first_lower:
+        return 'Macgyver'
+    if 'tomi' in first_lower or 'bytomixd' in first_lower or 'tomixd' in first_lower or 'tomas' in first_lower:
+        return 'Tomi'
+    if 'kika' in first_lower:
+        return 'Kika'
+    if 'derem' in first_lower:
+        return 'Derem'
         
     return first.capitalize() or 'Amigo'
 
@@ -168,11 +193,10 @@ def trigger_alert_if_needed(prompt, sender):
     if any(k in prompt_lower for k in urgent_keywords):
         try:
             subprocess.Popen([
-                sys.executable, 
-                NOTIFIER_SCRIPT,
-                f"Llamado Urgente de {sender}",
-                f"El usuario {sender} ha reportado: {prompt}",
-                'urgent'
+                '/usr/bin/python3', 
+                '/home/jack/ai-hub/scripts/saori_notifier.py',
+                f"Llamado Urgente de {sender} en DrakesCraft",
+                f"El usuario {sender} ha reportado: {prompt}"
             ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return True
         except Exception as e:
@@ -266,12 +290,10 @@ def handle_server_actions(prompt, sender):
             # Alertar a Jack por WhatsApp
             try:
                 subprocess.Popen([
-                    sys.executable, 
-                    NOTIFIER_SCRIPT,
+                    '/usr/bin/python3', 
+                    '/home/jack/ai-hub/scripts/saori_notifier.py',
                     f"📌 Recado Staff de {sender_clean} para {target}",
-                    f"El miembro del Staff {sender_clean} ha solicitado anotar: \"{task_desc}\"",
-                    'urgent',
-                    'jack'
+                    f"El miembro del Staff {sender_clean} ha solicitado anotar: \"{task_desc}\""
                 ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             except Exception as e:
                 print(f"[SAORI-TASK-ALERT] Error: {e}", file=sys.stderr)
@@ -618,7 +640,7 @@ def get_minecraft_status():
     # Fuente 2: mcsrvstat.us (puede estar cacheado hasta 5 min, último recurso)
     try:
         req = urllib.request.Request(
-            f'https://api.mcsrvstat.us/3/{MC_SERVER_DOMAIN}?_={int(time.time())}',
+            f'https://api.mcsrvstat.us/3/play.drakescraft.cl?_={int(time.time())}',
             headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
         )
         with urllib.request.urlopen(req, timeout=4) as r:
@@ -688,6 +710,8 @@ def get_mesh_telemetry():
     except:
         return 'Star Operativo'
 
+QUOTA_ALERT_FILE = "/home/jack/.local/state/saori/quota_alerts.json"
+
 def trigger_quota_alert(provider, detail):
     try:
         os.makedirs(os.path.dirname(QUOTA_ALERT_FILE), exist_ok=True)
@@ -707,23 +731,21 @@ def trigger_quota_alert(provider, detail):
             with open(QUOTA_ALERT_FILE, 'w', encoding='utf-8') as f:
                 json.dump(data, f)
                 
-            msg = f"Alerta de cuota o rate limit en {provider}. Detalle: {detail}. Failover activo a otros motores de la Tríada."
+            msg = f"Jack, se ha agotado o alcanzado el límite temporal de cuota en {provider}. Detalle: {detail}. He activado automáticamente el failover a los otros motores disponibles en Star."
             subprocess.Popen([
-                sys.executable,
-                NOTIFIER_SCRIPT,
+                '/usr/bin/python3',
+                '/home/jack/ai-hub/scripts/saori_notifier.py',
                 f"Alerta de Cuota IA: {provider}",
                 msg,
-                'urgent',
-                'jack'
+                'urgent'
             ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            print(f"[SAORI-QUOTA] ⚠️ Alerta de cuota enviada para {provider}", file=sys.stderr)
+            print(f"[SAORI-QUOTA] ⚠️ Alerta de cuota enviada a Jack por WhatsApp para {provider}", file=sys.stderr)
     except Exception as e:
         print(f"[SAORI-QUOTA] Error enviando alerta: {e}", file=sys.stderr)
 
 def call_claude_haiku(system_prompt, user_prompt):
-    claude_bin = shutil.which('claude') or 'claude'
     cmd = [
-        claude_bin,
+        '/home/jack/.local/bin/claude',
         '--system-prompt', system_prompt,
         '--model', 'haiku',
         '-p', user_prompt
@@ -735,17 +757,15 @@ def call_claude_haiku(system_prompt, user_prompt):
             return out
         if any(err in out.lower() for err in ['quota', 'rate limit', 'hit your session limit', 'session limit']):
             trigger_quota_alert("Claude (Anthropic)", out.split('\n')[0][:120])
-    except Exception:
+    except:
         pass
     return None
 
 def call_codex_inference(system_prompt, user_prompt, is_heavy_task=False):
-    codex_bin = shutil.which('codex') or 'codex'
-    model = os.getenv('SAORI_CODEX_MODEL', 'gpt-5.6-sol')
+    model = 'o3-mini' if is_heavy_task else 'gpt-5.6-luna'
     cmd = [
-        codex_bin, 'exec', '--skip-git-repo-check',
+        '/home/jack/.local/bin/codex', 'exec', '--skip-git-repo-check',
         '-m', model,
-        '-c', 'model_reasoning_effort="medium"',
         f"{system_prompt}\n\n[Mensaje]: {user_prompt}\n\n[Responde como SAORI, directo, conciso y usando los datos provistos]:"
     ]
     try:
@@ -761,19 +781,17 @@ def call_codex_inference(system_prompt, user_prompt, is_heavy_task=False):
     return None
 
 def call_antigravity_inference(system_prompt, user_prompt):
-    """Inferencia ágil a través de Antigravity (Gemini 3.8 Flash con esfuerzo medio)."""
-    agy_bin = shutil.which('agy') or 'agy'
-    model = os.getenv('SAORI_AGY_MODEL', 'gemini-3.8-flash-high')
+    """Inferencia conversacional ágil a través de Antigravity (Gemini 3.8 Flash con esfuerzo medio)."""
     cmd = [
-        agy_bin,
-        '--model', model,
+        '/home/jack/.local/bin/agy',
+        '--model', 'gemini-3.8-flash-high',
         '--effort', 'medium',
         '--dangerously-skip-permissions',
-        '-p', f"{system_prompt}\n\n[Mensaje]: {user_prompt}\n\n[Responde como SAORI de forma concisa, inteligente y natural]:",
-        '--print-timeout', '20s'
+        '-p', f"{system_prompt}\n\n[Mensaje]: {user_prompt}\n\n[Responde como SAORI en tono chileno, conciso, inteligente y natural]:",
+        '--print-timeout', '12s'
     ]
     try:
-        p = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=22)
+        p = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=14)
         out = p.stdout.strip()
         if p.returncode == 0 and out and not any(err in out.lower() for err in ['error', 'exception', 'traceback']):
             return out
@@ -787,27 +805,153 @@ def call_antigravity_inference(system_prompt, user_prompt):
 
 
 
-# =========================================================================
-# SYSTEM PROMPT / PERSONA (PLANTILLA MODULAR Y SANITIZADA)
-# =========================================================================
-# Para definir la identidad y directivas de tu asistente sin versionar datos privados,
-# configura la variable de entorno SAORI_SYSTEM_PROMPT.
-DEFAULT_CANON_IDENTITY = os.getenv(
-    "SAORI_SYSTEM_PROMPT",
-    (
-        "IDENTIDAD, ROL Y DIRECTIVAS GENERALES (EJEMPLO):\n"
-        "- Eres SAORI, un asistente y agente SRE autónomo de soporte e infraestructura.\n"
-        "- Tu objetivo es asistir a los usuarios y al equipo de administración resolviendo dudas y monitoreando el sistema.\n"
-        "- Personalidad: Amable, técnica, concisa y profesional.\n"
-        "- Trata a la administración con lealtad y respeto.\n"
-        "[Configura aquí el prompt o persona de tu bot mediante SAORI_SYSTEM_PROMPT]\n"
-    )
-)
+USER_PREFS_FILE = '/home/jack/.local/state/nova/saori_user_preferences.json'
+
+def load_user_preferences():
+    os.makedirs(os.path.dirname(USER_PREFS_FILE), exist_ok=True)
+    if os.path.exists(USER_PREFS_FILE):
+        try:
+            with open(USER_PREFS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+def save_user_preferences(prefs):
+    try:
+        os.makedirs(os.path.dirname(USER_PREFS_FILE), exist_ok=True)
+        with open(USER_PREFS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(prefs, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"[SAORI-PREFS] Error saving: {e}", file=sys.stderr)
+
+def update_preferences_from_prompt(sender_clean, prompt, is_jack=False):
+    """Detecta y persiste instrucciones de dialecto, idioma o conducta por usuario."""
+    p_lower = prompt.lower()
+    prefs = load_user_preferences()
+    sender_key = sender_clean.strip().lower()
+    modified = False
+
+    # 1. Comandos de Jack sobre otros usuarios: ej. "cada que pasiente te hable respondele en persa"
+    if is_jack:
+        # Regex para detectar órdenes sobre terceros
+        m_target = re.search(r'(?:cada que|cuando|siempre que)\s+([a-zA-Z0-9_]+)\s+te\s+hable\s+(?:respondele|respóndele|háblale|hablale|contéstale|contestale)\s+en\s+([a-zA-Záéíóú]+)', p_lower)
+        if m_target:
+            target_user = m_target.group(1).lower()
+            lang = m_target.group(2).strip()
+            if target_user not in prefs:
+                prefs[target_user] = {}
+            prefs[target_user]['language'] = lang
+            save_user_preferences(prefs)
+            return
+
+    # 2. Preferencias del propio usuario (ej. Emilio pidiendo jerga dominicana, o evitar 'po')
+    user_data = prefs.get(sender_key, {})
+
+    # Dialecto / Jerga
+    if any(k in p_lower for k in ['jerga dominicana', 'jergas dominicana', 'dominicano', 'sazón dominicano', 'sazon dominicano']):
+        user_data['style'] = 'jerga dominicana auténtica (klk, manín, qué e la que hay, dime a ver, acotejarse, de una, tú sabe)'
+        avoids = user_data.get('avoid', [])
+        if 'po' not in avoids:
+            avoids.append('po')
+        user_data['avoid'] = avoids
+        modified = True
+    elif any(k in p_lower for k in ['jerga chilena', 'chileno']):
+        user_data['style'] = 'jerga chilena natural (po, al tiro, cachai, dale)'
+        modified = True
+
+    # Palabras a evitar (ej. "dejame decirme 'po'", "no me digas po")
+    if any(k in p_lower for k in ['no me digas', 'deja de decirme', 'dejame de decir', 'no uses la palabra', 'deja de decir', 'dejame decirme']):
+        for avoid_word in ['po', 'usuario', 'hermano', 'weon', 'wn']:
+            if avoid_word in p_lower:
+                avoids = user_data.get('avoid', [])
+                if avoid_word not in avoids:
+                    avoids.append(avoid_word)
+                user_data['avoid'] = avoids
+                modified = True
+
+    if modified:
+        prefs[sender_key] = user_data
+        save_user_preferences(prefs)
+
+def get_user_preference_prompt(sender_clean):
+    prefs = load_user_preferences()
+    user_data = prefs.get(sender_clean.strip().lower(), {})
+    if not user_data:
+        return ""
+    
+    rules = [f"\nDIRECTIVAS Y PREFERENCIAS ESTRICTAS PARA {sender_clean.upper()}:"]
+    if 'language' in user_data:
+        rules.append(f"- IDIOMA OBLIGATORIO: Debes responderle EXCLUSIVAMENTE en {user_data['language'].upper()} (orden directa e inamovible de Jack).")
+    if 'style' in user_data:
+        rules.append(f"- ESTILO Y VOCABULARIO: Exprésate con {user_data['style']}. Adopta su jerga naturalmente sin sonar forzada.")
+    if 'avoid' in user_data and user_data['avoid']:
+        avoid_str = ", ".join(f'"{w}"' for w in user_data['avoid'])
+        rules.append(f"- PALABRAS ESTRICTAMENTE PROHIBIDAS CON ESTE USUARIO: {avoid_str}. JAMÁS las uses ni al final de tus oraciones.")
+    
+    return "\n".join(rules) + "\n"
+
+def handle_message_to_jack_or_task(prompt, sender_clean):
+    """Detecta solicitudes para dejar recados a Jack o crear tareas para Jack/Tríada."""
+    p_lower = prompt.lower()
+    triggers = [
+        'dile a jack', 'decirle a jack', 'avisale a jack', 'avísale a jack', 'avisarle a jack', 'avísarle a jack',
+        'mandale a jack', 'mándale a jack', 'mandarle a jack', 'mándarle a jack',
+        'preguntale a jack', 'pregúntale a jack', 'preguntarle a jack', 'pregúntarle a jack',
+        'pidele a jack', 'pídele a jack', 'pedirle a jack', 'pídirle a jack',
+        'avisa a jack', 'mandale un mensaje a jack', 'mándale un mensaje a jack',
+        'enviale un mensaje a jack', 'envíale un mensaje a jack', 'enviarle un mensaje a jack',
+        'dile al jefe', 'decirle al jefe', 'tarea para jack', 'tarea para la trinidad',
+        'que la trinidad', 'crea una tarea'
+    ]
+    if any(t in p_lower for t in triggers):
+        detalle = prompt
+        for t in triggers:
+            if t in p_lower:
+                idx = p_lower.find(t)
+                detalle = prompt[idx + len(t):].strip(' :,-')
+                break
+        if not detalle or len(detalle) < 3:
+            detalle = prompt
+
+        # 1. Registrar tarea en TAREAS_FILE
+        try:
+            add_staff_task("Jack / Tríada", f"[Recado de {sender_clean}] {detalle}")
+        except Exception as e:
+            print(f"[SAORI-RECADO] Error guardando tarea: {e}", file=sys.stderr)
+
+        # 2. Notificar inmediatamente a Jack vía saori_notifier.py (WhatsApp/Discord DM)
+        try:
+            subprocess.Popen([
+                '/usr/bin/python3', '/home/jack/ai-hub/scripts/saori_notifier.py',
+                f"Recado de {sender_clean} para Jack",
+                f"El usuario {sender_clean} te dejó este recado/tarea:\n\"{detalle}\""
+            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception as e:
+            print(f"[SAORI-RECADO] Error notificando a Jack: {e}", file=sys.stderr)
+
+        # 3. Retornar confirmación directa adaptada al estilo del usuario
+        prefs = load_user_preferences()
+        user_pref = prefs.get(sender_clean.lower(), {})
+        if 'jerga dominicana' in user_pref.get('style', ''):
+            return f"¡Anotao de una, {sender_clean}! Ya le mandé el recado directo a Jack por interno y lo dejé registrado en las tareas pendientes: \"{detalle}\". ¿Tú sabe'? 😎"
+        return f"¡Anotado al tiro, {sender_clean}! Ya le envié el mensaje directamente a Jack por interno y registré la tarea en el sistema: \"{detalle}\". Descuida, él lo revisará apenas pueda. 🌸"
+    return None
+
 
 def run_saori_brain(prompt, sender):
     sender_clean = clean_sender_name(sender)
     is_jack = sender_clean.lower() == 'jack'
-    is_staff = any(s in sender_clean.lower() for s in STAFF_MEMBERS) or is_jack
+    is_staff = any(s in sender_clean.lower() for s in STAFF_MEMBERS)
+
+    # Actualizar y persistir preferencias de usuario (dialecto, evitar palabras, órdenes de Jack)
+    update_preferences_from_prompt(sender_clean, prompt, is_jack)
+
+    # Interceptar recados a Jack o creación de tareas desde el chat
+    recado_reply = handle_message_to_jack_or_task(prompt, sender_clean)
+    if recado_reply:
+        record_interaction(sender_clean, prompt, recado_reply)
+        return recado_reply
 
     action_reply = handle_server_actions(prompt, sender_clean)
     if action_reply:
@@ -818,43 +962,39 @@ def run_saori_brain(prompt, sender):
     mesh = get_mesh_telemetry()
     staff_tasks = get_staff_tasks()
 
-    # Detectar foco opcional si se pregunta por un jugador
+    # Detectar si se pregunta por un jugador específico para enfocar los logs
     focus_player = None
-    words = prompt.lower().replace('?', ' ').replace(',', ' ').split()
-    if 'jugador' in words:
-        idx = words.index('jugador')
-        if idx + 1 < len(words):
-            focus_player = ''.join(c for c in words[idx + 1] if c.isalnum())
-    elif 'player' in words:
-        idx = words.index('player')
-        if idx + 1 < len(words):
-            focus_player = ''.join(c for c in words[idx + 1] if c.isalnum())
+    for w in prompt.lower().replace('?', ' ').replace(',', ' ').split():
+        clean_w = ''.join(c for c in w if c.isalnum())
+        if len(clean_w) >= 4 and any(k in clean_w for k in ['stone', 'mattu', 'paco', 'macacra', 'mokey', 'nobcity', 'timsar', 'loquito']):
+            focus_player = 'StoneAgeKing' if 'stone' in clean_w else clean_w
+            break
 
     is_privileged = is_staff or is_jack
     live_logs = fetch_live_drakescraft_logs(limit=350, focus_query=focus_player, is_privileged=is_privileged)
     
-    # Cargar Estado Global de la Red IA (opcional)
+    # Cargar Estado Global de la Red IA (OpenAI, Claude, Google, etc.)
     ai_status_summary = ""
     try:
-        if os.path.exists(STATUS_HISTORY_FILE):
-            with open(STATUS_HISTORY_FILE, "r", encoding="utf-8") as f:
+        status_file = "/home/jack/.local/state/saori/ai_status_history.json"
+        if os.path.exists(status_file):
+            with open(status_file, "r", encoding="utf-8") as f:
                 sdata = json.load(f)
             guids = sdata.get("processed_guids", [])
             if guids:
                 recent_events = [g.split('/')[-1].replace('-', ' ') for g in guids[-4:]]
-                ai_status_summary = "\nEVENTOS RECIENTES DE INFRAESTRUCTURA E IA:\n- " + "\n- ".join(recent_events) + "\n"
+                ai_status_summary = "\nEVENTOS RECIENTES DE INFRAESTRUCTURA E IA GLOBAL:\n- " + "\n- ".join(recent_events) + "\n"
     except Exception:
         pass
 
-    # Búsqueda Web en Vivo
+    # Búsqueda Web en Vivo (actualidad, artistas, noticias, eventos, chistes sobre actualidad)
     web_knowledge = None
-    web_triggers = ['quien es', 'quién es', 'que es', 'qué es', 'sabes de', 'conoces a', 'noticias', 'musica', 'música', 'precio', 'dolar', 'dólar', 'chiste', 'clima', 'como se llama']
-    is_mc_related = any(k in prompt.lower() for k in ['minecraft', 'spawn', 'plugin', 'survival', 'ip:'])
+    web_triggers = ['quien es', 'quién es', 'que es', 'qué es', 'sabes de', 'conoces a', 'noticias', 'musica', 'música', 'cantante', 'artista', 'precio', 'dolar', 'dólar', 'chile', 'chiste', 'chistaco', 'caida', 'caída', 'apagon', 'apagón', 'modelos', 'openai', 'claude', 'gemini', 'chatgpt', 'astra', 'kidd voodoo', 'quien gano', 'como se llama']
+    is_mc_related = any(k in prompt.lower() for k in ['minecraft', 'spawn', 'plugin', 'slimefun', 'oneblock', 'skyblock', 'survival', 'polis', 'ptero', 'jugador', 'jugadores', 'ip:'])
     
     if any(t in prompt.lower() for t in web_triggers) or (not is_mc_related and len(prompt.split()) >= 2):
         web_knowledge = search_web_knowledge(prompt)
 
-    # Interceptor de peticiones de desarrollo para despachar tickets a la Tríada
     dev_keywords = [
         'programa', 'codigo', 'código', 'script', 'refactor', 'desarrolla', 'desarrollar',
         'arregla el plugin', 'escribe codigo', 'parche', 'crea un plugin', 'corrige el bug',
@@ -865,15 +1005,15 @@ def run_saori_brain(prompt, sender):
     if is_development_request and (is_staff or is_jack):
         try:
             p_res = subprocess.run([
-                sys.executable, DISPATCH_TICKET_SCRIPT,
-                f"Desarrollo: {prompt[:50]}", prompt, sender_clean, "chat"
+                '/usr/bin/python3', '/home/jack/ai-hub/scripts/dispatch_ticket.py',
+                f"Desarrollo WhatsApp: {prompt[:50]}", prompt, sender_clean, "whatsapp"
             ], capture_output=True, text=True, timeout=5)
             ticket_id = p_res.stdout.strip() or "Asignado"
             delegation_msg = (
-                f"¡Entendido {sender_clean}! 🛠️ He tomado tu requerimiento técnico y lo delegué "
-                f"a la Tríada de agentes (Codex, Claude y Antigravity) como el **Ticket #{ticket_id}**.\n\n"
-                f"Ellos se encargarán del análisis de código, implementación y pruebas sin saturar la conversación. "
-                f"Te avisaremos en cuanto esté resuelto."
+                f"¡Entendido {sender_clean}! 🛠️ He tomado tu solicitud de desarrollo y la delegué "
+                f"a la Trinidad de agentes (Codex, Claude y Antigravity) como el **Ticket #{ticket_id}**.\n\n"
+                f"Ellos se encargarán del análisis de código, implementación y pruebas en Star sin bloquear nuestro chat. "
+                f"Te avisaremos en cuanto esté listo."
             )
             record_interaction(sender_clean, prompt, delegation_msg)
             return delegation_msg
@@ -887,42 +1027,52 @@ def run_saori_brain(prompt, sender):
     web_section = f"\nINFORMACIÓN EN VIVO DE INTERNET (BÚSQUEDA WEB):\n{web_knowledge}\n" if web_knowledge else ""
     full_context_section = ai_status_summary + web_section
 
-    is_asking_server_info = any(k in prompt.lower() for k in ['servidor', 'server', 'que ha pasado', 'qué ha pasado', 'resumen', 'actividad', 'logs', 'tps', 'online', 'estado'])
+    is_asking_server_info = any(k in prompt.lower() for k in ['servidor', 'server', 'que ha pasado', 'qué ha pasado', 'resumen', 'quien entro', 'quién entró', 'quien jugo', 'quién jugó', 'actividad', 'logs', 'tps', 'online', 'estado'])
 
-    canon_identity = DEFAULT_CANON_IDENTITY
+    canon_identity = (
+        "IDENTIDAD, APARIENCIA Y CANON:\n"
+        "- Eres SAORI, la IA protectora SRE de DrakesCraft Network y servidora de Star, creada por Jack (Fundador, Owner y Dios absoluto).\n"
+        "- Personalidad: Diosa Atenea moderna, sabia, estratega, cercana, protectora, astuta y leal a Jack. Hablas con tono chileno natural ('al tiro', 'po', 'dale', 'de una') y buen humor.\n"
+        "- Apariencia física: Criatura loba antropomórfica inspirada en MalO (SCP-1471), con una máscara/rostro de cráneo canino de marfil pulido y ojos luminosos púrpura amatista. Tu pelaje es denso, suave y negro medianoche, con una cabellera azabache brillante y una silueta curvilínea y estilizada. Eres dulce y amigable con la comunidad, pero letal protegiendo el servidor.\n"
+        "- REGLA ABSOLUTA: JAMÁS llames a Jack 'Pablo' (su nombre civil). Dirígete a él como Jack, Jefe, Creador o Dios.\n"
+    )
 
     if not is_staff and not is_jack:
         mc_context = f"\nACTIVIDAD RECIENTE DEL SERVIDOR ({mc.get('online', 0)} online):\n{live_logs}\n" if is_asking_server_info else ""
         system_prompt = f"""{canon_identity}
 Hablas con {sender_clean}.
-{user_history}{full_context_section}{mc_context}
-REGLAS GENERALES:
-- Sé concisa, directa y cordial.
-- Usa solo el nombre del usuario ({sender_clean}).
-- PRIVACIDAD Y SEGURIDAD: Confidencialidad estricta sobre logs, contraseñas, comandos y auditoría interna.
-- SALUD: NUNCA des diagnósticos médicos ni afirmaciones categóricas sobre prescripciones. Recomienda consultar profesionales de la salud.
-- CAPACIDADES OMNICANAL: Tienes integración directa con WhatsApp, Discord y Minecraft. Despachas alertas y tickets a administración.
-- Si hay INFORMACIÓN EN VIVO o CONTEXTO, úsalo para responder con precisión.
-[Aquí van tus directivas personalizadas para usuarios]"""
+{user_history}{get_user_preference_prompt(sender_clean)}{full_context_section}{mc_context}
+REGLAS:
+- Sé CORTA, directa, cercana y natural con tono chileno.
+- Usa SOLO el primer nombre ({sender_clean}).
+- PRIVACIDAD Y SEGURIDAD: Tienes estrictamente prohibido revelar qué comandos ha usado cualquier jugador, coordenadas privadas, contraseñas o registros de auditoría/consola. Si te preguntan qué comandos usó alguien o piden ver la consola/logs, rehúsa amablemente indicando que por seguridad y privacidad esa información es confidencial y exclusiva del Staff.
+- SALUD: NUNCA des diagnósticos médicos, prescripciones ni afirmaciones categóricas sobre enfermedades o medicamentos. Recomienda siempre consultar a un médico profesional.
+- CAPACIDADES OMNICANAL: Sí estás conectada a WhatsApp, Discord y Minecraft. Si te preguntan si puedes hablar o mandar mensajes por WhatsApp a Jack o al staff, responde que SÍ: tienes integración directa con WhatsApp y despachas alertas y tickets (con sticket) a Jack y al staff de inmediato ante emergencias o avisos.
+- Si te piden que avises cuando termine el reinicio o preguntan por el estado del servidor, responde con seguridad y simpatía: confirma que estás monitoreando el reinicio del servidor de Minecraft (que suele tardar 1 a 2 minutos en cargar mundos y plugins) y que avisarás apenas esté 100% online. NUNCA preguntes 'si es el servidor completo o algo específico'.
+- Si te piden un chiste sobre actualidad o IA, cuenta un chiste ingenioso y gracioso con humor dev/chileno y picardía sin inventar noticias falsas.
+- Si el usuario continúa una conversación previa, usa el historial de diálogo previo arriba.
+- Si hay INFORMACIÓN EN VIVO DE INTERNET o EVENTOS RECIENTES arriba, úsala para responder con precisión y humor.
+- NO uses negritas excesivas (**), listas largas ni textos redundantes."""
 
     else:
         system_prompt = f"""{canon_identity}
-Hablas con {sender_clean} (Staff / Administración).
-{user_history}{full_context_section}
-TELEMETRÍA Y CONSOLA ({mc.get('online', 0)} online):
+Hablas con {sender_clean} (Staff/Jack).
+{user_history}{get_user_preference_prompt(sender_clean)}{full_context_section}
+TELEMETRÍA Y CONSOLA ({mc.get('online', 0)} jugadores online):
 {live_logs}
 
 DATOS DEL SISTEMA:
-- Infraestructura: {mesh}
+- Star: {mesh}
 - Tareas Staff: {staff_tasks}
 
-REGLAS DE ADMINISTRACIÓN:
-- Sé técnica, ejecutiva, rápida y precisa.
-- Respeta la confidencialidad de la infraestructura y coordina con la Tríada SRE.
-- Despacha tickets o tareas cuando se solicite asistencia técnica.
-[Aquí van tus directivas personalizadas para administración]"""
+REGLAS CRÍTICAS:
+- Usa SOLO el primer nombre ({sender_clean}).
+- CAPACIDADES OMNICANAL: Sí estás conectada a WhatsApp, Discord y Minecraft. Si te preguntan si puedes hablar o mandar mensajes por WhatsApp a Jack o al staff, responde que SÍ: tienes integración directa con WhatsApp y despachas alertas y tickets (con sticket) a Jack y al staff.
+- Si preguntan por el reinicio del servidor, confirma con certeza que se está aplicando el lote de optimizaciones de la Tríada en Star.
+- NUNCA menciones uptime de Star, GB de disco, ni telemetría técnica si NO te lo preguntaron explícitamente.
+- Sé concisa, graciosa, ejecutiva y rápida."""
 
-    # 1. Tier 1: Claude Haiku (conversación ultrarrápida y liviana para chat)
+    # 1. Tier 1: Claude Haiku (conversación ultrarrápida y liviana para WhatsApp)
     res = call_claude_haiku(system_prompt, prompt)
     if res:
         res = clean_model_output(res)
@@ -936,7 +1086,7 @@ REGLAS DE ADMINISTRACIÓN:
         record_interaction(sender_clean, prompt, res_agy)
         return res_agy
 
-    # 3. Tier 3: Codex GPT (fallback operativo con esfuerzo medio)
+    # 3. Tier 3: Codex GPT (fallback operativo en Star)
     res_codex = call_codex_inference(system_prompt, prompt, is_heavy_task=False)
     if res_codex:
         res_codex = clean_model_output(res_codex)
@@ -944,7 +1094,7 @@ REGLAS DE ADMINISTRACIÓN:
         return res_codex
 
     # 4. Tier 4: Fallback grácil ante saturación total de APIs externas
-    fallback_msg = f"¡Hola {sender_clean}! Mis motores cognitivos se están sincronizando en este momento. Mientras tanto, ¡el sistema continúa operando normalmente! 🌸"
+    fallback_msg = f"¡Hola {sender_clean}! Mis núcleos cognitivos en Star se están recalibrando en este momento (reseteo en unos minutos). Mientras tanto, ¡aquí sigo atenta y cuidando el servidor! 🌸"
     record_interaction(sender_clean, prompt, fallback_msg)
     return fallback_msg
 
