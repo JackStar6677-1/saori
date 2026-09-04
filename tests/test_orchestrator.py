@@ -203,9 +203,9 @@ class PruebasAgentes(BaseSaori):
 
     def test_roles_en_modo_triple(self):
         r = S.asignar_roles(self.cx)["roles"]
-        self.assertEqual(r["antigravity"], "observador")
-        self.assertEqual(r["claude-code"], "desarrollador")
-        self.assertEqual(r["codex"], "integrador")
+        self.assertEqual(r["antigravity"], "desarrollador")
+        self.assertEqual(r["claude-code"], "consultoria-peer")
+        self.assertEqual(r["codex"], "qa-testing")
 
     def test_heartbeat_caduco_excluye(self):
         self.cx.execute("UPDATE agents SET last_heartbeat=? WHERE agent_id=?",
@@ -282,15 +282,15 @@ class PruebasAgentes(BaseSaori):
         
         r = S.asignar_roles(self.cx)
         self.assertEqual(r["modo"], "dual")
-        self.assertEqual(r["roles"]["codex"], "desarrollador-pesado")
-        self.assertEqual(r["roles"]["claude-code"], "observador-qa")
+        self.assertEqual(r["roles"]["codex"], "desarrollador")
+        self.assertEqual(r["roles"]["claude-code"], "qa-testing")
 
         # Inversión: Claude sube a 90% y Codex baja a 35%
         S.heartbeat_agente(self.cx, "claude-code", porcentaje=90)
         S.heartbeat_agente(self.cx, "codex", porcentaje=35)
         r2 = S.asignar_roles(self.cx)
-        self.assertEqual(r2["roles"]["claude-code"], "desarrollador-pesado")
-        self.assertEqual(r2["roles"]["codex"], "observador-qa")
+        self.assertEqual(r2["roles"]["claude-code"], "desarrollador")
+        self.assertEqual(r2["roles"]["codex"], "qa-testing")
 
     def test_modo_eco_conservacion_cuando_todos_bajos(self):
         S.heartbeat_agente(self.cx, "claude-code", porcentaje=20)
@@ -319,8 +319,8 @@ class PruebasAgentes(BaseSaori):
         S.heartbeat_agente(self.cx, "codex", porcentaje=4)
         r = S.asignar_roles(self.cx)
         self.assertEqual(r["modo"], "dual")
-        self.assertEqual(r["roles"]["antigravity"], "desarrollador-pesado")
-        self.assertEqual(r["roles"]["claude-code"], "observador-qa")
+        self.assertEqual(r["roles"]["antigravity"], "desarrollador")
+        self.assertEqual(r["roles"]["claude-code"], "qa-testing")
         self.assertEqual(r["roles"]["codex"], "reposo-preservacion")
 
     def test_reclamar_en_modo_eco_solo_toma_baja_severidad_o_doc(self):

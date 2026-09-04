@@ -688,10 +688,13 @@ def disponibilidad(cx, cfg=None):
 
 UMBRAL_RIESGO_CUOTA = 5
 
-# Preferencias de rol cuando estan los tres. Son preferencias, no jaulas:
-# `asignar` cae al reparto generico si falta alguno.
-ROL_PREFERIDO = {"antigravity": "observador", "claude-code": "desarrollador",
-                 "codex": "integrador"}
+# Preferencias de rol cuando estan los tres en esquema de Trinidad Simétrica.
+# Todos son desarrolladores con capacidades completas de código, consultoría y QA.
+ROL_PREFERIDO = {
+    "antigravity": "desarrollador",
+    "claude-code": "consultoria-peer",
+    "codex": "qa-testing"
+}
 
 
 def asignar_roles(cx, cfg=None):
@@ -733,22 +736,24 @@ def asignar_roles(cx, cfg=None):
         modo = "dual"
         if int(disp[vivos_operativos[0]].get("quota_percent_operativo", PCT_OPERATIVO_SIN_MEDICION)) == int(disp[vivos_operativos[1]].get("quota_percent_operativo", PCT_OPERATIVO_SIN_MEDICION)):
             orden = sorted(vivos_operativos, key=lambda a: ("antigravity", "claude-code", "codex").index(a))
-            roles[orden[0]] = "observador"
-            roles[orden[1]] = "desarrollador-integrador"
+            roles[orden[0]] = "desarrollador"
+            roles[orden[1]] = "qa-testing"
         else:
-            roles[vivos_por_cuota[0]] = "desarrollador-pesado"
-            roles[vivos_por_cuota[1]] = "observador-qa"
+            roles[vivos_por_cuota[0]] = "desarrollador"
+            roles[vivos_por_cuota[1]] = "qa-testing"
     else:
         modo = "triple"
-        # Si las cuotas son iguales, usar preferencias
+        # Trinidad Simetrica: Los tres tienen igual peso (1/3 c/u).
+        # Se reparten el pipeline por afinidad de cuota o rotación colaborativa:
+        # Desarrollador Lead -> Consultor Peer -> QA & Testing.
         cuotas = [int(disp[a].get("quota_percent_operativo", PCT_OPERATIVO_SIN_MEDICION)) for a in vivos_operativos]
         if len(set(cuotas)) == 1:
             for agente in vivos_operativos:
                 roles[agente] = ROL_PREFERIDO[agente]
         else:
-            roles[vivos_por_cuota[0]] = "desarrollador-pesado"
-            roles[vivos_por_cuota[1]] = "integrador-qa"
-            roles[vivos_por_cuota[2]] = "observador"
+            roles[vivos_por_cuota[0]] = "desarrollador"
+            roles[vivos_por_cuota[1]] = "consultoria-peer"
+            roles[vivos_por_cuota[2]] = "qa-testing"
 
     with transaccion(cx):
         for agente in AGENTES:

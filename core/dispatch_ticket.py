@@ -8,8 +8,9 @@ Crea tickets técnicos consolidados en /home/jack/ai-hub/tickets/ y notifica a W
 import sys, os, json, time, urllib.request
 from datetime import datetime
 
-TICKETS_DIR = '/home/jack/ai-hub/tickets'
-WEBHOOK_URL = 'http://127.0.0.1:8088/notify-ticket'
+TICKETS_DIR = os.getenv('SAORI_TICKETS_DIR', os.path.expanduser('~/ai-hub/tickets'))
+WEBHOOK_URL = os.getenv('SAORI_NOTIFY_WEBHOOK_URL', 'http://127.0.0.1:8088/notify-ticket')
+STAFF_GROUP_JID = os.getenv('WHATSAPP_STAFF_GROUP_JID', 'your_staff_group_jid@g.us')
 
 def create_and_dispatch_ticket(ticket_title, description, author, channel_name):
     os.makedirs(TICKETS_DIR, exist_ok=True)
@@ -54,7 +55,7 @@ Los agentes autónomos pueden analizar logs, estado de plugins o infraestructura
             "agente": "Tríada SRE (SAORI / Claude / Codex)",
             "titulo": ticket_title,
             "resumen": description[:120] + ("..." if len(description) > 120 else ""),
-            "group_jid": "120363422906663864@g.us"
+            "group_jid": STAFF_GROUP_JID
         }).encode('utf-8')
         req = urllib.request.Request(WEBHOOK_URL, data=payload, headers={'Content-Type': 'application/json'})
         urllib.request.urlopen(req, timeout=3)

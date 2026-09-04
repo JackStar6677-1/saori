@@ -13,11 +13,11 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 
-SMTP_CONFIG_PATH  = '/home/jack/.config/saori/smtp.json'
-WEBHOOK_URL       = 'http://127.0.0.1:8088/notify-ticket'
-JACK_WA_NUMBER    = '56963477776'
-STAFF_GROUP_JID   = '120363422906663864@g.us'
-LOG_FILE          = '/home/jack/ai-hub/logs/saori_alerts.log'
+SMTP_CONFIG_PATH  = os.getenv('SAORI_SMTP_CONFIG_PATH', os.path.expanduser('~/.config/saori/smtp.json'))
+WEBHOOK_URL       = os.getenv('SAORI_NOTIFY_WEBHOOK_URL', 'http://127.0.0.1:8088/notify-ticket')
+JACK_WA_NUMBER    = os.getenv('ADMIN_WHATSAPP_NUMBER', '56900000000')
+STAFF_GROUP_JID   = os.getenv('WHATSAPP_STAFF_GROUP_JID', 'your_staff_group_jid@g.us')
+LOG_FILE          = os.getenv('SAORI_ALERTS_LOG', os.path.expanduser('~/.local/state/saori/saori_alerts.log'))
 
 # ------------------------------------------------------------------
 # Palabras que indican alerta GENUINAMENTE CRÍTICA
@@ -129,10 +129,11 @@ def send_whatsapp(title: str, body: str, target_jid: str) -> tuple:
     except Exception as e:
         return False, str(e)
 
-def dispatch_alert(subject: str, message: str, force_level: str = None) -> dict:
+def dispatch_alert(subject: str, message: str, force_level: str = None, target: str = None) -> dict:
     """
     Punto de entrada principal.
     force_level: 'critical' | 'urgent' | 'routine' (sobreescribe clasificación automática)
+    target: 'jack' | 'staff' | None (None auto-determina)
     """
     severity = force_level or classify_severity(subject, message)
     log_locally(severity, subject, message)
@@ -143,17 +144,36 @@ def dispatch_alert(subject: str, message: str, force_level: str = None) -> dict:
         print(f'[SAORI-NOTIFY] Rutinario — solo log local: {subject[:60]}', file=sys.stderr)
         return result
 
-    if severity in ('critical', 'urgent'):
-        # WhatsApp al grupo de staff
-        wa_ok, wa_msg = send_whatsapp(subject, message, STAFF_GROUP_JID)
-        result['whatsapp'] = {'ok': wa_ok, 'detail': wa_msg}
-        print(f'[SAORI-NOTIFY] WhatsApp Grupo → {wa_msg}', file=sys.stderr)
+    combined = (subject + ' ' + message).lower()
 
-        # Si es alerta de cuota IA o crítico, enviar también mensaje directo a Jack
-        if any(k in subject.lower() or k in message.lower() for k in ['cuota', 'quota', 'rate limit', 'agotada', 'límite']) or severity == 'critical':
-            jack_jid = f"{JACK_WA_NUMBER}@s.whatsapp.net"
-            send_whatsapp(subject, message, jack_jid)
-            print(f'[SAORI-NOTIFY] WhatsApp Directo Jack ({JACK_WA_NUMBER}) → Enviado', file=sys.stderr)
+    # Si es alerta de cuota, agentes IA, Tríada, recados o explícitamente para Jack:
+    # NUNCA ENVIAR AL GRUPO DE STAFF. Solo a Jack por privado.
+    is_internal_or_jack = (
+        target == 'jack' or
+        any(k in combined for k in [
+            'cuota', 'quota', 'rate limit', 'agotada', 'límite', 'limite',
+            'claude', 'codex', 'antigravity', 'agente', 'triada', 'tríada',
+            'orquestador', 'sre', 'recado', 'tarea', 'jack', 'gemini',
+            'openai', 'groq', 'failover', 'runner', 'prompts'
+        ])
+    )
+
+    jack_jid = f"{JACK_WA_NUMBER}@s.whatsapp.net"
+
+    if is_internal_or_jack:
+        # Enviar EXCLUSIVAMENTE a Jack por privado, NUNCA al grupo de staff
+        wa_ok, wa_msg = send_whatsapp(subject, message, jack_jid)
+        result['whatsapp'] = {'ok': wa_ok, 'detail': wa_msg, 'target': 'jack_dm'}
+        print(f'[SAORI-NOTIFY] WhatsApp Directo Jack (Exclusivo, no grupo) → {wa_msg}', file=sys.stderr)
+    else:
+        # Solo emergencias de Minecraft / Staff van al grupo
+        if severity in ('critical', 'urgent'):
+            wa_ok, wa_msg = send_whatsapp(subject, message, STAFF_GROUP_JID)
+            result['whatsapp'] = {'ok': wa_ok, 'detail': wa_msg, 'target': 'staff_group'}
+            print(f'[SAORI-NOTIFY] WhatsApp Grupo Staff → {wa_msg}', file=sys.stderr)
+            # Y si es crítico, también a Jack directo
+            if severity == 'critical':
+                send_whatsapp(subject, message, jack_jid)
 
     if severity == 'critical':
         # Email solo para críticos
@@ -167,6 +187,7 @@ if __name__ == '__main__':
     sub = sys.argv[1] if len(sys.argv) > 1 else 'Alerta General'
     msg = sys.argv[2] if len(sys.argv) > 2 else 'Se requiere atención en el servidor.'
     lvl = sys.argv[3] if len(sys.argv) > 3 else None
-    res = dispatch_alert(sub, msg, force_level=lvl)
+    tgt = sys.argv[4] if len(sys.argv) > 4 else None
+    res = dispatch_alert(sub, msg, force_level=lvl, target=tgt)
     print(json.dumps(res, indent=2, ensure_ascii=False), file=sys.stderr)
 

@@ -29,12 +29,12 @@ STATE_DIR = pathlib.Path.home() / ".local/state/saori/agents"
 AGENT_CONTROL = pathlib.Path.home() / ".local/state/nova/agent-control.json"
 MINUTES = {"codex": (0, 30), "claude-code": (12, 42), "antigravity": (24, 54)}
 def get_codex_command() -> list[str]:
-    """Construye Codex en Terra/medium, el perfil operativo solicitado por Jack."""
+    """Construye Codex en sol/medium o 5.5/medium."""
     return [
         "codex", "exec", "-C", str(WORKSPACE),
         "--skip-git-repo-check",
         "--dangerously-bypass-approvals-and-sandbox",
-        "-m", "gpt-5.6-terra",
+        "-m", "gpt-5.6-sol",
         "-c", 'model_reasoning_effort="medium"',
         "-",
     ]
@@ -45,7 +45,7 @@ COMMANDS = {
         "codex", "exec", "-C", str(WORKSPACE),
         "--skip-git-repo-check",
         "--dangerously-bypass-approvals-and-sandbox",
-        "-m", "gpt-5.6-terra",
+        "-m", "gpt-5.6-sol",
         "-c", 'model_reasoning_effort="medium"',
         "-",
     ],
@@ -58,7 +58,9 @@ COMMANDS = {
     ],
     "antigravity": [
         "agy",
-        "--model", "Gemini 3.7 Flash (Medium)",
+        "--model", "gemini-3.8-flash-high",
+        "--effort", "medium",
+        "--dangerously-skip-permissions",
         "--mode", "accept-edits",
         # La salida JSON oficial incluye usage.input/output/thinking/cache/total.
         # Sin ella el widget solo puede decir "no medible".
@@ -466,12 +468,13 @@ def main() -> int:
             save_state(args.agent, status="activo", reason=None, quota_reset=None, quota_reset_epoch=None)
             run([sys.executable, str(ROOT / "scripts/saori_orchestrador.py"), "heartbeat", "--agente", args.agent, "--cuota", "ok"])
             
-            # Notificar a Jack que el agente recuperó cuota
+            # Notificar a Jack que el agente recuperó cuota (exclusivo para Jack, no grupo)
             run([
                 sys.executable, str(ROOT / "scripts/saori_notifier.py"),
                 f"Cuota Recuperada: {args.agent.upper()}",
                 f"Jack, el agente {args.agent} ha recuperado cuota y vuelve a estar operativo en la Tríada.",
-                "urgent"
+                "urgent",
+                "jack"
             ], text=True, capture_output=True)
 
     mantener_conocimiento()
@@ -496,7 +499,7 @@ def main() -> int:
         returncode = run_agent(command, prompt, log, args.agent)
         status, reset_desc, reset_epoch, quota_type = classify(log, returncode)
         
-        # Si entró en sin-cuota: pausar automáticamente y notificar a Jack
+        # Si entró en sin-cuota: pausar automáticamente y notificar a Jack (exclusivo para Jack, no grupo)
         if status == "sin-cuota":
             set_pause_state(args.agent, True, f"sin-cuota-{quota_type or '5h'}")
             agotada = [sys.executable, str(ROOT / "scripts/saori_orchestrador.py"),
@@ -512,7 +515,8 @@ def main() -> int:
                     sys.executable, str(ROOT / "scripts/saori_notifier.py"),
                     f"Alerta de Cuota Agotada: {args.agent.upper()}",
                     f"Jack, el agente {args.agent} se ha quedado sin cuota ({quota_type or '5h'}). Reactivación estimada: {reset_desc or 'Pendiente'}.",
-                    "urgent"
+                    "urgent",
+                    "jack"
                 ], text=True, capture_output=True)
         
         save_state(args.agent, status=status,

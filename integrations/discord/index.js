@@ -10,7 +10,15 @@ const {
     AttachmentBuilder,
     PermissionsBitField,
     AuditLogEvent,
-    Events
+    Events,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle,
+    ChannelType,
+    PermissionFlagsBits
 } = require('discord.js');
 const fetch = require('node-fetch');
 const { spawn, execFile } = require('child_process');
@@ -34,7 +42,7 @@ process.on('uncaughtException', (err) => {
 });
 
 
-const JACK_DISCORD_ID = '493868699489665044';
+const JACK_DISCORD_ID = process.env.DISCORD_OWNER_ID || '493868699489665044';
 const CHANNELS = {
     BIENVENIDAS: '1540356407705079879',       // 👋・ʙɪᴇɴᴠᴇɴɪᴅᴀꜱ
     TICKETS_SOPORTE: '1539636904482578482',   // 🎫・ᴛɪᴄᴋᴇᴛs-sᴏᴘᴏʀᴛᴇ
@@ -113,7 +121,7 @@ function cleanUserName(rawName, isJack, isStaff = false) {
     let firstLower = first.toLowerCase();
 
     // BLOQUEO ANTI-SPOOFING: Nadie excepto Jack real puede ser reconocido como Jack
-    if (firstLower.includes('pablo') || firstLower.includes('jack')) {
+    if (firstLower.includes('admin') || firstLower.includes('jack') || firstLower.includes('jackstar')) {
         return isJack ? 'Jack' : 'Usuario';
     }
 
@@ -760,6 +768,425 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
 });
 
 
+// =========================================================================
+// 🎫 SISTEMA INTERACTIVO DE TICKETS & DENUNCIAS DE SAORI
+// =========================================================================
+
+async function sendTicketPanel(targetChannel) {
+    const embed = new EmbedBuilder()
+        .setColor(0xF1C40F)
+        .setTitle('🎫 CENTRO DE ASISTENCIA Y TICKETS · DRAKESCRAFT NETWORK')
+        .setDescription(
+            '¡Bienvenido al centro oficial de soporte de **DrakesCraft**!\n\n' +
+            'Si necesitas ayuda personalizada, tienes problemas con compras, reportes técnicos o deseas postularte al Staff, pulsa el botón correspondiente:\n\n' +
+            '🐛 **Bugs y Errores:** Fallos de Slimefun, errores de consola, dupes o problemas de mecánicas.\n' +
+            '📦 **Pérdida de Ítems:** Pérdidas por fallos técnicos o caídas inusuales del servidor.\n' +
+            '🛒 **Compras y Tienda:** Rangos, llaves, monedas o comprobantes de Tebex/MercadoPago/PayPal.\n' +
+            '❓ **Dudas y Guías:** Asistencia general sobre comandos, claims de parcelas y modalidades.\n' +
+            '🛡️ **Postulación a Staff:** Formulario oficial para unirte a nuestro equipo de moderación.\n' +
+            '⚖️ **Denuncia Confidencial:** Reporte seguro y privado de jugadores molestos, toxicidad o Staff.\n\n' +
+            '> ⚠️ **NOTA:** Al pulsar cualquier opción se desplegará un **formulario obligatorio** en pantalla. Rellena todos los campos con claridad para brindarte soporte inmediato.'
+        )
+        .setFooter({ text: 'DrakesCraft Support Engine · SAORI SRE' });
+
+    const row1 = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('btn_ticket_bug').setLabel('Bugs y Errores').setEmoji('🐛').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('btn_ticket_perdida').setLabel('Pérdida de Ítems').setEmoji('📦').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('btn_ticket_tienda').setLabel('Compras y Tienda').setEmoji('🛒').setStyle(ButtonStyle.Success)
+    );
+
+    const row2 = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('btn_ticket_dudas').setLabel('Dudas y Guías').setEmoji('❓').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('btn_ticket_postulacion').setLabel('Postulación a Staff').setEmoji('🛡️').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('btn_ticket_denuncia').setLabel('Denuncia Confidencial').setEmoji('⚖️').setStyle(ButtonStyle.Danger)
+    );
+
+    return await targetChannel.send({ embeds: [embed], components: [row1, row2] });
+}
+
+async function sendDenunciasPanel(targetChannel) {
+    const embed = new EmbedBuilder()
+        .setColor(0xE74C3C)
+        .setTitle('⚖️ SISTEMA OFICIAL DE DENUNCIAS Y REPORTES CONFIDENCIALES')
+        .setDescription(
+            'En **DrakesCraft** mantenemos tolerancia cero contra la toxicidad, el acoso, las trampas (hacks/xray), la evasión de sanciones y el abuso de poder.\n\n' +
+            'Si un jugador te está molestando de forma reiterada, rompiendo las reglas del servidor o deseas denunciar una mala conducta de un miembro del Staff:\n\n' +
+            '🔒 **PRIVACIDAD Y CONFIDENCIALIDAD GARANTIZADA:**\n' +
+            'Este ticket se abrirá en un canal 100% privado visible únicamente para el **Owner (Jack)** y la **Alta Administración**.\n\n' +
+            '📋 **REQUISITOS DEL FORMULARIO:**\n' +
+            '• Nick del infractor o Staff a denunciar.\n' +
+            '• Motivo de la infracción y relato detallado de lo sucedido.\n' +
+            '• Enlaces obligatorios de pruebas (Imgur, YouTube, Medal, Twitch, etc.).'
+        )
+        .setFooter({ text: 'DrakesCraft Anti-Abuse & Moderation · SAORI' });
+
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('btn_ticket_denuncia').setLabel('Abrir Denuncia Confidencial').setEmoji('🚨').setStyle(ButtonStyle.Danger)
+    );
+
+    return await targetChannel.send({ embeds: [embed], components: [row] });
+}
+
+client.on(Events.InteractionCreate, async (interaction) => {
+    try {
+        // 1. MANEJO DE BOTONES (DESPLIEGUE DE FORMULARIOS / MODALES O ACCIONES)
+        if (interaction.isButton()) {
+            const id = interaction.customId;
+
+            if (id === 'btn_ticket_bug') {
+                const modal = new ModalBuilder().setCustomId('modal_ticket_bug').setTitle('🐛 Reporte de Bug o Error');
+                modal.addComponents(
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('nick').setLabel('Tu Nick de Minecraft').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ej: Steve_123')),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('modalidad').setLabel('Modalidad / Servidor').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Survival / OneBlock / SkyBlock / Clásico')),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('asunto').setLabel('Resumen del Bug').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ej: Fallo en Cargo Node de Slimefun')),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('detalle').setLabel('Explicación Detallada del Error').setStyle(TextInputStyle.Paragraph).setRequired(true).setMinLength(10).setPlaceholder('Describe paso a paso qué ocurrió, qué estabas haciendo y qué mensaje apareció...')),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('pruebas').setLabel('Pruebas / Coords / Links (Opcional)').setStyle(TextInputStyle.Short).setRequired(false).setPlaceholder('Enlaces de fotos, videos o coordenadas'))
+                );
+                return await interaction.showModal(modal);
+            }
+
+            if (id === 'btn_ticket_perdida') {
+                const modal = new ModalBuilder().setCustomId('modal_ticket_perdida').setTitle('📦 Pérdida de Ítems / Rollback');
+                modal.addComponents(
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('nick').setLabel('Tu Nick de Minecraft').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ej: Steve_123')),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('modalidad').setLabel('Modalidad').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Survival / OneBlock / SkyBlock')),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('items').setLabel('Ítems Perdidos').setStyle(TextInputStyle.Paragraph).setRequired(true).setPlaceholder('Lista los objetos exactos y encantamientos/slimefun...')),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('circunstancia').setLabel('¿Cómo ocurrió la pérdida?').setStyle(TextInputStyle.Paragraph).setRequired(true).setMinLength(10).setPlaceholder('Hora aproximada, qué estabas haciendo, si fue caída del server o desync...')),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('pruebas').setLabel('Pruebas de Posesión (Capturas/Videos)').setStyle(TextInputStyle.Short).setRequired(false).setPlaceholder('Pega enlaces de fotos/videos que demuestren que tenías los ítems'))
+                );
+                return await interaction.showModal(modal);
+            }
+
+            if (id === 'btn_ticket_tienda') {
+                const modal = new ModalBuilder().setCustomId('modal_ticket_tienda').setTitle('🛒 Soporte de Compras y Tienda');
+                modal.addComponents(
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('nick').setLabel('Tu Nick de Minecraft').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ej: Steve_123')),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('email').setLabel('Correo Usado en la Compra').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('correo@ejemplo.com')),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('txid').setLabel('ID de Transacción / Factura Tebex').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ej: tbx-12345678a90')),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('paquete').setLabel('Paquete o Rango Adquirido').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ej: Rango Dios / Llaves de Cajas')),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('detalle').setLabel('Detalle del Problema').setStyle(TextInputStyle.Paragraph).setRequired(true).setPlaceholder('Explica qué sucedió con tu compra o entrega...'))
+                );
+                return await interaction.showModal(modal);
+            }
+
+            if (id === 'btn_ticket_dudas') {
+                const modal = new ModalBuilder().setCustomId('modal_ticket_dudas').setTitle('❓ Dudas y Asistencia General');
+                modal.addComponents(
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('nick').setLabel('Tu Nick de Minecraft / Discord').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ej: Steve_123')),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('modalidad').setLabel('Modalidad o Tema').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Survival / OneBlock / Claims / Slimefun / General')),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('detalle').setLabel('Escribe tu Duda o Consulta').setStyle(TextInputStyle.Paragraph).setRequired(true).setMinLength(10).setPlaceholder('Detalla con claridad tu duda o pregunta para que podamos guiarte con exactitud...'))
+                );
+                return await interaction.showModal(modal);
+            }
+
+            if (id === 'btn_ticket_postulacion') {
+                const modal = new ModalBuilder().setCustomId('modal_ticket_postulacion').setTitle('🛡️ Postulación Oficial a Staff');
+                modal.addComponents(
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('edad_pais').setLabel('Tu Edad y País de Residencia').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ej: 19 años, Chile')),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('nick_tiempo').setLabel('Nick en MC y Tiempo en el Servidor').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ej: Steve_MC, 5 meses activo')),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('rango').setLabel('Rango al que Postulas').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Helper / Moderador / Builder / Developer')),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('experiencia').setLabel('Experiencia Previa y Comandos').setStyle(TextInputStyle.Paragraph).setRequired(true).setMinLength(15).setPlaceholder('Describe servidores anteriores, plugins o conocimientos técnicos...')),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('motivo').setLabel('¿Por qué postulas y cuál es tu aporte?').setStyle(TextInputStyle.Paragraph).setRequired(true).setMinLength(15).setPlaceholder('¿Qué te motiva a formar parte del Staff de DrakesCraft?'))
+                );
+                return await interaction.showModal(modal);
+            }
+
+            if (id === 'btn_ticket_denuncia') {
+                const modal = new ModalBuilder().setCustomId('modal_ticket_denuncia').setTitle('⚖️ Denuncia Confidencial');
+                modal.addComponents(
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('nick_tuyo').setLabel('Tu Nick en Minecraft / Discord').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ej: Steve_123')),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('acusado').setLabel('Usuario o Staff a Denunciar').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Nick exacto del infractor')),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('motivo').setLabel('Infracción Cometida').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Hacks / Acoso / Toxicidad / Abuso de Poder / Estafa')),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('hechos').setLabel('Relato Detallado de los Hechos').setStyle(TextInputStyle.Paragraph).setRequired(true).setMinLength(15).setPlaceholder('Explica detalladamente qué ocurrió, fecha/hora aproximada y contexto...')),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('pruebas').setLabel('Enlaces de Pruebas (Obligatorio)').setStyle(TextInputStyle.Paragraph).setRequired(true).setPlaceholder('Pega enlaces de imágenes (Imgur), videos (YouTube, Medal, Twitch)...'))
+                );
+                return await interaction.showModal(modal);
+            }
+
+            // ACCIONES DENTRO DEL TICKET (CERRAR / CONFIRMAR)
+            if (id === 'btn_close_ticket') {
+                const confirmRow = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId('btn_confirm_close_ticket').setLabel('Confirmar Cierre de Ticket').setEmoji('🗑️').setStyle(ButtonStyle.Danger),
+                    new ButtonBuilder().setCustomId('btn_cancel_close_ticket').setLabel('Cancelar').setStyle(ButtonStyle.Secondary)
+                );
+                return await interaction.reply({
+                    content: '⚠️ ¿Estás seguro de que deseas cerrar este ticket? El canal se eliminará definitivamente.',
+                    components: [confirmRow],
+                    ephemeral: true
+                });
+            }
+
+            if (id === 'btn_cancel_close_ticket') {
+                return await interaction.update({ content: '✅ Cierre cancelado. El ticket permanece abierto.', components: [] });
+            }
+
+            if (id === 'btn_confirm_close_ticket') {
+                await interaction.update({ content: '🔒 **Cerrando ticket...** El canal se eliminará en 5 segundos.', components: [] });
+                
+                // Registrar cierre en auditoría
+                const auditEmbed = new EmbedBuilder()
+                    .setColor(0xE74C3C)
+                    .setTitle('🔒 Ticket Cerrado')
+                    .addFields(
+                        { name: '📍 Canal', value: `#${interaction.channel.name}`, inline: true },
+                        { name: '👤 Cerrado por', value: `${interaction.user} (\`${interaction.user.tag}\`)`, inline: true }
+                    )
+                    .setTimestamp();
+                await sendAuditLog(auditEmbed);
+
+                setTimeout(() => {
+                    interaction.channel.delete().catch(() => null);
+                }, 5000);
+                return;
+            }
+        }
+
+        // 2. MANEJO DE ENVÍO DE FORMULARIOS (MODAL SUBMISSION)
+        if (interaction.isModalSubmit()) {
+            const customId = interaction.customId;
+            const guild = interaction.guild;
+            const user = interaction.user;
+
+            if (!guild) {
+                return await interaction.reply({ content: '❌ Los tickets solo pueden crearse dentro del servidor de Discord.', ephemeral: true });
+            }
+
+            let tipo = 'soporte';
+            let titulo = '🎫 Ticket de Soporte';
+            let color = 0x3498DB;
+            let fields = [];
+            let summaryText = '';
+
+            if (customId === 'modal_ticket_bug') {
+                tipo = 'bug';
+                titulo = '🐛 Reporte de Bug o Error';
+                color = 0xE67E22;
+                const nick = interaction.fields.getTextInputValue('nick');
+                const modalidad = interaction.fields.getTextInputValue('modalidad');
+                const asunto = interaction.fields.getTextInputValue('asunto');
+                const detalle = interaction.fields.getTextInputValue('detalle');
+                const pruebas = interaction.fields.getTextInputValue('pruebas') || 'Ninguna proporcionada';
+                fields = [
+                    { name: '🎮 Nick de Minecraft', value: `\`${nick}\``, inline: true },
+                    { name: '🏝️ Modalidad', value: `\`${modalidad}\``, inline: true },
+                    { name: '📌 Resumen', value: asunto, inline: false },
+                    { name: '📝 Detalle Completo', value: detalle, inline: false },
+                    { name: '📎 Pruebas / Coordenadas', value: pruebas, inline: false }
+                ];
+                summaryText = `[Bug - ${modalidad}] ${asunto}: ${detalle}`;
+            } else if (customId === 'modal_ticket_perdida') {
+                tipo = 'perdida';
+                titulo = '📦 Reporte de Pérdida de Ítems / Rollback';
+                color = 0x9B59B6;
+                const nick = interaction.fields.getTextInputValue('nick');
+                const modalidad = interaction.fields.getTextInputValue('modalidad');
+                const items = interaction.fields.getTextInputValue('items');
+                const circunstancia = interaction.fields.getTextInputValue('circunstancia');
+                const pruebas = interaction.fields.getTextInputValue('pruebas') || 'Ninguna';
+                fields = [
+                    { name: '🎮 Nick de Minecraft', value: `\`${nick}\``, inline: true },
+                    { name: '🏝️ Modalidad', value: `\`${modalidad}\``, inline: true },
+                    { name: '🎒 Ítems Perdidos', value: items, inline: false },
+                    { name: '⏳ Circunstancia de la Pérdida', value: circunstancia, inline: false },
+                    { name: '📸 Pruebas de Posesión', value: pruebas, inline: false }
+                ];
+                summaryText = `[Pérdida - ${modalidad}] Jugador ${nick}: ${items}. Causa: ${circunstancia}`;
+            } else if (customId === 'modal_ticket_tienda') {
+                tipo = 'tienda';
+                titulo = '🛒 Soporte de Compras & Tienda Tebex';
+                color = 0x2ECC71;
+                const nick = interaction.fields.getTextInputValue('nick');
+                const email = interaction.fields.getTextInputValue('email');
+                const txid = interaction.fields.getTextInputValue('txid');
+                const paquete = interaction.fields.getTextInputValue('paquete');
+                const detalle = interaction.fields.getTextInputValue('detalle');
+                fields = [
+                    { name: '🎮 Nick de Minecraft', value: `\`${nick}\``, inline: true },
+                    { name: '📧 Correo Compra', value: `\`${email}\``, inline: true },
+                    { name: '🧾 Transacción Tebex', value: `\`${txid}\``, inline: true },
+                    { name: '🎁 Paquete / Rango', value: paquete, inline: true },
+                    { name: '📝 Detalle del Problema', value: detalle, inline: false }
+                ];
+                summaryText = `[Tienda - ${paquete}] TX: ${txid} Nick: ${nick} - ${detalle}`;
+            } else if (customId === 'modal_ticket_dudas') {
+                tipo = 'duda';
+                titulo = '❓ Asistencia General y Consultas';
+                color = 0x3498DB;
+                const nick = interaction.fields.getTextInputValue('nick');
+                const modalidad = interaction.fields.getTextInputValue('modalidad');
+                const detalle = interaction.fields.getTextInputValue('detalle');
+                fields = [
+                    { name: '👤 Jugador', value: `\`${nick}\``, inline: true },
+                    { name: '🏝️ Modalidad', value: `\`${modalidad}\``, inline: true },
+                    { name: '📝 Consulta / Duda', value: detalle, inline: false }
+                ];
+                summaryText = `[Duda - ${modalidad}] ${nick}: ${detalle}`;
+            } else if (customId === 'modal_ticket_postulacion') {
+                tipo = 'postulacion';
+                titulo = '🛡️ Postulación Oficial al Equipo de Staff';
+                color = 0x5865F2;
+                const edadPais = interaction.fields.getTextInputValue('edad_pais');
+                const nickTiempo = interaction.fields.getTextInputValue('nick_tiempo');
+                const rango = interaction.fields.getTextInputValue('rango');
+                const exp = interaction.fields.getTextInputValue('experiencia');
+                const motivo = interaction.fields.getTextInputValue('motivo');
+                fields = [
+                    { name: '🌎 Edad y País', value: edadPais, inline: true },
+                    { name: '🎮 Nick & Tiempo en Servidor', value: nickTiempo, inline: true },
+                    { name: '🎖️ Rango al que Postulas', value: `\`${rango}\``, inline: true },
+                    { name: '📚 Experiencia y Comandos', value: exp, inline: false },
+                    { name: '💡 Motivación y Aporte', value: motivo, inline: false }
+                ];
+                summaryText = `[Postulación - ${rango}] ${nickTiempo}, ${edadPais}. Exp: ${exp}`;
+            } else if (customId === 'modal_ticket_denuncia') {
+                tipo = 'denuncia';
+                titulo = '⚖️ Denuncia Confidencial de Conducta';
+                color = 0xE74C3C;
+                const nickTuyo = interaction.fields.getTextInputValue('nick_tuyo');
+                const acusado = interaction.fields.getTextInputValue('acusado');
+                const motivo = interaction.fields.getTextInputValue('motivo');
+                const hechos = interaction.fields.getTextInputValue('hechos');
+                const pruebas = interaction.fields.getTextInputValue('pruebas');
+                fields = [
+                    { name: '👤 Denunciante', value: `\`${nickTuyo}\``, inline: true },
+                    { name: '🚨 Usuario Denunciado', value: `\`${acusado}\``, inline: true },
+                    { name: '⚖️ Infracción / Motivo', value: `\`${motivo}\``, inline: false },
+                    { name: '📝 Relato de los Hechos', value: hechos, inline: false },
+                    { name: '📸 Enlaces de Pruebas', value: pruebas, inline: false }
+                ];
+                summaryText = `[Denuncia] ${nickTuyo} denuncia a ${acusado} por ${motivo}: ${hechos}`;
+            }
+
+            // Permisos del canal de ticket
+            const cleanUser = user.username.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10) || 'usuario';
+            const channelName = `${tipo === 'denuncia' ? '⚖️' : '🎫'}・${tipo}-${cleanUser}`;
+
+            const overwrites = [
+                {
+                    id: guild.id, // @everyone
+                    deny: [PermissionFlagsBits.ViewChannel]
+                },
+                {
+                    id: user.id,
+                    allow: [
+                        PermissionFlagsBits.ViewChannel,
+                        PermissionFlagsBits.SendMessages,
+                        PermissionFlagsBits.AttachFiles,
+                        PermissionFlagsBits.EmbedLinks,
+                        PermissionFlagsBits.ReadMessageHistory
+                    ]
+                },
+                {
+                    id: client.user.id,
+                    allow: [
+                        PermissionFlagsBits.ViewChannel,
+                        PermissionFlagsBits.SendMessages,
+                        PermissionFlagsBits.EmbedLinks,
+                        PermissionFlagsBits.ManageChannels,
+                        PermissionFlagsBits.ReadMessageHistory
+                    ]
+                }
+            ];
+
+            if (tipo === 'denuncia') {
+                // Denuncias confidenciales: Solo Jack y Alta Administración
+                overwrites.push(
+                    { id: JACK_DISCORD_ID, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ReadMessageHistory] },
+                    { id: '1539641774392348754', allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ReadMessageHistory] }, // DUEÑO
+                    { id: '1539642179822161940', allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ReadMessageHistory] }  // ADMIN
+                );
+            } else {
+                // Tickets normales: Todo el Staff
+                overwrites.push(
+                    { id: '1539768983287496855', allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ReadMessageHistory] }, // STAFF
+                    { id: '1539641774392348754', allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ReadMessageHistory] }, // DUEÑO
+                    { id: '1539642179822161940', allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ReadMessageHistory] }, // ADMIN
+                    { id: '1539642370356940861', allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ReadMessageHistory] }  // MOD
+                );
+            }
+
+            const ticketChannel = await guild.channels.create({
+                name: channelName,
+                type: ChannelType.GuildText,
+                parent: CHANNELS.CATEGORIA_TICKETS,
+                permissionOverwrites: overwrites
+            });
+
+            const ticketEmbed = new EmbedBuilder()
+                .setColor(color)
+                .setTitle(titulo)
+                .setDescription(
+                    `¡Hola ${user}! Tu ticket ha sido abierto correctamente con los datos ingresados en el formulario.\n` +
+                    `Por favor aguarda unos momentos mientras el Staff y **SAORI** analizan tu caso.`
+                )
+                .addFields(fields)
+                .setFooter({ text: `Ticket ID: ${ticketChannel.id} · Creado por ${user.tag}` })
+                .setTimestamp();
+
+            const actionRow = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('btn_close_ticket').setLabel('Cerrar Ticket').setEmoji('🔒').setStyle(ButtonStyle.Danger)
+            );
+
+            const staffPing = tipo === 'denuncia' ? `<@${JACK_DISCORD_ID}>` : '<@&1539768983287496855>';
+            await ticketChannel.send({ content: `${user} | ${staffPing}`, embeds: [ticketEmbed], components: [actionRow] });
+
+            await interaction.reply({
+                content: `✅ ¡Tu ticket ha sido creado con éxito en <#${ticketChannel.id}>! Haz clic en el canal para continuar.`,
+                ephemeral: true
+            });
+
+            // Despachar a la Trinidad SRE en Star si es bug o reporte técnico
+            dispatchTicketToTriad(
+                `[Ticket ${tipo.toUpperCase()}] ${summaryText.slice(0, 50)}...`,
+                summaryText,
+                user.tag,
+                ticketChannel.name
+            ).catch(() => null);
+
+            // Generar saludo inicial inteligente de Saori en el ticket
+            fetch(AI_DAEMON_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    prompt: `El usuario ${user.username} ha abierto un ticket de tipo "${tipo}". Resumen: "${summaryText}". Salúdalo cordialmente en 1 o 2 párrafos breves, confirma que sus datos fueron registrados y dale tranquilidad mientras el equipo lo atiende.`,
+                    sender: user.username
+                })
+            })
+            .then(r => r.json())
+            .then(async d => {
+                if (d.response) {
+                    const aiEmbed = new EmbedBuilder()
+                        .setColor(0x00FF88)
+                        .setAuthor({ name: 'SAORI · Asistencia Inteligente', iconURL: client.user.displayAvatarURL() })
+                        .setDescription(d.response.trim())
+                        .setFooter({ text: 'S.A.O.R.I. Autonomous Fleet · DrakesCraft' });
+                    await ticketChannel.send({ embeds: [aiEmbed] }).catch(() => null);
+                }
+            })
+            .catch(() => null);
+
+            // Registrar en auditoría
+            const auditEmbed = new EmbedBuilder()
+                .setColor(color)
+                .setTitle('🎫 Nuevo Ticket Creado')
+                .addFields(
+                    { name: '👤 Creador', value: `${user} (\`${user.tag}\`)`, inline: true },
+                    { name: '🏷️ Tipo', value: `\`${tipo}\``, inline: true },
+                    { name: '📍 Canal', value: `<#${ticketChannel.id}>`, inline: true },
+                    { name: '📋 Resumen', value: summaryText.slice(0, 1024), inline: false }
+                )
+                .setTimestamp();
+            await sendAuditLog(auditEmbed);
+        }
+    } catch (err) {
+        console.error('[INTERACTION-ERROR]', err);
+        if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({ content: '❌ Ocurrió un error al procesar tu solicitud. Por favor intenta nuevamente.', ephemeral: true }).catch(() => {});
+        }
+    }
+});
+
+
 const mcStaffLastResponse = new Map();
 
 const MC_STAFF_TRIGGERS = [
@@ -774,8 +1201,7 @@ const MC_STAFF_TRIGGERS = [
     /\balguien\s+me\s+(puede\s+)?(ayudar|help)/i,
     /\bcan\s+someone\s+help/i,
     /\bhelp\s*\?/i,
-    /\bsupport\s*\?/i,
-    /\bsaori\b/i
+    /\bsupport\s*\?/i
 ];
 
 // Gestión de Mensajes y Tickets
@@ -809,13 +1235,15 @@ client.on('messageCreate', async (message) => {
         // Interceptar si alguien llama al staff o a Saori en Minecraft
         const text = message.content.trim();
         const matchesStaffCall = MC_STAFF_TRIGGERS.some(rgx => rgx.test(text));
+        const mentionsSaori = /\bsaori\b/i.test(text);
 
-        if (matchesStaffCall) {
-            let rawName = message.author.username;
-            let clean = rawName.replace(/\[.*?\]|✦.*?✦|[-|│︱•~]/g, '').trim();
-            let words = clean.split(/\s+/).filter(w => w.length > 0);
-            let player = words.length > 0 ? words[words.length - 1] : clean || 'Jugador';
+        let rawName = message.author.username;
+        let clean = rawName.replace(/\[.*?\]|✦.*?✦|[-|│︱•~]/g, '').trim();
+        let words = clean.split(/\s+/).filter(w => w.length > 0);
+        let player = words.length > 0 ? words[words.length - 1] : clean || 'Jugador';
 
+        // Caso A: Llamado explícito a Staff humano (no saori)
+        if (matchesStaffCall && !mentionsSaori) {
             const now = Date.now();
             const lastResp = mcStaffLastResponse.get(player) || 0;
             if (now - lastResp > 45000) {
@@ -839,7 +1267,43 @@ client.on('messageCreate', async (message) => {
                     body: JSON.stringify({ prompt: `ejecuta /${ingameSay}`, sender: 'Staff' })
                 }).catch(() => null);
 
-                console.log(`[SAORI-MC-WATCHER] 🎮 Respondiendo a ${player} en Minecraft y Discord: "${text}"`);
+                console.log(`[SAORI-MC-WATCHER] 🎮 Respondiendo a llamado de staff de ${player}: "${text}"`);
+                return;
+            }
+        }
+
+        // Caso B: Consulta directa a Saori in-game (preguntas de slimefun, recados a Jack, etc.)
+        if (mentionsSaori) {
+            const now = Date.now();
+            const lastResp = mcStaffLastResponse.get(player) || 0;
+            if (now - lastResp > 12000) {
+                mcStaffLastResponse.set(player, now);
+
+                fetch(AI_DAEMON_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt: text, sender: player })
+                })
+                .then(r => r.json())
+                .then(async data => {
+                    const reply = data.response?.trim();
+                    if (reply) {
+                        await message.channel.send(`🌸 **Saori:** ${reply}`).catch(() => null);
+
+                        // Broadcast breve in-game si es confirmación de recado o respuesta corta
+                        if (reply.length <= 150) {
+                            const cleanSay = reply.replace(/[\r\n]+/g, ' ').replace(/"/g, "'").slice(0, 180);
+                            fetch(AI_DAEMON_URL, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ prompt: `ejecuta /say ${cleanSay}`, sender: 'Staff' })
+                            }).catch(() => null);
+                        }
+                    }
+                })
+                .catch(err => console.error('[SAORI-MC] Error procesando consulta in-game:', err.message));
+
+                console.log(`[SAORI-MC] 🎮 Consulta directa a Saori de ${player}: "${text}"`);
                 return;
             }
         }
@@ -1147,12 +1611,30 @@ client.on('messageCreate', async (message) => {
     }
 
     // =========================================================================
-    // COMANDO STICKET (DESPACHO A LA TRINIDAD SRE)
+    // COMANDO STICKET (DESPACHO A LA TRINIDAD SRE / PANEL INTERACTIVO)
     // =========================================================================
-    if (primaryCmd === 'sticket' || primaryCmd === 'ticket') {
+    if (primaryCmd === 'sticket' || primaryCmd === 'ticket' || primaryCmd === 'stickets') {
+        const sub = cmdArgs[0]?.toLowerCase();
+        if (sub === 'panel' || sub === 'setup') {
+            if (!isJack) {
+                return message.reply({ content: '❌ Solo Jack y la Administración pueden desplegar el panel interactivo.', allowedMentions: { repliedUser: false } });
+            }
+            const targetChannel = client.channels.cache.get(CHANNELS.TICKETS_SOPORTE) || message.channel;
+            await sendTicketPanel(targetChannel);
+            return message.reply({ content: `✅ Panel interactivo de tickets publicado en <#${targetChannel.id}>.`, allowedMentions: { repliedUser: false } });
+        }
+        if (sub === 'denuncias' || sub === 'denuncia') {
+            if (!isJack) {
+                return message.reply({ content: '❌ Solo Jack y la Administración pueden desplegar el panel de denuncias.', allowedMentions: { repliedUser: false } });
+            }
+            const targetChannel = message.channel;
+            await sendDenunciasPanel(targetChannel);
+            return message.reply({ content: `✅ Panel confidencial de denuncias publicado en <#${targetChannel.id}>.`, allowedMentions: { repliedUser: false } });
+        }
+
         const issue = cmdArgs.join(' ').trim();
         if (!issue) {
-            return message.reply({ content: '🎫 Por favor especifica el problema o bug para registrarlo.\n*Ejemplo:* `sticket No puedo craftear armadura de titanio en Slimefun`', allowedMentions: { repliedUser: false } });
+            return message.reply({ content: '🎫 Por favor especifica el problema o bug para registrarlo.\n*Ejemplo:* `sticket No puedo craftear armadura de titanio en Slimefun`\n*Admin:* `sticket panel` (para publicar el panel con botones)', allowedMentions: { repliedUser: false } });
         }
         const ticketId = await dispatchTicketToTriad(
             `Ticket Discord: ${issue.slice(0, 50)}...`,
@@ -1590,7 +2072,14 @@ function anyKeyword(text, list) {
     return list.some(k => text.includes(k));
 }
 
-client.login(DISCORD_BOT_TOKEN).catch(err => {
-    console.error('❌ [SAORI-DISCORD] Error al iniciar sesión en Discord:', err.message);
-});
+async function startDiscordBot() {
+    try {
+        await client.login(DISCORD_BOT_TOKEN);
+    } catch (err) {
+        console.error('❌ [SAORI-DISCORD] Error al iniciar sesión en Discord:', err.message);
+        console.log('⏳ Reintentando conexión con Discord en 10 segundos...');
+        setTimeout(startDiscordBot, 10000);
+    }
+}
+startDiscordBot();
 

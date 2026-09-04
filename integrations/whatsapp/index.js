@@ -21,8 +21,10 @@ const TTS_URL          = 'http://127.0.0.1:8089/tts';
 const STT_URL          = 'http://127.0.0.1:8089/stt';
 const WEBHOOK_PORT     = 8088;
 
-const JACK_NAMES       = ['jack', 'pablo', 'jackstar'];
-const STAFF_GROUP_JID  = '120363422906663864@g.us';
+const JACK_NAMES       = ['jack', 'admin', 'jackstar'];
+const ADMIN_PHONE_NUMBER = process.env.ADMIN_WHATSAPP_NUMBER || '';
+const ADMIN_JID         = ADMIN_PHONE_NUMBER ? `${ADMIN_PHONE_NUMBER}@s.whatsapp.net` : '';
+const STAFF_GROUP_JID  = process.env.WHATSAPP_STAFF_GROUP_JID || 'your_staff_group_jid@g.us';
 
 const logger = pino({ level: 'error' });
 let globalSock = null;
@@ -55,7 +57,7 @@ function cleanSenderName(raw, isVerifiedJack = false) {
     if (!raw) return 'Usuario';
     const lower = raw.toLowerCase();
 
-    // BLOQUEO ANTI-SPOOFING: Si alguien intenta llamarse Jack o Pablo sin ser el teléfono verificado de Jack
+    // BLOQUEO ANTI-SPOOFING: Si alguien intenta llamarse Jack o Admin sin ser el teléfono verificado de Jack
     if (JACK_NAMES.some(n => lower.includes(n))) {
         return 'Usuario';
     }
@@ -187,7 +189,21 @@ function startWebhookServer() {
                     const agente    = data.agente    || 'SAORI SRE';
                     const titulo    = data.titulo    || data.title   || 'Alerta';
                     const detalle   = data.resumen   || data.detalle || '';
-                    const targetJid = data.group_jid || STAFF_GROUP_JID;
+                    let targetJid   = data.group_jid || STAFF_GROUP_JID;
+
+                    // FIREWALL DE PRIVACIDAD: Alertas de cuota, agentes IA, Tríada o internas NUNCA van al grupo de Staff
+                    const combinedLower = `${titulo} ${detalle} ${ticketId} ${agente}`.toLowerCase();
+                    const isInternalAlert = [
+                        'cuota', 'quota', 'rate limit', 'agotada', 'límite', 'limite',
+                        'claude', 'codex', 'antigravity', 'agente', 'triada', 'tríada',
+                        'orquestador', 'sre', 'recado', 'tarea', 'jack', 'gemini',
+                        'openai', 'groq', 'failover', 'runner', 'prompts'
+                    ].some(k => combinedLower.includes(k));
+
+                    if (isInternalAlert && targetJid === STAFF_GROUP_JID) {
+                        console.log(`[SAORI-WA] 🛡️ Alerta interna interceptada. Se prohíbe envío al grupo Staff; redirigiendo a Jack.`);
+                        targetJid = ADMIN_JID || STAFF_GROUP_JID;
+                    }
 
                     const notifMsg =
                         `🚨 *[DRAKES · ALERTA]*\n\n` +
@@ -305,7 +321,7 @@ async function startWhatsAppBot() {
 
             const senderJid   = msg.key.participant || msg.key.remoteJid || '';
             const senderPhone = senderJid.replace(/[^0-9]/g, '');
-            const isJack      = senderPhone === '56963477776' || senderPhone.endsWith('63477776');
+            const isJack      = ADMIN_PHONE_NUMBER ? (senderPhone === ADMIN_PHONE_NUMBER || senderPhone.endsWith(ADMIN_PHONE_NUMBER.slice(-8))) : false;
             const senderName  = cleanSenderName(msg.pushName || '', isJack);
             const textLower   = messageContent.toLowerCase();
 
@@ -315,10 +331,10 @@ async function startWhatsAppBot() {
             const now = Date.now();
             if (lastReplies.has(from) && (now - lastReplies.get(from) < 2000)) continue;
 
-            // ---- En grupos: responder si mencionan a Saori, usan comandos o es audio ----
+            // ---- En grupos: responder SOLO si mencionan a Saori o usan comandos ----
+            // Un audio por sí solo NO activa a Saori a menos que en la transcripción la mencionen explícitamente o sea un comando
             if (isGroup) {
                 const isMentioned =
-                    isAudio ||
                     textLower.includes('saori') ||
                     textLower.includes('@saori') ||
                     textLower.startsWith('/') ||
@@ -349,7 +365,7 @@ async function startWhatsAppBot() {
                                 `• *!ping* / *sping* · Latencia de la red\n\n` +
                                 `🎨 *4. Arte & Voz:*\n` +
                                 `• *!imagen <prompt>* · Generar imagen con IA\n` +
-                                `• *Envía un audio* · Saori responderá con voz chilena`;
+                                `• *Pide un audio* · Ej: "Saori envía un audio explicando..."`;
                 await sock.sendMessage(from, { text: helpTxt }, { quoted: isGroup ? msg : undefined });
                 continue;
             }
@@ -397,8 +413,8 @@ async function startWhatsAppBot() {
             if (['!ping', 'sping', 'saoping', '!ms', '/ping'].includes(textLower)) {
                 const pingTxt = `🏓 *PONG! LATENCIA DE SAORI*\n\n` +
                                 `⚡ *Tiempo de Respuesta:* \`<50 ms\`\n` +
-                                `🖥️ *Servidor Star:* \`ONLINE · 192.168.0.120\`\n` +
-                                `🤖 *Motores:* Claude Haiku + Codex GPT + Star Core`;
+                                `🖥️ *Servidor Host:* \`ONLINE · ${process.env.STAR_HOST || 'star.local'}\`\n` +
+                                `🤖 *Motores:* Tríada SRE (Claude + Codex + Antigravity)`;
                 await sock.sendMessage(from, { text: pingTxt }, { quoted: isGroup ? msg : undefined });
                 continue;
             }
@@ -464,8 +480,9 @@ async function startWhatsAppBot() {
                 }
             }
 
+            // Solo responder con nota de voz si el usuario lo solicita EXPLÍCITAMENTE (ej: "Saori envía un audio explicando...")
+            // NUNCA responder con audio automáticamente solo porque el usuario envió una nota de voz.
             const wantsAudio =
-                isAudio ||
                 textLower.startsWith('!voz') ||
                 textLower.startsWith('/voz') ||
                 textLower.startsWith('!audio') ||
@@ -473,12 +490,21 @@ async function startWhatsAppBot() {
                 textLower.includes('manda audio') ||
                 textLower.includes('mándame un audio') ||
                 textLower.includes('mandame un audio') ||
-                textLower.includes('en audio') ||
-                textLower.includes('responde en audio') ||
-                textLower.includes('un audio') ||
                 textLower.includes('manda un audio') ||
+                textLower.includes('envía un audio') ||
+                textLower.includes('envia un audio') ||
+                textLower.includes('envíame un audio') ||
+                textLower.includes('enviame un audio') ||
+                textLower.includes('responde en audio') ||
+                textLower.includes('responde con un audio') ||
+                textLower.includes('responde con audio') ||
+                textLower.includes('explica en un audio') ||
+                textLower.includes('explícame en audio') ||
+                textLower.includes('explicame en audio') ||
+                textLower.includes('graba un audio') ||
                 textLower.includes('hablame con tu voz') ||
                 textLower.includes('háblame con tu voz') ||
+                textLower.includes('dilo con tu voz') ||
                 textLower.includes('nota de voz');
 
             // ---- Obtener respuesta (executor → daemon) ----
