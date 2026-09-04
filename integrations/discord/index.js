@@ -55,8 +55,21 @@ const CHANNELS = {
     AUTO_ROLES: '1539636390751502376',        // 🎭・ᴀᴜᴛᴏ-ʀᴏʟᴇs
     SAORI_CHAT: '1544811720571355196',        // 💬・habla-con-saori (Canal exclusivo)
     MINECRAFT_CHAT: '1539636691151888454',    // 🟢・ᴍɪɴᴇᴄʀᴀғᴛ-ᴄʜᴀᴛ
-    AUDITORIA: '1539768514322235402'          // 🛡️・ᴀᴜᴅɪᴛᴏʀíᴀ
+    AUDITORIA: '1539768514322235402',         // 🛡️・ᴀᴜᴅɪᴛᴏʀíᴀ
+    ANUNCIOS_DISCORD: '1539636299395502211',  // 📢・ᴀɴᴜɴᴄɪᴏs-ᴅɪsᴄᴏʀᴅ
+    ANUNCIOS_MC: '1539636335307137145',       // ⛏️・ᴀɴᴜɴᴄɪᴏs-ᴍɪɴᴇᴄʀᴀғᴛ
+    SORTEOS_EVENTOS: '1539636414495326338',   // 🎁・sᴏʀᴛᴇᴏs-ʏ-ᴇᴠᴇɴᴛᴏs
+    CHANGELOG: '1539636837168185456'          // 🚀・sᴇʀᴠᴇʀ-ᴄʜᴀɴɢᴇʟᴏɢ
 };
+
+// 🔔 Mapeo Oficial de Canales de Anuncios a sus Roles de Notificación
+const NOTIFICATION_CHANNELS_MAP = {
+    '1539636299395502211': '1539644011214807181', // 📢・ᴀɴᴜɴᴄɪᴏs-ᴅɪsᴄᴏʀᴅ -> 📢 ︱ AVISOS DISCORD
+    '1539636335307137145': '1539644151165882418', // ⛏️・ᴀɴᴜɴᴄɪᴏs-ᴍɪɴᴇᴄʀᴀғᴛ -> ⛏️ ︱ AVISOS MC
+    '1539636414495326338': '1539644230941806602', // 🎁・sᴏʀᴛᴇᴏs-ʏ-ᴇᴠᴇɴᴛᴏs -> 🎁 ︱ EVENTOS Y SORTEOS
+    '1539636837168185456': '1539644293914824814'  // 🚀・sᴇʀᴠᴇʀ-ᴄʜᴀɴɢᴇʟᴏɢ -> 🚀 ︱ ACTUALIZACIONES
+};
+const notifChannelCooldowns = new Map();
 
 
 const ALLOWED_MC_CHAT_ROLES = [
@@ -196,9 +209,16 @@ const client = new Client({
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.DirectMessages,
-        GatewayIntentBits.GuildVoiceStates
+        GatewayIntentBits.GuildVoiceStates,
+        GatewayIntentBits.GuildMessageReactions
     ],
-    partials: [Partials.Channel, Partials.Message, Partials.GuildMember, Partials.User]
+    partials: [
+        Partials.Channel, 
+        Partials.Message, 
+        Partials.GuildMember, 
+        Partials.User, 
+        Partials.Reaction
+    ]
 });
 
 // Micro-servidor interno de streaming de audio (Proxy resiliente anti-403 para YouTube / Spotify)
@@ -634,6 +654,27 @@ async function handleDiscordManagement(message, cleanPrompt, isJack) {
     return null;
 }
 
+const PTERODACTYL_API_URL = 'https://panel.thegamehosting.com/api/client/servers/38528a4e/command';
+const PTERODACTYL_API_KEY = process.env.PTERODACTYL_API_KEY || 'ptlc_uckcZ8Nks4Fduh4J1ulHhouORUn02nyKidwHLtF0xeU';
+
+async function sendMinecraftConsoleCommand(command) {
+    try {
+        const res = await fetch(PTERODACTYL_API_URL, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${PTERODACTYL_API_KEY}`,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({ command })
+        });
+        return res.ok || res.status === 204;
+    } catch (err) {
+        console.error('[SAORI-PTERODACTYL] Error enviando comando a Minecraft:', err.message);
+        return false;
+    }
+}
+
 async function sendAuditLog(embed) {
     try {
         const auditChan = client.channels.cache.get(CHANNELS.AUDITORIA) || 
@@ -662,6 +703,7 @@ client.once(Events.ClientReady, async () => {
 
             // Sincronización inicial y periódica de rangos Minecraft <-> Discord cada 10 minutos
             setTimeout(() => syncPlayerRanksWithDiscord(guild), 5000);
+            setTimeout(() => syncAutoRolesChannel(guild), 8000);
             setInterval(() => syncPlayerRanksWithDiscord(guild), 10 * 60 * 1000);
         }
     } catch (e) {
@@ -685,7 +727,7 @@ client.on('guildMemberAdd', async (member) => {
                     { name: '📜 Reglas', value: `<#${CHANNELS.REGLAS}>`, inline: true },
                     { name: '🎭 Auto-Roles', value: `<#${CHANNELS.AUTO_ROLES}>`, inline: true },
                     { name: '💬 Chat con Saori', value: `<#${CHANNELS.SAORI_CHAT}>`, inline: true },
-                    { name: '🎮 IP', value: '`play.drakescraft.cl`', inline: false }
+                    { name: '🎮 IP', value: '`mc.drakescraft.cl`', inline: false }
                 )
                 .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 256 }))
                 .setFooter({ text: 'DrakesCraft AI SRE · Creada por Jack', iconURL: client.user.displayAvatarURL() })
@@ -867,6 +909,230 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
 
 
 // =========================================================================
+// 🎭 SISTEMA OFICIAL DE AUTO-ROLES (MAPEO, LISTENERS Y SINCRONIZACIÓN)
+// =========================================================================
+
+const AUTO_ROLES_MAP = {
+    // 🎮 Plataformas
+    '☕': '1539643667856494613', // ☕ ︱ ᴊᴀᴠᴀ
+    '📱': '1539643739176308866', // 📱 ︱ ʙᴇᴅʀᴏᴄᴋ
+
+    // 🕹️ Modalidades e Intereses
+    '⚡': '1544920856684265533', // ⚡ ︱ sʟɪᴍᴇғᴜɴ & ᴛᴇᴄʜ
+    '🏝️': '1544920860861927516', // 🏝️ ︱ ᴏɴᴇʙʟᴏᴄᴋ
+    '🏝': '1544920860861927516',
+    '☁️': '1544920865173671938', // ☁️ ︱ sᴋʏʙʟᴏᴄᴋ
+    '☁': '1544920865173671938',
+    '⚔️': '1544920866851127379', // ⚔️ ︱ sᴜʀᴠɪᴠᴀʟ
+    '⚔': '1544920866851127379',
+    '🎯': '1544920867866148917', // 🎯 ︱ ᴘᴠᴘ & ᴀʀᴇɴᴀs
+
+    // 👤 Género
+    '♂️': '1539643815256653835', // ♂️ ︱ ʜᴏᴍʙʀᴇ
+    '♂': '1539643815256653835',
+    '👨': '1539643815256653835',
+    '♀️': '1539643884995350528', // ♀️ ︱ ᴍᴜᴊᴇʀ
+    '♀': '1539643884995350528',
+    '👩': '1539643884995350528',
+    '✨': '1539643948291588136', // ✨ ︱ ᴏᴛʀᴏ
+
+    // 🔔 Notificaciones
+    '📢': '1539644011214807181', // 📢 ︱ AVISOS DISCORD
+    '⛏️': '1539644151165882418', // ⛏️ ︱ AVISOS MC
+    '⛏': '1539644151165882418',
+    '🎁': '1539644230941806602', // 🎁 ︱ EVENTOS Y SORTEOS
+    '🚀': '1539644293914824814', // 🚀 ︱ ACTUALIZACIONES
+
+    // 🌎 Países / Regiones
+    '🇨🇱': '1539644375687241728', // 🇨🇱 ︱ ᴄʜɪʟᴇ
+    '🇲🇽': '1539644555924607117', // 🇲🇽 ︱ ᴍéxɪᴄᴏ
+    '🇦🇷': '1539644441160061009', // 🇦🇷 ︱ ᴀʀɢᴇɴᴛɪɴᴀ
+    '🇺🇸': '1544922129663918080', // 🇺🇸 ︱ ᴇsᴛᴀᴅᴏs ᴜɴɪᴅᴏs
+    '🇵🇪': '1539644500698202112', // 🇵🇪 ︱ ᴘᴇʀú
+    '🇨🇴': '1539644604075348088', // 🇨🇴 ︱ ᴄᴏʟᴏᴍʙɪᴀ
+    '🇺🇾': '1544922131056558202', // 🇺🇾 ︱ ᴜʀᴜɢᴜᴀʏ
+    '🇪🇨': '1544922133149515837', // 🇪🇨 ︱ ᴇᴄᴜᴀᴅᴏʀ
+    '🇧🇴': '1544922134235578389', // 🇧🇴 ︱ 🇧🇴ʟɪᴠɪᴀ
+    '🇪🇸': '1539644660996247752', // 🇪🇸 ︱ ᴇsᴘᴀñᴀ
+    '🇻🇪': '1544922136056045621', // 🇻🇪 ︱ ᴠᴇɴᴇᴢᴜᴇʟᴀ
+    '🇩🇴': '1544922137913987142', // 🇩🇴 ︱ ʀ. ᴅᴏᴍɪɴɪᴄᴀɴᴀ
+    '🇬🇹': '1544922139570733107', // 🇬🇹 ︱ ɢᴜᴀᴛᴇᴍᴀʟᴀ
+    '🇸🇻': '1544922141114503180', // 🇸🇻 ︱ ᴇʟ sᴀʟᴠᴀᴅᴏʀ
+    '🇨🇷': '1544922142657749004', // 🇨🇷 ︱ ᴄᴏsᴛᴀ ʀɪᴄᴀ
+    '🇵🇦': '1544922144863952929', // 🇵🇦 ︱ ᴘᴀɴᴀᴍá
+    '🇭🇳': '1544922146223165500', // 🇭🇳 ︱ ʜᴏɴᴅᴜʀᴀs
+    '🇳🇮': '1544922147863142420', // 🇳🇮 ︱ ɴɪᴄᴀʀᴀɢᴜᴀ
+    '🇵🇷': '1544922149125365761', // 🇵🇷 ︱ ᴘᴜᴇʀᴛᴏ ʀɪᴄᴏ
+    '🌎': '1539644717292200058'  // 🌎 ︱ ᴏᴛʀᴏ ᴘᴀís
+};
+
+function getRoleIdFromEmoji(emojiName) {
+    if (!emojiName) return null;
+    if (AUTO_ROLES_MAP[emojiName]) return AUTO_ROLES_MAP[emojiName];
+    const clean = emojiName.replace(/\uFE0F/g, '');
+    if (AUTO_ROLES_MAP[clean]) return AUTO_ROLES_MAP[clean];
+    return null;
+}
+
+// Asignación automática al agregar reacción en #🎭・ᴀᴜᴛᴏ-ʀᴏʟᴇs
+client.on(Events.MessageReactionAdd, async (reaction, user) => {
+    if (user.bot) return;
+    try {
+        if (reaction.partial) await reaction.fetch().catch(() => null);
+        if (reaction.message.partial) await reaction.message.fetch().catch(() => null);
+
+        if (reaction.message.channelId !== CHANNELS.AUTO_ROLES) return;
+
+        const roleId = getRoleIdFromEmoji(reaction.emoji.name);
+        if (!roleId) return;
+
+        const guild = reaction.message.guild;
+        if (!guild) return;
+
+        const member = await guild.members.fetch(user.id).catch(() => null);
+        if (!member) return;
+
+        const role = guild.roles.cache.get(roleId);
+        if (role && !member.roles.cache.has(roleId)) {
+            await member.roles.add(role);
+            console.log(`[AUTO-ROLES] ✅ Rol '${role.name}' asignado a ${user.tag} por reacción '${reaction.emoji.name}'`);
+        }
+    } catch (err) {
+        console.error('[AUTO-ROLES] Error al asignar rol en reacción:', err.message);
+    }
+});
+
+// Remoción automática al retirar reacción en #🎭・ᴀᴜᴛᴏ-ʀᴏʟᴇs
+client.on(Events.MessageReactionRemove, async (reaction, user) => {
+    if (user.bot) return;
+    try {
+        if (reaction.partial) await reaction.fetch().catch(() => null);
+        if (reaction.message.partial) await reaction.message.fetch().catch(() => null);
+
+        if (reaction.message.channelId !== CHANNELS.AUTO_ROLES) return;
+
+        const roleId = getRoleIdFromEmoji(reaction.emoji.name);
+        if (!roleId) return;
+
+        const guild = reaction.message.guild;
+        if (!guild) return;
+
+        const member = await guild.members.fetch(user.id).catch(() => null);
+        if (!member) return;
+
+        const role = guild.roles.cache.get(roleId);
+        if (role && member.roles.cache.has(roleId)) {
+            await member.roles.remove(role);
+            console.log(`[AUTO-ROLES] ❌ Rol '${role.name}' retirado a ${user.tag} por remoción de '${reaction.emoji.name}'`);
+        }
+    } catch (err) {
+        console.error('[AUTO-ROLES] Error al remover rol en reacción:', err.message);
+    }
+});
+
+// Sincronización masiva de roles existentes para miembros que ya reaccionaron
+async function syncAutoRolesChannel(guild) {
+    try {
+        const ch = guild.channels.cache.get(CHANNELS.AUTO_ROLES) || await guild.channels.fetch(CHANNELS.AUTO_ROLES).catch(() => null);
+        if (!ch) return;
+        const messages = await ch.messages.fetch({ limit: 10 }).catch(() => null);
+        if (!messages) return;
+        
+        console.log('[AUTO-ROLES-SYNC] 🔄 Sincronizando reacciones en canal de auto-roles...');
+        let totalAssigned = 0;
+        for (const [msgId, msg] of messages) {
+            for (const [emojiKey, reaction] of msg.reactions.cache) {
+                const roleId = getRoleIdFromEmoji(reaction.emoji.name);
+                if (!roleId) continue;
+                const role = guild.roles.cache.get(roleId);
+                if (!role) continue;
+
+                const users = await reaction.users.fetch().catch(() => null);
+                if (!users) continue;
+
+                for (const [uId, u] of users) {
+                    if (u.bot) continue;
+                    const member = await guild.members.fetch(uId).catch(() => null);
+                    if (member && !member.roles.cache.has(roleId)) {
+                        await member.roles.add(role).catch(err => {
+                            console.error(`[AUTO-ROLES-SYNC] Error asignando rol ${role.name} a ${u.tag}:`, err.message);
+                        });
+                        totalAssigned++;
+                        console.log(`[AUTO-ROLES-SYNC] ➕ Rol '${role.name}' otorgado a ${u.tag}`);
+                    }
+                }
+            }
+        }
+        console.log(`[AUTO-ROLES-SYNC] ✅ Sincronización finalizada. Total roles restaurados: ${totalAssigned}`);
+    } catch (err) {
+        console.error('[AUTO-ROLES-SYNC] Error general:', err.message);
+    }
+}
+
+// Despliegue de paneles oficiales de auto-roles
+async function sendAutoRolesPanels(targetChannel) {
+    const embed1 = new EmbedBuilder()
+        .setColor(0x9B59B6)
+        .setTitle('🎭 AUTO-ROLES: PLATAFORMAS, MODALIDADES & NOTIFICACIONES')
+        .setDescription(
+            '¡Personaliza tu experiencia en **DrakesCraft Network**!\n' +
+            'Reacciona a este mensaje con los emojis correspondientes para obtener o remover tus roles.\n\n' +
+            '───────────────────────────────────\n' +
+            '🎮 **PLATAFORMA DE JUEGO**\n' +
+            '☕ ➔ Java Edition   ·   📱 ➔ Bedrock / Mobile\n\n' +
+            '🕹️ **MODALIDADES DE MINECRAFT**\n' +
+            '⚡ ➔ Slimefun & Tech Industrial\n' +
+            '🏝️ ➔ OneBlock Oficial\n' +
+            '☁️ ➔ SkyBlock Multiverso\n' +
+            '⚔️ ➔ Survival Clásico\n' +
+            '🎯 ➔ Minijuegos & PvP Arenas\n\n' +
+            '👤 **GÉNERO**\n' +
+            '♂️ ➔ Hombre   ·   ♀️ ➔ Mujer   ·   ✨ ➔ Otro\n\n' +
+            '🔔 **NOTIFICACIONES & AVISOS**\n' +
+            '📢 ➔ Avisos de Discord y Anuncios Generales\n' +
+            '⛏️ ➔ Avisos de Minecraft y Mantenimientos\n' +
+            '🎁 ➔ Eventos, Sorteos y Recompensas\n' +
+            '🚀 ➔ Actualizaciones y Changelogs Técnicos\n' +
+            '───────────────────────────────────\n' +
+            '> 💡 **Tip:** Vuelve a pulsar la reacción en cualquier momento para retirarte el rol.'
+        )
+        .setFooter({ text: 'DrakesCraft Network · Sistema Autónomo de Roles' });
+
+    const msg1 = await targetChannel.send({ embeds: [embed1] });
+    const emojis1 = ['☕', '📱', '⚡', '🏝️', '☁️', '⚔️', '🎯', '♂️', '♀️', '✨', '📢', '⛏️', '🎁', '🚀'];
+    for (const em of emojis1) {
+        await msg1.react(em).catch(() => null);
+    }
+
+    const embed2 = new EmbedBuilder()
+        .setColor(0x3498DB)
+        .setTitle('🌎 AUTO-ROLES: PAÍSES & COMUNIDAD INTERNACIONAL')
+        .setDescription(
+            '¡Selecciona tu bandera para representar a tu país en el chat y conocer a más jugadores de tu zona!\n\n' +
+            '───────────────────────────────────\n' +
+            '🇨🇱 ➔ Chile   ·   🇲🇽 ➔ México\n' +
+            '🇦🇷 ➔ Argentina   ·   🇺🇸 ➔ Estados Unidos\n' +
+            '🇵🇪 ➔ Perú   ·   🇨🇴 ➔ Colombia\n' +
+            '🇺🇾 ➔ Uruguay   ·   🇪🇨 ➔ Ecuador\n' +
+            '🇧🇴 ➔ Bolivia   ·   🇪🇸 ➔ España\n' +
+            '🇻🇪 ➔ Venezuela   ·   🇩🇴 ➔ República Dominicana\n' +
+            '🇬🇹 ➔ Guatemala   ·   🇸🇻 ➔ El Salvador\n' +
+            '🇨🇷 ➔ Costa Rica   ·   🇵🇦 ➔ Panamá\n' +
+            '🇭🇳 ➔ Honduras   ·   🇳🇮 ➔ Nicaragua\n' +
+            '🇵🇷 ➔ Puerto Rico   ·   🌎 ➔ Otro País\n' +
+            '───────────────────────────────────\n' +
+            '> 🌐 *Datos sincronizados con las métricas oficiales de jugadores de DrakesCraft.*'
+        )
+        .setFooter({ text: 'DrakesCraft Network · Sistema Autónomo de Roles' });
+
+    const msg2 = await targetChannel.send({ embeds: [embed2] });
+    const emojis2 = ['🇨🇱', '🇲🇽', '🇦🇷', '🇺🇸', '🇵🇪', '🇨🇴', '🇺🇾', '🇪🇨', '🇧🇴', '🇪🇸', '🇻🇪', '🇩🇴', '🇬🇹', '🇸🇻', '🇨🇷', '🇵🇦', '🇭🇳', '🇳🇮', '🇵🇷', '🌎'];
+    for (const em of emojis2) {
+        await msg2.react(em).catch(() => null);
+    }
+}
+
+// =========================================================================
 // 🎫 SISTEMA INTERACTIVO DE TICKETS & DENUNCIAS DE SAORI
 // =========================================================================
 
@@ -1039,7 +1305,69 @@ client.on(Events.InteractionCreate, async (interaction) => {
             }
         }
 
-        // 2. MANEJO DE ENVÍO DE FORMULARIOS (MODAL SUBMISSION)
+                    // ACCIONES DE REENCARNACIÓN Y PRESTIGIO
+            if (id.startsWith('btn_reencarnar_cancel_')) {
+                const parts = id.split('_');
+                const authorId = parts[4];
+                if (interaction.user.id !== authorId && interaction.user.id !== JACK_DISCORD_ID) {
+                    return await interaction.reply({ content: '❌ Solo la persona que solicitó la confirmación o un Administrador puede cancelar esta acción.', ephemeral: true });
+                }
+                return await interaction.update({
+                    content: '✅ Protocolo de reencarnación cancelado. Tus pertenencias, terrenos e inventarios están a salvo.',
+                    embeds: [],
+                    components: []
+                });
+            }
+
+            if (id.startsWith('btn_reencarnar_confirm_')) {
+                const parts = id.split('_');
+                const code = parts[3];
+                const authorId = parts[4];
+                if (interaction.user.id !== authorId && interaction.user.id !== JACK_DISCORD_ID) {
+                    return await interaction.reply({ content: '❌ Solo la persona que solicitó la confirmación o un Administrador puede autorizar la reencarnación.', ephemeral: true });
+                }
+
+                await interaction.update({
+                    content: `⚡ **EJECUTANDO REENCARNACIÓN...** Transmitiendo orden de destrucción y regeneración a la consola del servidor para el código \`${code}\`...`,
+                    embeds: [],
+                    components: []
+                });
+
+                const mcSuccess = await sendMinecraftConsoleCommand(`reencarnar ejecutar * ${code}`);
+
+                if (mcSuccess) {
+                    const successEmbed = new EmbedBuilder()
+                        .setTitle('✨ ¡REENCARNACIÓN COMPLETADA CON ÉXITO! ✨')
+                        .setColor(0x00FF88)
+                        .setDescription(`El protocolo para el código **\`${code}\`** ha sido ejecutado por la consola central de DrakesCraft.\n\n` +
+                                        `• **Terrenos:** Regeneración natural de chunks completada.\n` +
+                                        `• **Bóvedas & Economía:** Reiniciados al estado base.\n` +
+                                        `• **Cápsula de Recuerdos:** Entregada en el próximo inicio de sesión.\n\n` +
+                                        `¡Felicidades por alcanzar un nuevo Prestigio! Que comience una nueva era. 🐉`)
+                        .setFooter({ text: 'S.A.O.R.I. Sistema de Prestigio · DrakesCraft', iconURL: client.user.displayAvatarURL() })
+                        .setTimestamp();
+
+                    await interaction.followUp({ embeds: [successEmbed] }).catch(() => null);
+
+                    const auditEmbed = new EmbedBuilder()
+                        .setColor(0x9B59B6)
+                        .setTitle('⚖️ Reencarnación de Prestigio Ejecutada')
+                        .addFields(
+                            { name: '👤 Confirmado por', value: `${interaction.user} (\`${interaction.user.tag}\`)`, inline: true },
+                            { name: '🔑 Código', value: `\`${code}\``, inline: true }
+                        )
+                        .setTimestamp();
+                    await sendAuditLog(auditEmbed);
+                } else {
+                    await interaction.followUp({
+                        content: `❌ Hubo un problema al comunicar con la consola del servidor para ejecutar el código \`${code}\`. Verifica si el servidor está en línea o contacta al Staff.`,
+                        ephemeral: true
+                    }).catch(() => null);
+                }
+                return;
+            }
+
+// 2. MANEJO DE ENVÍO DE FORMULARIOS (MODAL SUBMISSION)
         if (interaction.isModalSubmit()) {
             const customId = interaction.customId;
             const guild = interaction.guild;
@@ -1409,7 +1737,34 @@ client.on('messageCreate', async (message) => {
         if (message.author.bot || message.webhookId) return;
     }
 
+    // 🔔 AUTO-NOTIFICACIONES Y PINGS EN CANALES DE AVISOS
+    const targetNotifRoleId = NOTIFICATION_CHANNELS_MAP[message.channel.id];
+    if (targetNotifRoleId && message.author.id !== client.user.id) {
+        const alreadyMentionsRole = message.mentions.roles.has(targetNotifRoleId) || 
+                                     message.content.includes(`<@&${targetNotifRoleId}>`);
+        const now = Date.now();
+        const lastNotif = notifChannelCooldowns.get(message.channel.id) || 0;
+        if (!alreadyMentionsRole && (now - lastNotif > 20000)) {
+            notifChannelCooldowns.set(message.channel.id, now);
+            try {
+                await message.channel.send({
+                    content: `<@&${targetNotifRoleId}> 🔔`,
+                    allowedMentions: { roles: [targetNotifRoleId] }
+                });
+                console.log(`[AUTO-NOTIF] 🔔 Rol ${targetNotifRoleId} etiquetado automáticamente en #${message.channel.name}`);
+            } catch (err) {
+                console.error('[AUTO-NOTIF] Error al enviar ping de rol:', err.message);
+            }
+        }
+    }
+
     if (message.author.bot) return;
+
+    // Si es canal de avisos y no mencionan directamente a Saori, no generar charla con IA
+    if (targetNotifRoleId && !message.mentions.users.has(client.user.id)) {
+        return;
+    }
+
 
     // =========================================================================
     // BUZÓN OFICIAL DE SUGERENCIAS (#💡・sugerencias)
@@ -1424,15 +1779,22 @@ client.on('messageCreate', async (message) => {
     const isDM = !message.guild;
     const isJack = message.author.id === JACK_DISCORD_ID;
 
-    const botMentioned = message.mentions.has(client.user);
+    const botMentioned = message.mentions.users.has(client.user.id);
+    // Ignorar avisos globales con @everyone o @here si no mencionan directamente a Saori
+    if ((message.mentions.everyone || message.content.includes('@everyone') || message.content.includes('@here')) && !message.mentions.users.has(client.user.id)) {
+        return;
+    }
     const isSaoriDedicatedChannel = message.channel.id === CHANNELS.SAORI_CHAT;
     const content = message.content.trim();
     const contentLower = content.toLowerCase();
 
-    const isTicketChannel = message.channel.parentId === CHANNELS.CATEGORIA_TICKETS || 
+    const isTicketChannel = (message.channel.parentId && message.channel.parentId === CHANNELS.CATEGORIA_TICKETS) || 
                             message.channel.id === CHANNELS.TICKETS_SOPORTE || 
-                            message.channel.name.startsWith('ticket-') ||
-                            message.channel.name.includes('soporte');
+                            message.channel.name?.startsWith('ticket-') ||
+                            message.channel.name?.includes('ticket') ||
+                            message.channel.name?.includes('soporte') ||
+                            message.channel.name?.startsWith('🎫') ||
+                            message.channel.name?.startsWith('⚖️');
 
     const isStaffMember = isJack || (message.member?.roles.cache.some(r => {
         const rn = r.name.toLowerCase();
@@ -1455,8 +1817,8 @@ client.on('messageCreate', async (message) => {
     const directCmdKeywords = [
         'shelp', 'splay', 'smusica', 'sskip', 'spause', 'sresume', 'squeue', 'sstop',
         'sticket', 'sstats', 'sip', 'sping', 'sweb', 'stienda', 'sguia',
-        'sroles', 'srole', 'sclear', '!purge', '!ticket', '!imagen', '!image',
-        'ssugerencia', 'sugerencia', '!sugerencia'
+        'sroles', 'srole', 'sautoroles', 'sclear', '!purge', '!ticket', '!imagen', '!image',
+        'ssugerencia', 'sugerencia', '!sugerencia', 'sreencarnar', 'reencarnar', '!reencarnar'
     ];
     const isDirectCommand = directCmdKeywords.some(cmd => 
         contentLower === cmd || 
@@ -1541,7 +1903,7 @@ client.on('messageCreate', async (message) => {
                 },
                 { 
                     name: '🌐 4. Enlaces Oficiales & Guías', 
-                    value: '• `sweb` · Portal web oficial de DrakesCraft (https://web.drakescraft.cl).\n• `stienda` · Tienda oficial con garantía de entrega y compensación (https://tienda.drakescraft.cl).\n• `sguia` · Enciclopedia de Slimefun, economía, trabajos y comandos.' 
+                    value: '• `sweb` · Portal web oficial de DrakesCraft (https://web.drakescraft.cl).\n• `stienda` · Tienda oficial con garantía de entrega y compensación (https://web.drakescraft.cl).\n• `sguia` · Enciclopedia de Slimefun, economía, trabajos y comandos.' 
                 },
                 { 
                     name: '🎨 5. Arte Neural & Chat Inteligente', 
@@ -1554,6 +1916,10 @@ client.on('messageCreate', async (message) => {
                 { 
                     name: '💡 7. Buzón Oficial de Sugerencias', 
                     value: '• `ssugerencia <propuesta>` · Publica tu propuesta en <#1539636565188542554> con votación comunitaria 👍/👎 y debate.' 
+                },
+                { 
+                    name: '⚖️ 8. Rito de Reencarnación & Prestigio', 
+                    value: '• `sreencarnar <código>` / `!reencarnar <código>` · Autoriza la confirmación de seguridad para reiniciar tu cuenta y renacer con Prestigio tras solicitarlo in-game con `/reencarnar`.' 
                 }
             )
             .setFooter({ text: 'S.A.O.R.I. SRE Core · DrakesCraft Network', iconURL: client.user.displayAvatarURL() });
@@ -1568,12 +1934,31 @@ client.on('messageCreate', async (message) => {
         return message.reply({ content: '🌐 **Web Oficial:** https://web.drakescraft.cl', allowedMentions: { repliedUser: false } });
     }
     if (contentLower === 'stienda' || contentLower === '/stienda' || contentLower === '!stienda') {
-        return message.reply({ content: '🛒 **Tienda Oficial:** https://tienda.drakescraft.cl', allowedMentions: { repliedUser: false } });
+        return message.reply({ content: '🛒 **Tienda Oficial:** https://web.drakescraft.cl', allowedMentions: { repliedUser: false } });
     }
     if (contentLower === 'sping' || contentLower === '/sping' || contentLower === '!sping') {
         const ping = client.ws.ping;
         return message.reply({ content: `🏓 **Pong!** Latencia de enlace con Discord: **${ping}ms** · Enlace con Star: **0.1ms**`, allowedMentions: { repliedUser: false } });
     }
+    // 🎭 GESTIÓN DE AUTO-ROLES (sautoroles, sroles panel, sroles sync)
+    if (['sautoroles', 's!autoroles', 'sroles panel', 'sroles setup'].includes(contentLower)) {
+        if (!isStaffMember) {
+            return message.reply({ content: '❌ Solo Jack y el Staff Administrador pueden desplegar los paneles de auto-roles.', allowedMentions: { repliedUser: false } });
+        }
+        const autoRolesChannel = client.channels.cache.get(CHANNELS.AUTO_ROLES) || message.channel;
+        await sendAutoRolesPanels(autoRolesChannel);
+        return message.reply({ content: `✅ Paneles oficiales de auto-roles publicados con éxito en <#${autoRolesChannel.id}>.`, allowedMentions: { repliedUser: false } });
+    }
+
+    if (contentLower === 'sroles sync' || contentLower === 'sautoroles sync') {
+        if (!isStaffMember) {
+            return message.reply({ content: '❌ Solo Jack y el Staff Administrador pueden forzar la sincronización de auto-roles.', allowedMentions: { repliedUser: false } });
+        }
+        const replyMsg = await message.reply({ content: `🔄 Sincronizando roles a partir de las reacciones en <#${CHANNELS.AUTO_ROLES}>...`, allowedMentions: { repliedUser: false } });
+        await syncAutoRolesChannel(message.guild);
+        return replyMsg.edit('✅ Sincronización de auto-roles completada exitosamente.');
+    }
+
     if (contentLower === 'sroles') {
         try {
             const guild = message.guild;
@@ -1862,7 +2247,7 @@ client.on('messageCreate', async (message) => {
                 { name: '🎮 IP Conexión Java', value: '`mc.drakescraft.cl:25565`', inline: true },
                 { name: '📱 IP Conexión Bedrock', value: '`mc.drakescraft.cl` (19132)', inline: true },
                 { name: '🌐 Portal Web', value: 'https://web.drakescraft.cl', inline: true },
-                { name: '🛒 Tienda Oficial', value: 'https://tienda.drakescraft.cl', inline: true },
+                { name: '🛒 Tienda Oficial', value: 'https://web.drakescraft.cl', inline: true },
                 { name: '🛡️ Modo SRE', value: 'Protección autónoma 24/7', inline: true }
             )
             .setFooter({ text: 'S.A.O.R.I. SRE Core · DrakesCraft Network', iconURL: client.user.displayAvatarURL() });
@@ -1939,6 +2324,55 @@ client.on('messageCreate', async (message) => {
     }
 
 
+
+    // =========================================================================
+    // COMANDO SREENCARNAR (RITO DE PRESTIGIO Y REINICIO DE PROGRESO)
+    // =========================================================================
+    if (primaryCmd === 'sreencarnar' || primaryCmd === 'reencarnar') {
+        const codeArg = (cmdArgs[0] || '').trim().toUpperCase();
+        if (!codeArg || !codeArg.startsWith('RC-')) {
+            const usageEmbed = new EmbedBuilder()
+                .setTitle('⚖️ Rito de Reencarnación y Prestigio')
+                .setColor(0xF39C12)
+                .setDescription('Para iniciar tu reencarnación y reinicio voluntario de cuenta, primero debes solicitarla dentro del servidor de Minecraft.')
+                .addFields(
+                    { name: '1. Inicia en Minecraft', value: 'Escribe `/reencarnar` dentro del servidor para abrir la **Cápsula de Recuerdos** y guardar hasta 5 ítems que quieras conservar.' },
+                    { name: '2. Obtén tu Código', value: 'Al confirmar en Minecraft se generará un código de seguridad temporal de 15 minutos con formato `RC-XXXXXX`.' },
+                    { name: '3. Confirma en Discord', value: 'Escribe aquí: `sreencarnar <CÓDIGO>` o `!reencarnar <CÓDIGO>` para autorizar el protocolo de destrucción y regeneración.' }
+                )
+                .setFooter({ text: 'S.A.O.R.I. Protocolo Prestigio · DrakesCraft Network', iconURL: client.user.displayAvatarURL() });
+            return message.reply({ embeds: [usageEmbed], allowedMentions: { repliedUser: false } });
+        }
+
+        const confirmEmbed = new EmbedBuilder()
+            .setTitle('🔥 PROTOCOLO DE REENCARNACIÓN Y PRESTIGIO 🔥')
+            .setColor(0xE74C3C)
+            .setDescription(`Se ha presentado una solicitud de reencarnación con el código de seguridad: **\`${codeArg}\`**.\n\n⚠️ **ADVERTENCIA CRÍTICA: ESTA ACCIÓN ES TOTALMENTE DEFINITIVA E IRREVERSIBLE.**`)
+            .addFields(
+                {
+                    name: '💥 Lo que será DESTRUIDO y REGENERADO:',
+                    value: '• **Regeneración de Chunks:** Todos tus terrenos y protecciones volverán a su bioma natural original (worldgen limpio).\n• **Inventarios:** Tu inventario personal, armadura puesta, Ender Chest y puntos de nivel/XP serán reseteados.\n• **Bóvedas:** Todos tus baúles virtuales (`/pv`), bancos e islas personales serán eliminados.\n• **Economía & Slimefun:** Tu saldo se reajustará a la base inicial de **₯1,000** y se reiniciarán todas tus investigaciones tecnológicas de Slimefun.'
+                },
+                {
+                    name: '🛡️ Lo que CONSERVARÁS intacto:',
+                    value: '• **Cuenta & Rangos:** Tu usuario, inicio de sesión y rangos VIP adquiridos en la tienda no se tocan.\n• **Cápsula de Recuerdos:** Los hasta 5 ítems que depositaste en la caja sellada del pasado se te entregarán en tu nuevo inicio.\n• **Reconocimiento:** Recibirás la insignia honorífica de **Prestigio** y el anuncio global de tu renacimiento.'
+                }
+            )
+            .setFooter({ text: 'Presiona el botón rojo para confirmar o cancelar para anular.', iconURL: client.user.displayAvatarURL() });
+
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`btn_reencarnar_confirm_${codeArg}_${message.author.id}`)
+                .setLabel('💣 DESTRUIR Y REENCARNAR')
+                .setStyle(ButtonStyle.Danger),
+            new ButtonBuilder()
+                .setCustomId(`btn_reencarnar_cancel_${codeArg}_${message.author.id}`)
+                .setLabel('❌ CANCELAR')
+                .setStyle(ButtonStyle.Secondary)
+        );
+
+        return message.reply({ embeds: [confirmEmbed], components: [row], allowedMentions: { repliedUser: false } });
+    }
 
     let cleanPrompt = content.replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '').trim();
 
