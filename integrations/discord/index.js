@@ -71,6 +71,132 @@ const NOTIFICATION_CHANNELS_MAP = {
 };
 const notifChannelCooldowns = new Map();
 
+// 🛡️ ESCUDOS DE SEGURIDAD Y ANTI-ATAQUES
+const RateLimitShield = {
+    userMessages: new Map(), // userId -> Array<timestamps>
+    userInteractions: new Map(), // userId -> lastTimestamp
+
+    // Prevenir spam de mensajes / flooding (máx 5 mensajes en 5s)
+    checkMessageFlood(userId, isOwner = false) {
+        if (isOwner) return true;
+        const now = Date.now();
+        const windowMs = 5000;
+        const maxMsgs = 5;
+
+        const timestamps = (this.userMessages.get(userId) || []).filter(t => (now - t) < windowMs);
+        timestamps.push(now);
+        this.userMessages.set(userId, timestamps);
+
+        return timestamps.length <= maxMsgs;
+    },
+
+    // Prevenir hammering de botones/modals (1 interacción cada 1.5s)
+    checkInteractionRate(userId, isOwner = false) {
+        if (isOwner) return true;
+        const now = Date.now();
+        const last = this.userInteractions.get(userId) || 0;
+        if (now - last < 1500) return false;
+        this.userInteractions.set(userId, now);
+        return true;
+    },
+
+    // Sanitizar entradas para evitar Prompt Injections, caracteres nulos y payloads sobredimensionados
+    sanitizeInput(text, maxLen = 2000) {
+        if (!text || typeof text !== 'string') return '';
+        return text
+            .replace(/\0/g, '') // Eliminar null bytes
+            .replace(/[\u200B-\u200D\uFEFF]/g, '') // Eliminar caracteres invisibles zero-width
+            .slice(0, maxLen)
+            .trim();
+    },
+
+    // Detectar enlaces maliciosos / phishing
+    isMaliciousLink(content) {
+        if (!content) return false;
+        const phishPatterns = [
+            /grabify\.link/i,
+            /iplogger\.(org|com|ru)/i,
+            /2no\.co/i,
+            /discorcd\.(gifts|com|net)/i,
+            /dlscord\.(gift|gg|com)/i,
+            /nitro-free/i,
+            /steamcommuunity\.(com|link)/i,
+            /steam-free/i
+        ];
+        return phishPatterns.some(pat => pat.test(content));
+    }
+};
+
+// 📊 CANALES DE ESTADÍSTICAS DEL SERVIDOR EN TIEMPO REAL (Discord + Minecraft)
+const STATS_CHANNELS = {
+    CATEGORY: '1544849347219431555',
+    TOTAL_MEMBERS: '1544849351992410223',
+    HUMANS: '1544849364109893642',
+    MC_ONLINE: '1544849367603744828',
+    IP: '1544849874212618260',
+    WEB: '1544850002344677446'
+};
+
+async function updateServerStats(guild) {
+    try {
+        if (!guild) return;
+        await guild.members.fetch().catch(() => {});
+
+        const totalMembers = guild.memberCount;
+        const humans = guild.members.cache.filter(m => !m.user.bot).size;
+
+        // Consultar jugadores online en Minecraft en vivo
+        let mcOnline = 0;
+        try {
+            const res = await fetch('https://api.mcsrvstat.us/3/mc.drakescraft.cl', { timeout: 4000 });
+            if (res.ok) {
+                const data = await res.json();
+                mcOnline = data.players?.online || 0;
+            }
+        } catch (e) {}
+
+        const cat = guild.channels.cache.get(STATS_CHANNELS.CATEGORY);
+        if (cat && cat.name !== '── 📊・ᴇsᴛᴀᴅísᴛɪᴄᴀs ──') {
+            await cat.setName('── 📊・ᴇsᴛᴀᴅísᴛɪᴄᴀs ──').catch(() => {});
+        }
+
+        const chTotal = guild.channels.cache.get(STATS_CHANNELS.TOTAL_MEMBERS);
+        if (chTotal) {
+            const newName = `👥・ᴍɪᴇᴍʙʀᴏs: ${totalMembers}`;
+            if (chTotal.name !== newName) await chTotal.setName(newName).catch(() => {});
+        }
+
+        const chHumans = guild.channels.cache.get(STATS_CHANNELS.HUMANS);
+        if (chHumans) {
+            const newName = `🧑・ᴜsᴜᴀʀɪᴏs: ${humans}`;
+            if (chHumans.name !== newName) await chHumans.setName(newName).catch(() => {});
+        }
+
+        const chMc = guild.channels.cache.get(STATS_CHANNELS.MC_ONLINE);
+        if (chMc) {
+            const newName = `🎮・ᴍᴄ ᴏɴʟɪɴᴇ: ${mcOnline}`;
+            if (chMc.name !== newName) await chMc.setName(newName).catch(() => {});
+        }
+
+        const chIp = guild.channels.cache.get(STATS_CHANNELS.IP);
+        if (chIp) {
+            const newName = '📌・ɪᴘ: mc.drakescraft.cl';
+            if (chIp.name !== newName) await chIp.setName(newName).catch(() => {});
+        }
+
+        const chWeb = guild.channels.cache.get(STATS_CHANNELS.WEB);
+        if (chWeb) {
+            const newName = '🌐・ᴡᴇʙ: web.drakescraft.cl';
+            if (chWeb.name !== newName) await chWeb.setName(newName).catch(() => {});
+        }
+
+        console.log(`[STATS] ✅ Estadísticas actualizadas: Discord ${totalMembers} (${humans} humanos) | MC Online: ${mcOnline}`);
+    } catch (err) {
+        console.error('[STATS] Error al actualizar estadísticas:', err.message);
+    }
+}
+
+
 
 const ALLOWED_MC_CHAT_ROLES = [
     '1539643506258092032', // 📜 ︱ ᴏʟᴅsᴄʜᴏᴏʟ
@@ -474,12 +600,13 @@ async function handleSuggestion(message, rawText, isDirectCmd = false) {
 
 async function askSaoriBrain(prompt, sender, context = '') {
     try {
-        const fullPrompt = context ? `[Contexto Canal/Ticket: ${context}]\n${prompt}` : prompt;
+        const fullPrompt = context ? `[Contexto Canal/Ticket: ${context}]
+${prompt}` : prompt;
         const res = await fetch(AI_DAEMON_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ prompt: fullPrompt, sender }),
-            timeout: 45000
+            timeout: 10000
         });
         if (res.ok) {
             const data = await res.json();
@@ -490,7 +617,7 @@ async function askSaoriBrain(prompt, sender, context = '') {
     } catch (e) {
         console.error('[SAORI-DISCORD] Error contactando Saori Brain:', e.message);
     }
-    return `Hola ${sender}, dime qué necesitas.`;
+    return `Hola ${sender}, mis núcleos cognitivos externos se están recalibrando en este momento, pero todos los controles y funciones del servidor (\`shelp\`, música, auto-roles, tickets) siguen activos y a tu disposición. 🌸`;
 }
 
 async function generateImageViaDaemon(prompt) {
@@ -711,9 +838,82 @@ client.once(Events.ClientReady, async () => {
     }
 });
 
+
+// =========================================================================
+// 🔤 MOTOR DE TIPOGRAFÍA SMALL CAPS Y NORMALIZACIÓN DE MIEMBROS
+// =========================================================================
+
+function toSmallCaps(text) {
+    if (!text) return text;
+    const mapping = {
+        'a': 'ᴀ', 'b': 'ʙ', 'c': 'ᴄ', 'd': 'ᴅ', 'e': 'ᴇ', 'f': 'ғ', 'g': 'ɢ', 'h': 'ʜ', 'i': 'ɪ', 'j': 'ᴊ',
+        'k': 'ᴋ', 'l': 'ʟ', 'm': 'ᴍ', 'n': 'ɴ', 'o': 'ᴏ', 'p': 'ᴘ', 'q': 'ǫ', 'r': 'ʀ', 's': 's', 't': 'ᴛ',
+        'u': 'ᴜ', 'v': 'ᴠ', 'w': 'ᴡ', 'x': 'x', 'y': 'ʏ', 'z': 'ᴢ',
+        'A': 'ᴀ', 'B': 'ʙ', 'C': 'ᴄ', 'D': 'ᴅ', 'E': 'ᴇ', 'F': 'ғ', 'G': 'ɢ', 'H': 'ʜ', 'I': 'ɪ', 'J': 'ᴊ',
+        'K': 'ᴋ', 'L': 'ʟ', 'M': 'ᴍ', 'N': 'ɴ', 'O': 'ᴏ', 'P': 'ᴘ', 'Q': 'ǫ', 'R': 'ʀ', 'S': 's', 'T': 'ᴛ',
+        'U': 'ᴜ', 'V': 'ᴠ', 'W': 'ᴡ', 'X': 'x', 'Y': 'ʏ', 'Z': 'ᴢ'
+    };
+    return text.split('').map(c => mapping[c] || c).join('').slice(0, 32);
+}
+
+const UNCONFUSE_MAP = {
+    'ᗰ': 'm', 'ᗪ': 'd', 'ᖇ': 'r', 'ᗩ': 'a', '𝔒': 'o', 'ᑎ': 'n', 'ø': 'o', 'Ø': 'o', 'ę': 'e', 'Ę': 'e',
+    'Ä': 'a', 'ä': 'a', 'Ë': 'e', 'ë': 'e', 'Ï': 'i', 'ï': 'i', 'Ö': 'o', 'ö': 'o', 'Ü': 'u', 'ü': 'u',
+    'ÿ': 'y', 'Ÿ': 'y', 'ı': 'i', '∂': 'd', 'α': 'a', 'я': 'r', 'к': 'k', 'υ': 'u', 'σ': 'o',
+    'ι': 'i', 'א': 'x', 'ع': 'e', 'ツ': '', '彡': '', '★': '', '☆': '', '『': '', '』': '', '【': '', '】': '',
+    '𝔄': 'a', '𝔅': 'b', 'ℭ': 'c', '𝔇': 'd', '𝔈': 'e', '𝔉': 'f', '𝔊': 'g', 'ℌ': 'h', 'ℑ': 'i', '𝔍': 'j',
+    '𝔎': 'k', '𝔏': 'l', '𝔐': 'm', '𝔑': 'n', '𝔒': 'o', '𝔓': 'p', '𝔔': 'q', 'ℜ': 'r', '𝔖': 's', '𝔗': 't',
+    '𝔘': 'u', '𝔙': 'v', '𝔚': 'w', '𝔛': 'x', '𝔜': 'y', 'ℨ': 'z', '𝔡': 'd', '𝔯': 'r', '𝔞': 'a', '𝔬': 'o', '𝔫': 'n'
+};
+
+const STAFF_ROLES_SUFFIX = {
+    '1539641774392348754': ' - ᴏᴡɴᴇʀ',
+    '1539642179822161940': ' - ᴀᴅᴍɪɴ',
+    '1539642260621369454': ' - ᴅᴇᴠ',
+    '1539642370356940861': ' - ᴍᴏᴅ',
+    '1539642446861041694': ' - ʜᴇʟᴘᴇʀ',
+    '1539642520991178833': ' - ʙᴜɪʟᴅᴇʀ',
+    '1544153904395194408': ' - ʙᴜғóɴ'
+};
+
+function formatMemberNickname(name, memberRoles = [], memberId = '') {
+    if (!name) return "";
+    if (memberId === '684457729003356180') return 'ᴋɪᴋᴀ - ᴡɪғᴇ ᴏᴡɴᴇʀ';
+    let cleaned = name.replace(/\s*[-–—|]\s*(admin|mod|dev|helper|builder|owner|staff|bufon|bufón|wife owner|husband owner|dios|ᴀᴅᴍɪɴ|ᴍᴏᴅ|ᴅᴇᴠ|ʜᴇʟᴘᴇʀ|ʙᴜɪʟᴅᴇʀ|ᴏᴡɴᴇʀ|ʙᴜғóɴ).*$/gi, '').trim();
+    cleaned = cleaned.normalize('NFKC');
+    let unconfused = '';
+    for (const ch of cleaned) {
+        if (UNCONFUSE_MAP[ch] !== undefined) {
+            unconfused += UNCONFUSE_MAP[ch];
+        } else {
+            unconfused += ch.normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+        }
+    }
+    let small = toSmallCaps(unconfused).trim();
+    let suffix = '';
+    for (const [rId, sText] of Object.entries(STAFF_ROLES_SUFFIX)) {
+        if (memberRoles.includes(rId)) {
+            suffix = sText;
+            break;
+        }
+    }
+    return (small + suffix).slice(0, 32);
+}
+
 // Bienvenidas automáticas y Auditoría de Ingreso
 client.on('guildMemberAdd', async (member) => {
     try {
+        // ✨ Auto-Nickname en Small Caps y Asignación de Rol Polis
+        if (!member.user.bot && member.id !== JACK_DISCORD_ID) {
+            const rawName = member.user.globalName || member.user.username;
+            const targetNick = formatMemberNickname(rawName, member.roles.cache.map(r => r.id), member.id);
+            if (targetNick) {
+                await member.setNickname(targetNick).catch(() => {});
+            }
+            const polisRoleId = '1539643572251271198'; // 🏛️ ︱ ᴘᴏʟɪs
+            await member.roles.add(polisRoleId).catch(() => {});
+        }
+
         const channel = member.guild.channels.cache.get(CHANNELS.BIENVENIDAS) || 
                         await member.guild.channels.fetch(CHANNELS.BIENVENIDAS).catch(() => null);
 
@@ -721,7 +921,9 @@ client.on('guildMemberAdd', async (member) => {
             const welcomeEmbed = new EmbedBuilder()
                 .setColor(0xE6A8D7)
                 .setTitle(`🌸 ¡Bienvenido/a a ⚡ ᴅʀᴀᴋᴇsᴄʀᴀғᴛ ɴᴇᴛᴡᴏʀᴋ ⚡!`)
-                .setDescription(`¡Hola ${member}! Soy **SAORI**, la IA del servidor. ✨\n\n` +
+                .setDescription(`¡Hola ${member}! Soy **SAORI**, la IA del servidor. ✨
+
+` +
                                 `Te dejamos unos accesos rápidos:`)
                 .addFields(
                     { name: '📜 Reglas', value: `<#${CHANNELS.REGLAS}>`, inline: true },
@@ -737,14 +939,17 @@ client.on('guildMemberAdd', async (member) => {
             console.log(`[SAORI-DISCORD] 🌸 Bienvenida enviada a ${member.user.tag}`);
         }
 
-        // 🛡️ Auditoría de Ingreso
+        // 🛡️ Auditoría de Ingreso con detección de cuentas recientes (< 7 días)
+        const accountAgeDays = Math.floor((Date.now() - member.user.createdTimestamp) / (1000 * 60 * 60 * 24));
+        const isSuspicious = accountAgeDays < 7;
         const joinAudit = new EmbedBuilder()
-            .setColor(0x2ECC71)
-            .setTitle('📥 Miembro Nuevo Ingresó al Servidor')
+            .setColor(isSuspicious ? 0xE67E22 : 0x2ECC71)
+            .setTitle(isSuspicious ? '⚠️ Nuevo Miembro Unido (Cuenta Reciente / Sospechosa)' : '📥 Miembro Nuevo Ingresó al Servidor')
             .setAuthor({ name: `${member.user.tag} (${member.user.id})`, iconURL: member.user.displayAvatarURL({ dynamic: true }) })
+            .setDescription(`${member} (\`${member.user.tag}\`) ha entrado al servidor.`)
             .addFields(
                 { name: '👤 Usuario', value: `${member.user.tag} (\`${member.user.id}\`)`, inline: true },
-                { name: '📅 Cuenta Creada', value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`, inline: true },
+                { name: '📅 Antigüedad Cuenta', value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R> (\`${accountAgeDays} días\`)`, inline: true },
                 { name: '👥 Total Miembros', value: `\`${member.guild.memberCount}\``, inline: true }
             )
             .setFooter({ text: `ID Usuario: ${member.user.id}` })
@@ -875,6 +1080,21 @@ client.on('messageUpdate', async (oldMessage, newMessage) => {
 // 🛡️ AUDITORÍA: Modificación de Roles y Apodos de Miembros
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
     try {
+        if (newMember.user.bot || newMember.id === JACK_DISCORD_ID) return;
+
+        // ✨ Sincronización Automática de Apodos y Sufijos de Staff
+        const rolesChanged = oldMember.roles.cache.size !== newMember.roles.cache.size ||
+                             !oldMember.roles.cache.equals(newMember.roles.cache);
+        const nickChanged = oldMember.nickname !== newMember.nickname;
+
+        if (rolesChanged || nickChanged) {
+            const rawName = newMember.nickname || newMember.user.globalName || newMember.user.username;
+            const targetNick = formatMemberNickname(rawName, newMember.roles.cache.map(r => r.id), newMember.id);
+            if (targetNick && targetNick !== newMember.nickname) {
+                await newMember.setNickname(targetNick).catch(() => {});
+            }
+        }
+
         const addedRoles = newMember.roles.cache.filter(r => !oldMember.roles.cache.has(r.id));
         const removedRoles = oldMember.roles.cache.filter(r => !newMember.roles.cache.has(r.id));
         const nicknameChanged = oldMember.nickname !== newMember.nickname;
@@ -905,6 +1125,145 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
     } catch (err) {
         console.error('[AUDIT] Error en guildMemberUpdate:', err);
     }
+});
+
+// 🛡️ AUDITORÍA: Canales Creados y Eliminados
+client.on('channelCreate', async (channel) => {
+    try {
+        if (!channel.guild) return;
+        const embed = new EmbedBuilder()
+            .setColor(0x2ECC71)
+            .setTitle('📁 Canal Creado')
+            .addFields(
+                { name: '📍 Canal', value: `<#${channel.id}> (\`${channel.name}\`)`, inline: true },
+                { name: '⚙️ Tipo', value: channel.type === 0 ? 'Texto' : (channel.type === 2 ? 'Voz' : `Tipo ${channel.type}`), inline: true }
+            )
+            .setFooter({ text: `ID Canal: ${channel.id}` })
+            .setTimestamp();
+        await sendAuditLog(embed);
+    } catch (e) {}
+});
+
+client.on('channelDelete', async (channel) => {
+    try {
+        if (!channel.guild) return;
+        const embed = new EmbedBuilder()
+            .setColor(0xE74C3C)
+            .setTitle('🗑️ Canal Eliminado')
+            .addFields(
+                { name: '📍 Nombre', value: `\`${channel.name}\``, inline: true },
+                { name: '⚙️ Tipo', value: channel.type === 0 ? 'Texto' : (channel.type === 2 ? 'Voz' : `Tipo ${channel.type}`), inline: true }
+            )
+            .setFooter({ text: `ID Canal: ${channel.id}` })
+            .setTimestamp();
+        await sendAuditLog(embed);
+    } catch (e) {}
+});
+
+// 🛡️ AUDITORÍA: Sanciones (Bans y Unbans)
+client.on('guildBanAdd', async (ban) => {
+    try {
+        let executor = null;
+        let reason = ban.reason;
+        try {
+            const logs = await ban.guild.fetchAuditLogs({ type: AuditLogEvent.MemberBanAdd, limit: 1 }).catch(() => null);
+            const entry = logs?.entries.first();
+            if (entry && (Date.now() - entry.createdTimestamp) < 5000 && entry.target?.id === ban.user.id) {
+                executor = entry.executor;
+                if (!reason) reason = entry.reason;
+            }
+        } catch (e) {}
+
+        const embed = new EmbedBuilder()
+            .setColor(0x992D22)
+            .setTitle('🔨 Miembro Baneado')
+            .setAuthor({ name: `${ban.user.tag} (${ban.user.id})`, iconURL: ban.user.displayAvatarURL({ dynamic: true }) })
+            .addFields(
+                { name: '👤 Usuario', value: `${ban.user} (\`${ban.user.tag}\`)`, inline: true },
+                { name: '📝 Razón', value: reason || 'Sin razón especificada', inline: true }
+            );
+        if (executor) {
+            embed.addFields({ name: '🛡️ Moderador', value: `${executor} (\`${executor.tag}\`)`, inline: true });
+        }
+        embed.setFooter({ text: `ID Usuario: ${ban.user.id}` }).setTimestamp();
+        await sendAuditLog(embed);
+    } catch (e) {}
+});
+
+client.on('guildBanRemove', async (ban) => {
+    try {
+        let executor = null;
+        try {
+            const logs = await ban.guild.fetchAuditLogs({ type: AuditLogEvent.MemberBanRemove, limit: 1 }).catch(() => null);
+            const entry = logs?.entries.first();
+            if (entry && (Date.now() - entry.createdTimestamp) < 5000 && entry.target?.id === ban.user.id) {
+                executor = entry.executor;
+            }
+        } catch (e) {}
+
+        const embed = new EmbedBuilder()
+            .setColor(0x2ECC71)
+            .setTitle('🕊️ Miembro Desbaneado')
+            .setAuthor({ name: `${ban.user.tag} (${ban.user.id})`, iconURL: ban.user.displayAvatarURL({ dynamic: true }) })
+            .addFields(
+                { name: '👤 Usuario', value: `${ban.user} (\`${ban.user.tag}\`)`, inline: true }
+            );
+        if (executor) {
+            embed.addFields({ name: '🛡️ Moderador', value: `${executor} (\`${executor.tag}\`)`, inline: true });
+        }
+        embed.setFooter({ text: `ID Usuario: ${ban.user.id}` }).setTimestamp();
+        await sendAuditLog(embed);
+    } catch (e) {}
+});
+
+// 🛡️ AUDITORÍA: Canales de Voz (Conexión / Desconexión / Movimiento)
+client.on('voiceStateUpdate', async (oldState, newState) => {
+    try {
+        const user = newState.member?.user || oldState.member?.user;
+        if (!user || user.bot) return;
+
+        let desc = null;
+        let color = 0x1ABC9C;
+
+        if (!oldState.channelId && newState.channelId) {
+            desc = `🟢 **Conectado:** ${user} se unió a <#${newState.channelId}> (\`${newState.channel?.name || 'Canal'}\`)`;
+            color = 0x2ECC71;
+        } else if (oldState.channelId && !newState.channelId) {
+            desc = `🔴 **Desconectado:** ${user} salió de <#${oldState.channelId}> (\`${oldState.channel?.name || 'Canal'}\`)`;
+            color = 0xE74C3C;
+        } else if (oldState.channelId && newState.channelId && oldState.channelId !== newState.channelId) {
+            desc = `🔄 **Movido:** ${user} cambió de <#${oldState.channelId}> a <#${newState.channelId}>`;
+            color = 0x3498DB;
+        }
+
+        if (desc) {
+            const embed = new EmbedBuilder()
+                .setColor(color)
+                .setTitle('🎙️ Registro de Voz')
+                .setAuthor({ name: `${user.tag} (${user.id})`, iconURL: user.displayAvatarURL({ dynamic: true }) })
+                .setDescription(desc)
+                .setFooter({ text: `ID Usuario: ${user.id}` })
+                .setTimestamp();
+            await sendAuditLog(embed);
+        }
+    } catch (e) {}
+});
+
+// 🛡️ AUDITORÍA: Hilos Creados
+client.on('threadCreate', async (thread) => {
+    try {
+        if (!thread.guild) return;
+        const embed = new EmbedBuilder()
+            .setColor(0x9B59B6)
+            .setTitle('🧵 Hilo Creado')
+            .addFields(
+                { name: '📍 Hilo', value: `<#${thread.id}> (\`${thread.name}\`)`, inline: true },
+                { name: '📁 Canal Padre', value: `<#${thread.parentId}>`, inline: true }
+            )
+            .setFooter({ text: `ID Hilo: ${thread.id}` })
+            .setTimestamp();
+        await sendAuditLog(embed);
+    } catch (e) {}
 });
 
 
@@ -1776,8 +2135,52 @@ client.on('messageCreate', async (message) => {
         return;
     }
 
+    
     const isDM = !message.guild;
     const isJack = message.author.id === JACK_DISCORD_ID;
+
+    // 🛡️ ESCUDO DE SEGURIDAD ANTI-ATAQUES & ANTI-SPAM
+    if (!isJack && message.guild) {
+        // 1. Detección y bloqueo inmediato de phishing / IP loggers
+        if (RateLimitShield.isMaliciousLink(message.content)) {
+            await message.delete().catch(() => {});
+            const phishAudit = new EmbedBuilder()
+                .setColor(0xE74C3C)
+                .setTitle('🚨 Enlace Malicioso Bloqueado (Anti-Phishing)')
+                .addFields(
+                    { name: '👤 Usuario', value: `${message.author} (\`${message.author.tag}\`)`, inline: true },
+                    { name: '📍 Canal', value: `<#${message.channel.id}>`, inline: true },
+                    { name: '🔗 Contenido', value: `\`\`\`${message.content.slice(0, 500)}\`\`\``, inline: false }
+                )
+                .setTimestamp();
+            await sendAuditLog(phishAudit);
+            return;
+        }
+
+        // 2. Control de Flooding / Spam excesivo
+        if (!RateLimitShield.checkMessageFlood(message.author.id, isJack)) {
+            await message.delete().catch(() => {});
+            return;
+        }
+
+        // 3. Control de Menciones Masivas (Anti-Raid)
+        const totalMentions = (message.mentions?.users?.size || 0) + (message.mentions?.roles?.size || 0);
+        if (totalMentions > 4) {
+            await message.delete().catch(() => {});
+            const raidAudit = new EmbedBuilder()
+                .setColor(0xE74C3C)
+                .setTitle('⚠️ Intento de Mención Masiva Bloqueado')
+                .addFields(
+                    { name: '👤 Usuario', value: `${message.author} (\`${message.author.tag}\`)`, inline: true },
+                    { name: '📍 Canal', value: `<#${message.channel.id}>`, inline: true },
+                    { name: '📢 Total Menciones', value: `\`${totalMentions}\``, inline: true }
+                )
+                .setTimestamp();
+            await sendAuditLog(raidAudit);
+            return;
+        }
+    }
+
 
     const botMentioned = message.mentions.users.has(client.user.id);
     // Ignorar avisos globales con @everyone o @here si no mencionan directamente a Saori
@@ -1785,7 +2188,7 @@ client.on('messageCreate', async (message) => {
         return;
     }
     const isSaoriDedicatedChannel = message.channel.id === CHANNELS.SAORI_CHAT;
-    const content = message.content.trim();
+    const content = RateLimitShield.sanitizeInput(message.content.trim());
     const contentLower = content.toLowerCase();
 
     const isTicketChannel = (message.channel.parentId && message.channel.parentId === CHANNELS.CATEGORIA_TICKETS) || 
@@ -1817,7 +2220,7 @@ client.on('messageCreate', async (message) => {
     const directCmdKeywords = [
         'shelp', 'splay', 'smusica', 'sskip', 'spause', 'sresume', 'squeue', 'sstop',
         'sticket', 'sstats', 'sip', 'sping', 'sweb', 'stienda', 'sguia',
-        'sroles', 'srole', 'sautoroles', 'sclear', '!purge', '!ticket', '!imagen', '!image',
+        'sroles', 'srole', 'snick', 'sautoroles', 'sclear', '!purge', '!ticket', '!imagen', '!image',
         'ssugerencia', 'sugerencia', '!sugerencia', 'sreencarnar', 'reencarnar', '!reencarnar'
     ];
     const isDirectCommand = directCmdKeywords.some(cmd => 
@@ -2328,6 +2731,45 @@ client.on('messageCreate', async (message) => {
     // =========================================================================
     // COMANDO SREENCARNAR (RITO DE PRESTIGIO Y REINICIO DE PROGRESO)
     // =========================================================================
+    
+    // =========================================================================
+    // COMANDO SNICK (TIPOGRAFÍA SMALL CAPS Y NORMALIZACIÓN)
+    // =========================================================================
+    if (primaryCmd === 'snick') {
+        if (!isStaffMember) {
+            return message.reply({ content: '❌ Solo los miembros del Staff pueden usar el comando de normalización de apodos.', allowedMentions: { repliedUser: false } });
+        }
+        const sub = cmdArgs[0]?.toLowerCase();
+        if (sub === 'sync' || sub === 'all') {
+            await message.reply({ content: '🔄 Normalizando tipografía Small Caps de todos los miembros del servidor...' });
+            let count = 0;
+            const members = await message.guild.members.fetch();
+            for (const [id, m] of members) {
+                if (m.user.bot || m.id === JACK_DISCORD_ID) continue;
+                const rawName = m.nickname || m.user.globalName || m.user.username;
+                const formatted = formatMemberNickname(rawName, m.roles.cache.map(r => r.id), m.id);
+                if (formatted && formatted !== m.nickname) {
+                    await m.setNickname(formatted).catch(() => {});
+                    count++;
+                }
+            }
+            return message.reply({ content: `✅ Sincronización de tipografía finalizada. Se actualizaron ${count} apodos.` });
+        }
+
+        const targetMember = message.mentions.members.first();
+        if (!targetMember) {
+            return message.reply({ content: '📌 Uso: `snick @usuario` para normalizar a un usuario o `snick sync` para todo el servidor.', allowedMentions: { repliedUser: false } });
+        }
+        const rawName = targetMember.nickname || targetMember.user.globalName || targetMember.user.username;
+        const formatted = formatMemberNickname(rawName, targetMember.roles.cache.map(r => r.id), targetMember.id);
+        if (formatted) {
+            await targetMember.setNickname(formatted).catch(err => {
+                return message.reply({ content: `❌ No se pudo cambiar el apodo: ${err.message}` });
+            });
+            return message.reply({ content: `✅ Apodo de **${targetMember.user.tag}** normalizado a: \`${formatted}\`` });
+        }
+    }
+
     if (primaryCmd === 'sreencarnar' || primaryCmd === 'reencarnar') {
         const codeArg = (cmdArgs[0] || '').trim().toUpperCase();
         if (!codeArg || !codeArg.startsWith('RC-')) {
