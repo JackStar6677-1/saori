@@ -36,13 +36,23 @@ Cualquier desarrollador u organización puede utilizar este esqueleto para despl
   - 🛠️ `desarrollador`: Diseña la solución, implementa código y genera parches.
   - 🔍 `consultoria-peer`: Audita la arquitectura, revisa edge-cases y optimiza.
   - 🧪 `qa-testing`: Ejecuta suites de tests, valida compilación y verifica integración.
+- **Configuración de Modelos & Niveles de Razonamiento:**
+  - **⚡ Antigravity (Google DeepMind):** `gemini-3.8-flash-high` con `--effort high` (**MÁXIMO esfuerzo de razonamiento**, el tope analítico para erradicación de warns, refactors de Slimefun e ingeniería pesada).
+  - **🛠️ Codex (OpenAI):** `gpt-5.6-sol` con `-c 'model_reasoning_effort="medium"'` (integración continua, QA y tests).
+  - **🏛️ Claude-Code (Anthropic):** `claude-opus-4-5` / `opus` con `--effort medium` (consultoría peer y lógica).
+- **Mandato de Resolución Integral ("Métele Caña"):**
+  - Erradicación proactiva de advertencias (`WARN`) y errores en consola.
+  - Búsqueda e instalación de plugins open-source y creación de forks en la organización de GitHub de DrakesCraft.
+  - Desarrollo de plugins hotfix en caliente propios si un componente no admite parches upstream.
+  - Regla obligatoria de mantener siempre actualizados los READMEs con diagramas Mermaid y banners SVG.
 - **Conmutación Inteligente de Cuota (Failover):** Si un proveedor agota su ventana de contexto o rate limit, el orquestador transfiere el ticket de forma transparente y alerta al administrador por privado sin interrumpir el servicio.
-- **Nivel de Razonamiento Equilibrado:** Configurado con `--effort medium` / `model_reasoning_effort="medium"` para maximizar el rendimiento cognitivo sin quemar cuotas aceleradamente.
 
-### 2. ⚡ Desacoplamiento Omnicanal & Chat Liviano
-- **WhatsApp Bridge Ultrarrápido:** Bot conversacional ágil (<2s de respuesta) mediante modelos de baja latencia (`Claude Haiku` / `Gemini Flash`).
-- **Interceptor de Tareas Técnicas:** Si un usuario o staff solicita programar, crear scripts o corregir bugs por chat, el sistema no se satura intentando programar en vivo: despacha automáticamente un ticket formal (`dispatch_ticket.py`) a la Tríada SRE y confirma al usuario.
-- **Firewall de Privacidad de Alertas:** Las alertas de cuota, tareas internas y logs de agentes se despachan **estrictamente al chat privado del administrador**, bloqueando su difusión accidental en grupos generales o de staff.
+### 2. ⚡ Desacoplamiento Omnicanal, Recados a Jack & Dialectos Persistentes
+- **Chat Liviano y Ágil:** Bot conversacional de alta velocidad (<1.5s de respuesta) mediante modelos livianos (`Gemini Flash Low` / `Claude Haiku`) para WhatsApp y Discord.
+- **📬 Recados para el Administrador & Creación de Tareas:** Si un usuario o staff solicita en chat *"Saori dile a Jack que..."* o *"crea una tarea para..."*, Saori registra la tarea en el backlog y notifica inmediatamente a Jack por WhatsApp/Discord privado vía `saori_notifier.py`.
+- **🧠 Memoria y Dialectos Persistentes por Usuario:** Reconocimiento dinámico de dialectos y prohibición de modismos (ej. jerga dominicana para un usuario, prohibición de `"po"` o directivas en otros idiomas ordenadas por Jack) almacenados de forma persistente en `saori_user_preferences.json`.
+- **🛠️ Interceptor de Desarrollo:** Solicitudes de programación se despachan atómicamente a la Tríada SRE (`dispatch_ticket.py`) sin bloquear el chat.
+- **🛡️ Firewall de Privacidad de Alertas:** Alertas de cuota, incidentes internos y telemetría de agentes se despachan **estrictamente al DM del administrador**, bloqueando su exposición en canales públicos o de staff.
 
 ### 3. 🛡️ Fortaleza de Seguridad & RBAC
 - **Anti-Spoofing de Identidad:** Verificación estricta de remitentes y números autorizados (`ADMIN_WHATSAPP_NUMBER`) antes de conceder privilegios administrativos.
