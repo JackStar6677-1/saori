@@ -855,6 +855,7 @@ function buildShelpStaffEmbed(category = 'all') {
                 {
                     name: '👑 1. Dirección & Propietarios (Jack & Kika)',
                     value: '• `scomando <stop|restart|reload confirm|op|deop>` · Comandos críticos de consola.\n' +
+                           '• `sinactivos purgar [dias]` · Purga masiva y segura de miembros inactivos (default: 365 días).\n' +
                            '• Acceso total a infraestructura, bypass de filtros y autorizaciones especiales.'
                 },
                 {
@@ -862,6 +863,7 @@ function buildShelpStaffEmbed(category = 'all') {
                     value: '• `sban @usuario [motivo]` · Baneo definitivo en Discord.\n' +
                            '• `smcban <jugador> [motivo]` · Baneo en consola de Minecraft.\n' +
                            '• `smcunban <jugador>` · Desbaneo en Minecraft.\n' +
+                           '• `sinactivos [dias]` · Auditoría e inspección de usuarios inactivos sin expulsar.\n' +
                            '• `schan <rename|topic|slowmode|lock|unlock>` · Gestión directa de canales en Discord.\n' +
                            '• `srol <create|add|remove>` · Gestión directa de roles en Discord.\n' +
                            '• `sanuncio [#canal] <msg>` · Comunicado institucional con firma de Staff.\n' +
@@ -901,7 +903,7 @@ function buildShelpStaffEmbed(category = 'all') {
             .setDescription('Capacidades exclusivas para miembros con rango **Administrador** y **Dueños**:')
             .addFields(
                 { name: '🔨 Sanciones Globales', value: '• `sban @usuario [motivo]` · Baneo definitivo en Discord con log.\n• `smcban <jugador> [motivo]` · Ban directo en Minecraft.\n• `smcunban <jugador>` · Perdón/Unban en Minecraft.' },
-                { name: '🛠️ Gestión de Discord en Vivo', value: '• `schan rename #canal nuevo-nombre` · Renombrar canales.\n• `schan topic #canal descripción` · Modificar tema del canal.\n• `schan slowmode [#canal] <segundos>` · Ajustar modo pausado.\n• `schan lock [#canal]` · Bloquear canal para `@everyone`.\n• `schan unlock [#canal]` · Desbloquear canal.\n• `srol create <Nombre> [#HexColor]` · Crear rol.\n• `srol add @usuario <rol>` · Asignar rol.\n• `srol remove @usuario <rol>` · Retirar rol.\n• `sanuncio [#canal] <mensaje>` · Publicar anuncio oficial.\n• `ssay [#canal] <mensaje>` · Hablar a través de Saori.' },
+                { name: '🛠️ Gestión de Discord en Vivo', value: '• `sinactivos [dias]` · Auditoría de inactividad (Purga: solo Dueños).\n• `schan rename #canal nuevo-nombre` · Renombrar canales.\n• `schan topic #canal descripción` · Modificar tema del canal.\n• `schan slowmode [#canal] <segundos>` · Ajustar modo pausado.\n• `schan lock [#canal]` · Bloquear canal para `@everyone`.\n• `schan unlock [#canal]` · Desbloquear canal.\n• `srol create <Nombre> [#HexColor]` · Crear rol.\n• `srol add @usuario <rol>` · Asignar rol.\n• `srol remove @usuario <rol>` · Retirar rol.\n• `sanuncio [#canal] <mensaje>` · Publicar anuncio oficial.\n• `ssay [#canal] <mensaje>` · Hablar a través de Saori.' },
                 { name: '🖥️ Consola de Minecraft', value: '• `scomando <comando>` · Despacho directo a Pterodactyl API.\n• `smcwhitelist <add|remove|list> [jugador]` · Gestión de whitelist.\n• `smcsave` · Forzar guardado de mundos e inventarios (`save-all`).' }
             );
     } else if (category === 'mod') {
@@ -3317,7 +3319,8 @@ client.on('messageCreate', async (message) => {
         'svotar', 'votar', 'srecompensa', 'sredes',
         'scomando', 'sconsola', 'smc', 'smckick', 'smcban', 'smcunban', 'smcpardon', 'smcmute',
         'smcwarn', 'smcmsg', 'smcbroadcast', 'smcannounce', 'smcwhitelist', 'smcsave', 'smchealth',
-        'schan', 'srol', 'sanuncio', 'ssay'
+        'schan', 'srol', 'sanuncio', 'ssay',
+        'sinactivos', 'inactivos'
     ];
     const isDirectCommand = directCmdKeywords.some(cmd => 
         contentLower === cmd || 
@@ -4758,6 +4761,186 @@ client.on('messageCreate', async (message) => {
         } catch (e) {
             return message.reply({ content: `❌ Error al desbloquear canal: ${e.message}` });
         }
+    }
+
+    // =========================================================================
+    // 🧹 GESTIÓN Y AUDITORÍA DE INACTIVIDAD (SINACTIVOS / INACTIVOS / PURGAR)
+    // =========================================================================
+    if (primaryCmd === 'sinactivos' || primaryCmd === 'inactivos') {
+        if (!message.guild) {
+            return message.reply({ content: '❌ Este comando solo puede ejecutarse en un servidor de Discord.', allowedMentions: { repliedUser: false } });
+        }
+
+        // Permisos mínimos para ver auditoría: Admin (80) o Dueño (100) o Jack
+        if (hierarchy.level < STAFF_LEVELS.ADMIN && !isJack) {
+            return message.reply({ content: '⚠️ Este comando de auditoría y gestión de inactividad está reservado exclusivamente para Administradores y Dirección General.', allowedMentions: { repliedUser: false } });
+        }
+
+        const subCmd = (cmdArgs[0] || '').toLowerCase();
+        const isPurge = subCmd === 'purgar' || subCmd === 'kick' || subCmd === 'expulsar';
+
+        let daysThreshold = 365; // Por defecto 1 año (365 días)
+        let parsedDays = isPurge ? parseInt(cmdArgs[1], 10) : parseInt(cmdArgs[0], 10);
+        if (!isNaN(parsedDays) && parsedDays > 0) {
+            daysThreshold = parsedDays;
+        }
+
+        if (daysThreshold < 30) {
+            return message.reply({ content: '⚠️ Por seguridad del servidor, el umbral mínimo de inactividad permitido es de **30 días**.', allowedMentions: { repliedUser: false } });
+        }
+
+        // Si es purga/expulsión, SOLO Jack o Dueño (100)
+        if (isPurge && hierarchy.level < STAFF_LEVELS.OWNER && !isJack) {
+            return message.reply({ content: '⚠️ La ejecución de purga y expulsión masiva está reservada **únicamente para la Dirección General / Dueños**.', allowedMentions: { repliedUser: false } });
+        }
+
+        const statusMsg = await message.reply({ content: `🔍 Analizando miembros del servidor con antigüedad mayor o igual a **${daysThreshold} días**...`, allowedMentions: { repliedUser: false } });
+
+        try {
+            await message.guild.members.fetch();
+            const now = Date.now();
+            const msThreshold = daysThreshold * 24 * 60 * 60 * 1000;
+
+            const WHITELIST_ROLE_IDS = new Set([
+                '1539641774392348754', // 👑 ︱ ᴅᴜᴇñᴏ
+                '1539642179822161940', // 🛡️ ︱ ᴀᴅᴍɪɴ
+                '1539642260621369454', // 💻 ︱ ᴅᴇᴠ
+                '1539642370356940861', // ⚔️ ︱ ᴍᴏᴅ
+                '1539642446861041694', // 🤝 ︱ ʜᴇʟᴘᴇʀ
+                '1539642520991178833', // 🔨 ︱ ʙᴜɪʟᴅᴇʀ
+                '1539768983287496855', // 💫 |  STAFF
+                '1545668300367994980', // 👑 ︱ ʜɪɢʜ sᴛᴀғғ
+                '1545668302700023928', // ⚡ ︱ ᴘᴇʀᴍɪsᴏs+
+                '1544153904395194408', // 🎭 │ ʙᴜғᴏɴ
+                '1539643506258092032', // 📜 ︱ ᴏʟᴅsᴄʜᴏᴏʟ
+                '1539642703263043634', // 💎 ︱ ʙᴏᴏsᴛᴇʀ
+                '1544689169371107439', // Server Booster
+                '1539642806480674816', // ⚡ ︱ ᴛɪᴛᴀɴ
+                '1539642860473688185', // 👑 ︱ ᴢᴇᴜs
+                '1539642971287199744', // ⚡ ︱ ᴛʜᴏʀ
+                '1539643031869857792', // 🌊 ︱ ᴘᴏsᴇɪᴅᴏɴ
+                '1539643102954782760', // 💀 ︱ ᴀɴᴜʙɪs
+                '1539643159900983347', // 💖 ︱ ᴀғʀᴏᴅɪᴛᴀ
+                '1539643212938088568', // 🏹 ︱ ᴀʀᴛᴇᴍɪsᴀ
+                '1539643276125274263', // 🔥 ︱ ʜᴇғᴇsᴛᴏ
+                '1539643334354534490', // 💨 ︱ ʜᴇʀᴍᴇs
+                '1539643395507752980', // 🕯️ ︱ ʜᴇsᴛɪᴀ
+                '1539643449186328626', // 🦁 ︱ ʜᴇʀᴄᴜʟᴇs
+                '1539642595259719750'  // 🤖 ︱ ʙᴏᴛs
+            ]);
+
+            const allMembers = message.guild.members.cache;
+            let totalMembers = allMembers.size;
+            let protectedCount = 0;
+            const candidates = [];
+
+            for (const [id, member] of allMembers) {
+                const isBot = member.user.bot;
+                const isOwnerOrJack = id === JACK_DISCORD_ID || id === KIKA_DISCORD_ID || id === '493868699489665044';
+                const memberHierarchy = getStaffMemberHierarchy(member, id);
+                const hasWhitelistRole = member.roles.cache.some(r => WHITELIST_ROLE_IDS.has(r.id));
+                const isBooster = member.premiumSinceTimestamp !== null;
+
+                if (isBot || isOwnerOrJack || memberHierarchy.isStaff || hasWhitelistRole || isBooster) {
+                    protectedCount++;
+                    continue;
+                }
+
+                if (!member.joinedTimestamp) continue;
+                const ageMs = now - member.joinedTimestamp;
+                if (ageMs >= msThreshold) {
+                    const days = Math.floor(ageMs / (1000 * 60 * 60 * 24));
+                    candidates.push({ member, days, id, tag: member.user.tag, joinedTimestamp: member.joinedTimestamp });
+                }
+            }
+
+            candidates.sort((a, b) => b.days - a.days);
+
+            if (!isPurge) {
+                const embed = new EmbedBuilder()
+                    .setTitle('🧹 Auditoría de Miembros Inactivos')
+                    .setColor(candidates.length > 0 ? 0xF1C40F : 0x2ECC71)
+                    .setFooter({ text: 'DrakesCraft Security Suite · Inactivity Auditor' })
+                    .setTimestamp()
+                    .addFields(
+                        { name: '📊 Total Servidor', value: `${totalMembers} miembros`, inline: true },
+                        { name: '🛡️ En Whitelist Protegidos', value: `${protectedCount} miembros`, inline: true },
+                        { name: '⏳ Umbral Evaluado', value: `≥ ${daysThreshold} días`, inline: true },
+                        { name: '🎯 Candidatos Detectados', value: `**${candidates.length}** miembros`, inline: true }
+                    );
+
+                if (candidates.length === 0) {
+                    embed.setDescription(
+                        `✅ **No se encontraron usuarios regulares inactivos con más de ${daysThreshold} días en el servidor.**\n\n` +
+                        `*Nota de Seguridad:* Todos los miembros antiguos registrados cuentan con rangos protegidos (Staff, VIPs, Boosters u OldSchool).`
+                    );
+                } else {
+                    const sampleList = candidates.slice(0, 15).map((c, idx) => 
+                        `**${idx + 1}.** \`${c.tag}\` (<@${c.id}>) — *${c.days} días en el servidor*`
+                    ).join('\n');
+
+                    embed.setDescription(
+                        `⚠️ Se encontraron **${candidates.length}** usuarios que llevan más de **${daysThreshold} días** en el servidor sin roles protegidos.\n\n` +
+                        sampleList +
+                        (candidates.length > 15 ? `\n*... y ${candidates.length - 15} miembros más.*` : '') +
+                        `\n\n💡 **Para expulsar a estos miembros de forma segura:**\n` +
+                        `Un Dueño debe ejecutar: \`sinactivos purgar ${daysThreshold}\``
+                    );
+                }
+
+                return statusMsg.edit({ content: null, embeds: [embed] });
+            }
+
+            // MODO PURGA / EXPULSIÓN (SOLO DUEÑO)
+            if (candidates.length === 0) {
+                return statusMsg.edit({
+                    content: `ℹ️ No hay usuarios regulares que cumplan el criterio de inactividad (≥ ${daysThreshold} días) para purgar.`
+                });
+            }
+
+            await statusMsg.edit({
+                content: `🚨 **Iniciando purga segura de ${candidates.length} miembros inactivos** (umbral: ≥ ${daysThreshold} días)...\n*Velocidad:* 1 miembro cada 800ms para evitar rate-limits.`
+            });
+
+            let kicked = 0;
+            let failed = 0;
+            const purgeReason = `Inactividad prolongada en la comunidad (>= ${daysThreshold} días) [Ejecutado por ${message.author.tag}]`;
+
+            for (const cand of candidates) {
+                try {
+                    if (cand.member.roles.cache.some(r => WHITELIST_ROLE_IDS.has(r.id))) {
+                        continue;
+                    }
+                    await cand.member.kick(purgeReason);
+                    kicked++;
+                } catch (err) {
+                    console.error(`[PURGA-INACTIVOS] Error expulsando a ${cand.tag} (${cand.id}):`, err.message);
+                    failed++;
+                }
+                await new Promise(r => setTimeout(r, 800));
+            }
+
+            const resultEmbed = new EmbedBuilder()
+                .setTitle('🧹 Purga de Miembros Inactivos Finalizada')
+                .setColor(0xE74C3C)
+                .setDescription(`Se ha completado el procedimiento de expulsión por inactividad prolongada.`)
+                .addFields(
+                    { name: '👑 Ejecutado por', value: `<@${message.author.id}> (${message.author.tag})`, inline: true },
+                    { name: '⏳ Umbral Aplicado', value: `≥ ${daysThreshold} días`, inline: true },
+                    { name: '✅ Expulsados Exitosamente', value: `**${kicked}**`, inline: true },
+                    { name: '⚠️ Fallidos / Errores', value: `**${failed}**`, inline: true }
+                )
+                .setFooter({ text: 'DrakesCraft Security Suite · Expulsión por Inactividad' })
+                .setTimestamp();
+
+            await statusMsg.edit({ content: null, embeds: [resultEmbed] });
+            await sendAuditLog(resultEmbed);
+            await sendModLog(resultEmbed);
+        } catch (err) {
+            console.error('[PURGA-INACTIVOS] Error general:', err);
+            return statusMsg.edit({ content: `❌ Error al procesar la auditoría/purga de inactivos: ${err.message}` });
+        }
+        return;
     }
 
     // =========================================================================
