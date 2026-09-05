@@ -577,10 +577,22 @@ async function handleSuggestion(message, rawText, isDirectCmd = false) {
 
         // Crear hilo automático de debate
         const threadTitle = `💬 Debate #${counter}: ${cleanText.slice(0, 45).replace(/[\r\n]+/g, ' ')}`;
-        await sent.startThread({
+        const debateThread = await sent.startThread({
             name: threadTitle.slice(0, 95),
             autoArchiveDuration: 1440
         }).catch(err => console.warn('[SUGGESTIONS] No se pudo crear hilo:', err.message));
+
+        if (debateThread) {
+            const debateGuide = new EmbedBuilder()
+                .setTitle(`💬 Hilo Oficial de Debate · Propuesta #${counter}`)
+                .setColor(0x00E5FF)
+                .setDescription('¡Bienvenido/a al espacio de discusión comunitaria!\n\n' +
+                                '• Expresa tus argumentos a favor o en contra de forma constructiva.\n' +
+                                '• Recuerda votar arriba con 👍 o 👎 en la propuesta original.\n' +
+                                '• El Staff de **DrakesCraft** revisará periódicamente las opiniones para emitir su veredicto.')
+                .setFooter({ text: 'DrakesCraft Governance · Staff deliberará sobre esta propuesta' });
+            await debateThread.send({ embeds: [debateGuide] }).catch(() => {});
+        }
 
         if (isDirectCmd && message.channel.id !== CHANNELS.SUGERENCIAS) {
             await message.reply({
@@ -606,7 +618,7 @@ ${prompt}` : prompt;
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ prompt: fullPrompt, sender }),
-            timeout: 10000
+            timeout: 45000
         });
         if (res.ok) {
             const data = await res.json();
@@ -1162,6 +1174,108 @@ client.on('channelDelete', async (channel) => {
     } catch (e) {}
 });
 
+// 🛡️ AUDITORÍA: Roles Creados, Eliminados y Modificados (Audit Suite 2.0)
+client.on('roleCreate', async (role) => {
+    try {
+        if (!role.guild) return;
+        let executor = null;
+        try {
+            const logs = await role.guild.fetchAuditLogs({ type: AuditLogEvent.RoleCreate, limit: 1 }).catch(() => null);
+            const entry = logs?.entries.first();
+            if (entry && (Date.now() - entry.createdTimestamp) < 5000) {
+                executor = entry.executor;
+            }
+        } catch (e) {}
+
+        const embed = new EmbedBuilder()
+            .setColor(0x2ECC71)
+            .setTitle('🛡️ Rol Creado')
+            .addFields(
+                { name: '🏷️ Rol', value: `${role} (\`${role.name}\`)`, inline: true },
+                { name: '🆔 ID', value: `\`${role.id}\``, inline: true }
+            );
+        if (executor) {
+            embed.addFields({ name: '👤 Creado por', value: `${executor} (\`${executor.tag}\`)`, inline: true });
+        }
+        embed.setFooter({ text: 'DrakesCraft Audit Suite · Rol Creado' }).setTimestamp();
+        await sendAuditLog(embed);
+    } catch (e) {}
+});
+
+client.on('roleDelete', async (role) => {
+    try {
+        if (!role.guild) return;
+        let executor = null;
+        try {
+            const logs = await role.guild.fetchAuditLogs({ type: AuditLogEvent.RoleDelete, limit: 1 }).catch(() => null);
+            const entry = logs?.entries.first();
+            if (entry && (Date.now() - entry.createdTimestamp) < 5000) {
+                executor = entry.executor;
+            }
+        } catch (e) {}
+
+        const embed = new EmbedBuilder()
+            .setColor(0xE74C3C)
+            .setTitle('🗑️ Rol Eliminado')
+            .addFields(
+                { name: '🏷️ Nombre', value: `\`${role.name}\``, inline: true },
+                { name: '🆔 ID', value: `\`${role.id}\``, inline: true }
+            );
+        if (executor) {
+            embed.addFields({ name: '👤 Eliminado por', value: `${executor} (\`${executor.tag}\`)`, inline: true });
+        }
+        embed.setFooter({ text: 'DrakesCraft Audit Suite · Rol Eliminado' }).setTimestamp();
+        await sendAuditLog(embed);
+    } catch (e) {}
+});
+
+client.on('roleUpdate', async (oldRole, newRole) => {
+    try {
+        if (!newRole.guild) return;
+        const nameChanged = oldRole.name !== newRole.name;
+        const colorChanged = oldRole.hexColor !== newRole.hexColor;
+        const permsChanged = oldRole.permissions.bitfield !== newRole.permissions.bitfield;
+        if (!nameChanged && !colorChanged && !permsChanged) return;
+
+        let executor = null;
+        try {
+            const logs = await newRole.guild.fetchAuditLogs({ type: AuditLogEvent.RoleUpdate, limit: 1 }).catch(() => null);
+            const entry = logs?.entries.first();
+            if (entry && (Date.now() - entry.createdTimestamp) < 5000) {
+                executor = entry.executor;
+            }
+        } catch (e) {}
+
+        const embed = new EmbedBuilder()
+            .setColor(0xF39C12)
+            .setTitle('⚙️ Rol Modificado')
+            .addFields(
+                { name: '🏷️ Rol', value: `${newRole} (\`${newRole.name}\`)`, inline: true },
+                { name: '🆔 ID', value: `\`${newRole.id}\``, inline: true }
+            );
+        if (nameChanged) {
+            embed.addFields({ name: '📝 Nombre', value: `\`${oldRole.name}\` ➔ \`${newRole.name}\``, inline: false });
+        }
+        if (colorChanged) {
+            embed.addFields({ name: '🎨 Color', value: `\`${oldRole.hexColor}\` ➔ \`${newRole.hexColor}\``, inline: false });
+        }
+        if (permsChanged) {
+            const addedPerms = newRole.permissions.toArray().filter(p => !oldRole.permissions.has(p));
+            const removedPerms = oldRole.permissions.toArray().filter(p => !newRole.permissions.has(p));
+            let permDetails = '';
+            if (addedPerms.length) permDetails += `➕ **Añadidos:** ${addedPerms.join(', ')}\n`;
+            if (removedPerms.length) permDetails += `➖ **Removidos:** ${removedPerms.join(', ')}`;
+            embed.addFields({ name: '🔐 Permisos Alterados', value: permDetails.slice(0, 1000) || 'Permisos cambiados', inline: false });
+        }
+        if (executor) {
+            embed.addFields({ name: '👤 Modificado por', value: `${executor} (\`${executor.tag}\`)`, inline: true });
+        }
+        embed.setFooter({ text: 'DrakesCraft Audit Suite · Rol Modificado' }).setTimestamp();
+        await sendAuditLog(embed);
+    } catch (e) {}
+});
+
+
 // 🛡️ AUDITORÍA: Sanciones (Bans y Unbans)
 client.on('guildBanAdd', async (ban) => {
     try {
@@ -1552,11 +1666,148 @@ async function sendDenunciasPanel(targetChannel) {
     return await targetChannel.send({ embeds: [embed], components: [row] });
 }
 
+
+// =========================================================================
+// GUÍA INTERACTIVA DE COMANDOS SHELP (Navigation Suite 2.0)
+// =========================================================================
+function getShelpCategoryEmbed(category) {
+    switch (category) {
+        case 'tickets':
+            return new EmbedBuilder()
+                .setTitle('🎫 Categoría: Tickets & Trinidad SRE')
+                .setColor(0x3498DB)
+                .setDescription('El sistema de soporte autónomo de DrakesCraft resuelve incidencias con IA y asignación directa a la Trinidad:')
+                .addFields(
+                    { name: '• sticket <problema>', value: 'Abre un ticket técnico en Star. La Trinidad (Claude Code, Codex Astra, Antigravity) analiza los logs del servidor y genera el diagnóstico o parche.' },
+                    { name: '• Paneles Interactivos en #tickets-soporte', value: 'Usa los botones para abrir tickets guiados con modales: Compras Tebex, Bugs, Pérdidas de ítems, Dudas y Postulaciones a Staff.' },
+                    { name: '• Cierre y Auditoría', value: 'Cada ticket se cierra con confirmación segura y se archiva en el canal de auditoría.' }
+                )
+                .setFooter({ text: 'S.A.O.R.I. Tickets & SRE Suite' });
+
+        case 'musica':
+            return new EmbedBuilder()
+                .setTitle('🎵 Categoría: Música & Streaming')
+                .setColor(0x9B59B6)
+                .setDescription('Motor de música en alta fidelidad compatible con YouTube y Spotify:')
+                .addFields(
+                    { name: '• splay <canción / link>', value: 'Reproduce canciones o playlists de YouTube y Spotify en tu canal de voz actual.' },
+                    { name: '• sskip', value: 'Salta a la siguiente pista de la cola de reproducción.' },
+                    { name: '• spause / sresume', value: 'Pausa o reanuda la música.' },
+                    { name: '• squeue', value: 'Muestra la lista de pistas próximas en cola con duración.' },
+                    { name: '• sstop', value: 'Detiene la música y desconecta al bot del canal de voz.' },
+                    { name: '• smusica', value: 'Guía del reproductor y comando `/musica` dentro de Minecraft.' }
+                )
+                .setFooter({ text: 'S.A.O.R.I. Music Suite' });
+
+        case 'stats':
+            return new EmbedBuilder()
+                .setTitle('📊 Categoría: Telemetría & Rendimiento')
+                .setColor(0x2ECC71)
+                .setDescription('Supervisión en tiempo real de nodos y servidores de la red:')
+                .addFields(
+                    { name: '• sstats / sstats drakes', value: 'TPS del servidor PaperMC, memoria y estado de DrakesCraft.' },
+                    { name: '• sstats star', value: 'Telemetría del servidor central Star (RAM, Docker, Uptime).' },
+                    { name: '• sstats nexus / sstats nova', value: 'Estado de nodos de cómputo y failover.' },
+                    { name: '• sping', value: 'Mide la latencia websocket con Discord y el enlace con Star.' },
+                    { name: '• sonline / sjugadores', value: 'Lista de jugadores conectados actualmente en Minecraft.' }
+                )
+                .setFooter({ text: 'S.A.O.R.I. Telemetría SRE' });
+
+        case 'drakes':
+            return new EmbedBuilder()
+                .setTitle('🌐 Categoría: DrakesCraft & Enlaces Oficiales')
+                .setColor(0xF39C12)
+                .setDescription('Accesos directos a la infraestructura y comunidad:')
+                .addFields(
+                    { name: '• sip', value: 'Muestra la IP oficial de Java (`mc.drakescraft.cl:25565`) y Bedrock (`19132`).' },
+                    { name: '• sweb', value: 'Enlace al portal web oficial: https://web.drakescraft.cl' },
+                    { name: '• stienda', value: 'Tienda oficial con garantía de entrega y soporte: https://web.drakescraft.cl' },
+                    { name: '• sguia', value: 'Enciclopedia de Slimefun, economía, parcelas y modalidades.' },
+                    { name: '• sreglas', value: 'Normativa oficial de convivencia, juego limpio y protecciones.' },
+                    { name: '• sreencarnar <código>', value: 'Confirma el protocolo de reinicio voluntario con Prestigio iniciado in-game.' }
+                )
+                .setFooter({ text: 'DrakesCraft Network' });
+
+        case 'moderacion':
+            return new EmbedBuilder()
+                .setTitle('🛡️ Categoría: Moderación & Control Staff')
+                .setColor(0xE74C3C)
+                .setDescription('Suite de alta moderación exclusiva para miembros del Staff y Jack:')
+                .addFields(
+                    { name: '• sclear <1-100> / !purge <1-100>', value: 'Purga masiva de mensajes recientes en el canal actual.' },
+                    { name: '• skick @usuario [motivo]', value: 'Expulsa a un miembro del servidor con registro en auditoría.' },
+                    { name: '• sban @usuario [motivo]', value: 'Banea permanentemente a un infractor con registro en auditoría.' },
+                    { name: '• smute @usuario <minutos> [motivo]', value: 'Aplica timeout temporal (aislamiento) a un usuario.' },
+                    { name: '• sunmute @usuario', value: 'Retira el timeout a un miembro sancionado.' },
+                    { name: '• swarn @usuario <motivo>', value: 'Emite una advertencia formal con notificación por privado y auditoría.' },
+                    { name: '• slowmode <segundos>', value: 'Ajusta el modo pausado del canal para frenar spam o flood.' },
+                    { name: '• slock / sunlock', value: 'Bloquea o desbloquea el canal para miembros `@everyone`.' },
+                    { name: '• srole dar/quitar @usuario <Rol>', value: 'Asigna o retira un rol de manera directa.' },
+                    { name: '• snick @usuario / snick sync', value: 'Normaliza apodos a tipografía Small Caps griega.' },
+                    { name: '• ssugerencia aceptar/rechazar/implementar <id> [motivo]', value: 'Emite el veredicto oficial de una sugerencia comunitaria.' }
+                )
+                .setFooter({ text: 'S.A.O.R.I. High Moderation Suite' });
+
+        case 'comunidad':
+            return new EmbedBuilder()
+                .setTitle('💡 Categoría: Comunidad, Sugerencias & Roles')
+                .setColor(0x00E5FF)
+                .setDescription('Participación activa y personalización de identidad:')
+                .addFields(
+                    { name: '• ssugerencia <propuesta>', value: 'Publica una sugerencia con votación 👍/👎 y debate en hilo.' },
+                    { name: '• smisroles', value: 'Muestra tu perfil de roles: plataforma, país, modalidades y rango.' },
+                    { name: '• sautoroles / sroles panel', value: 'Despliega los paneles oficiales de selección en #auto-roles (Staff).' },
+                    { name: '• sroles sync', value: 'Sincroniza retroactivamente reacciones de roles pasados (Staff).' },
+                    { name: '• Chat con Saori', value: 'Habla de forma natural en #habla-con-saori o mencionando a @SAORI.' }
+                )
+                .setFooter({ text: 'DrakesCraft Comunidad' });
+
+        default:
+            return new EmbedBuilder()
+                .setTitle('🐺 S.A.O.R.I. · Guía Completa de Comandos')
+                .setColor(0x00E5FF)
+                .setDescription('**S.A.O.R.I. (Server Autonomous Orchestrator for Resilient Infrastructure)**\nSelecciona una categoría con los botones interactivos de abajo para ver detalles, sintaxis y ejemplos completos:')
+                .addFields(
+                    { name: '🎫 1. Tickets & SRE', value: '• `sticket <problema>` · Diagnóstico y resolución con la Trinidad.' },
+                    { name: '🎵 2. Música & Spotify', value: '• `splay`, `sskip`, `spause`, `squeue`, `sstop`, `smusica`.' },
+                    { name: '📊 3. Telemetría & Servidores', value: '• `sstats`, `sping`, `sonline` · 20.0 TPS, nodos y jugadores.' },
+                    { name: '🌐 4. DrakesCraft & Enlaces', value: '• `sip`, `sweb`, `stienda`, `sguia`, `sreglas`, `sreencarnar`.' },
+                    { name: '🛡️ 5. Moderación & Staff', value: '• `sclear`, `skick`, `sban`, `smute`, `swarn`, `slowmode`, `slock`, `srole`.' },
+                    { name: '💡 6. Comunidad & Roles', value: '• `ssugerencia`, `smisroles`, `sautoroles`, `!imagen`.' }
+                )
+                .setFooter({ text: 'S.A.O.R.I. SRE Core · DrakesCraft Network', iconURL: client.user.displayAvatarURL() });
+    }
+}
+
+function getShelpButtonRows() {
+    const row1 = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('btn_shelp_main').setLabel('🏠 Inicio').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('btn_shelp_tickets').setLabel('🎫 Tickets & SRE').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('btn_shelp_musica').setLabel('🎵 Música').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('btn_shelp_stats').setLabel('📊 Telemetría').setStyle(ButtonStyle.Primary)
+    );
+    const row2 = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('btn_shelp_drakes').setLabel('🌐 DrakesCraft').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('btn_shelp_moderacion').setLabel('🛡️ Moderación (Staff)').setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId('btn_shelp_comunidad').setLabel('💡 Comunidad & Roles').setStyle(ButtonStyle.Success)
+    );
+    return [row1, row2];
+}
+
 client.on(Events.InteractionCreate, async (interaction) => {
     try {
         // 1. MANEJO DE BOTONES (DESPLIEGUE DE FORMULARIOS / MODALES O ACCIONES)
         if (interaction.isButton()) {
             const id = interaction.customId;
+
+            // NAVEGACIÓN INTERACTIVA DE SHELP
+            if (id.startsWith('btn_shelp_')) {
+                const category = id.replace('btn_shelp_', '');
+                const embed = getShelpCategoryEmbed(category);
+                const rows = getShelpButtonRows();
+                return await interaction.update({ embeds: [embed], components: rows });
+            }
+
 
             if (id === 'btn_ticket_bug') {
                 const modal = new ModalBuilder().setCustomId('modal_ticket_bug').setTitle('🐛 Reporte de Bug o Error');
@@ -1937,7 +2188,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 body: JSON.stringify({
                     prompt: `El usuario ${user.username} ha abierto un ticket de tipo "${tipo}". Resumen: "${summaryText}". Salúdalo cordialmente en 1 o 2 párrafos breves, confirma que sus datos fueron registrados y dale tranquilidad mientras el equipo lo atiende.`,
                     sender: user.username
-                })
+                }),
+                timeout: 45000
             })
             .then(r => r.json())
             .then(async d => {
@@ -2069,7 +2321,8 @@ client.on('messageCreate', async (message) => {
                 fetch(AI_DAEMON_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt: text, sender: player })
+                    body: JSON.stringify({ prompt: text, sender: player }),
+                    timeout: 45000
                 })
                 .then(r => r.json())
                 .then(async data => {
@@ -2222,7 +2475,7 @@ client.on('messageCreate', async (message) => {
     const directCmdKeywords = [
         'shelp', 'splay', 'smusica', 'sskip', 'spause', 'sresume', 'squeue', 'sstop',
         'sticket', 'sstats', 'sip', 'sping', 'sweb', 'stienda', 'sguia',
-        'sroles', 'srole', 'snick', 'sautoroles', 'sclear', '!purge', '!ticket', '!imagen', '!image',
+        'sroles', 'srole', 'snick', 'sautoroles', 'sclear', '!purge', '!ticket', '!imagen', '!image', 'skick', 'sban', 'smute', 'stimeout', 'sunmute', 'swarn', 'slowmode', 'slock', 'sunlock', 'sonline', 'sjugadores', 'smisroles', 'sreglas',
         'ssugerencia', 'sugerencia', '!sugerencia', 'sreencarnar', 'reencarnar', '!reencarnar'
     ];
     const isDirectCommand = directCmdKeywords.some(cmd => 
@@ -2328,7 +2581,8 @@ client.on('messageCreate', async (message) => {
                 }
             )
             .setFooter({ text: 'S.A.O.R.I. SRE Core · DrakesCraft Network', iconURL: client.user.displayAvatarURL() });
-        return message.reply({ embeds: [helpEmbed], allowedMentions: { repliedUser: false } });
+        const shelpRows = getShelpButtonRows();
+        return message.reply({ embeds: [helpEmbed], components: shelpRows, allowedMentions: { repliedUser: false } });
     }
 
     // Comandos directos y accesos rápidos
@@ -2603,6 +2857,87 @@ client.on('messageCreate', async (message) => {
     // COMANDO SSUGERENCIA (BUZÓN OFICIAL DE LA COMUNIDAD)
     // =========================================================================
     if (primaryCmd === 'ssugerencia' || primaryCmd === 'sugerencia') {
+
+        const sub = cmdArgs[0]?.toLowerCase();
+        if (['aceptar', 'rechazar', 'implementar', 'aprobar'].includes(sub)) {
+            if (!isStaffMember) {
+                return message.reply({ content: '❌ Solo el Staff puede emitir veredictos sobre sugerencias.', allowedMentions: { repliedUser: false } });
+            }
+            const sugIdArg = cmdArgs[1];
+            if (!sugIdArg) {
+                return message.reply({ content: '📌 Uso: `ssugerencia aceptar/rechazar/implementar <#número o ID_mensaje> [motivo]`\n*Ejemplo:* `ssugerencia aceptar 42 Excelente propuesta, añadiremos la subasta.`' });
+            }
+            const reason = cmdArgs.slice(2).join(' ').trim() || 'Sin observaciones adicionales del Staff';
+
+            const sugChannel = client.channels.cache.get(CHANNELS.SUGERENCIAS) || await client.channels.fetch(CHANNELS.SUGERENCIAS).catch(() => null);
+            if (!sugChannel) return message.reply({ content: '❌ Canal de sugerencias no encontrado.' });
+
+            let targetMsg = null;
+            if (/^\d{17,20}$/.test(sugIdArg)) {
+                targetMsg = await sugChannel.messages.fetch(sugIdArg).catch(() => null);
+            }
+            if (!targetMsg) {
+                const searchNum = sugIdArg.replace('#', '');
+                const recent = await sugChannel.messages.fetch({ limit: 50 }).catch(() => null);
+                if (recent) {
+                    for (const [, m] of recent) {
+                        const title = m.embeds?.[0]?.title || '';
+                        if (title.includes(`#${searchNum}`) || title.endsWith(` #${searchNum}`)) {
+                            targetMsg = m;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (!targetMsg || !targetMsg.embeds?.[0]) {
+                return message.reply({ content: `❌ No se encontró la sugerencia **${sugIdArg}** en <#${CHANNELS.SUGERENCIAS}>.` });
+            }
+
+            const oldEmbed = targetMsg.embeds[0];
+            const newEmbed = EmbedBuilder.from(oldEmbed);
+
+            let statusText = '';
+            let verdictColor = 0xFFB300;
+            if (sub === 'aceptar' || sub === 'aprobar') {
+                statusText = '✅ **Aceptada por Staff**';
+                verdictColor = 0x2ECC71;
+            } else if (sub === 'rechazar') {
+                statusText = '❌ **Rechazada por Staff**';
+                verdictColor = 0xE74C3C;
+            } else if (sub === 'implementar') {
+                statusText = '🚀 **Implementada en Producción**';
+                verdictColor = 0x9B59B6;
+            }
+
+            newEmbed.setColor(verdictColor);
+            const fields = (oldEmbed.fields || []).map(f => {
+                if (f.name === '📊 Estado') return { name: '📊 Estado', value: statusText, inline: true };
+                return f;
+            });
+            const existingVerdictIdx = fields.findIndex(f => f.name.startsWith('🛡️ Veredicto'));
+            const verdictField = { name: `🛡️ Veredicto de ${message.author.tag}`, value: reason.slice(0, 1000), inline: false };
+            if (existingVerdictIdx !== -1) {
+                fields[existingVerdictIdx] = verdictField;
+            } else {
+                fields.push(verdictField);
+            }
+            newEmbed.setFields(fields);
+
+            await targetMsg.edit({ embeds: [newEmbed] });
+
+            if (targetMsg.thread) {
+                const notifEmbed = new EmbedBuilder()
+                    .setTitle(`📢 Veredicto Oficial: Sugerencia ${sub.toUpperCase()}`)
+                    .setColor(verdictColor)
+                    .setDescription(`**Estado:** ${statusText}\n**Moderador:** ${message.author}\n**Motivo / Observación:**\n>>> ${reason}`)
+                    .setTimestamp();
+                await targetMsg.thread.send({ embeds: [notifEmbed] }).catch(() => {});
+            }
+
+            return message.reply({ content: `✅ La sugerencia ha sido actualizada a **${statusText}** exitosamente.\n🔗 Enlace: ${targetMsg.url}` });
+        }
+
         const sugText = cmdArgs.join(' ').trim();
         await handleSuggestion(message, sugText, true);
         return;
@@ -2838,6 +3173,309 @@ client.on('messageCreate', async (message) => {
     console.log(`[SAORI-DISCORD] 📨 [${isJack ? 'Jack' : senderName} en ${contextTag}]: ${cleanPrompt}`);
 
 
+
+    // =========================================================================
+    // COMANDO SONLINE / SJUGADORES (LISTA EN VIVO DE MINECRAFT)
+    // =========================================================================
+    if (primaryCmd === 'sonline' || primaryCmd === 'sjugadores' || primaryCmd === 'online') {
+        try {
+            const res = await fetch('https://api.mcsrvstat.us/3/mc.drakescraft.cl', { timeout: 4500 });
+            let mcData = null;
+            if (res.ok) {
+                mcData = await res.json();
+            }
+            const onlineCount = mcData?.players?.online || 0;
+            const maxPlayers = mcData?.players?.max || 100;
+            const list = mcData?.players?.list?.map(p => `• \`${p.name}\``).join('\n') || '*(Jugadores anónimos o lista protegida)*';
+
+            const onlineEmbed = new EmbedBuilder()
+                .setTitle('🎮 Jugadores Conectados en DrakesCraft')
+                .setColor(0x2ECC71)
+                .setDescription(`Actualmente hay **${onlineCount}/${maxPlayers}** jugadores en línea explorando el servidor.`)
+                .addFields(
+                    { name: '👥 Jugadores Detectados', value: onlineCount > 0 ? list.slice(0, 1020) : '📭 No hay jugadores conectados en este momento.', inline: false },
+                    { name: '📌 IP Java', value: '`mc.drakescraft.cl:25565`', inline: true },
+                    { name: '📱 IP Bedrock', value: '`mc.drakescraft.cl` (Puerto `19132`)', inline: true }
+                )
+                .setFooter({ text: 'DrakesCraft Network · Telemetría en Vivo', iconURL: client.user.displayAvatarURL() })
+                .setTimestamp();
+            return message.reply({ embeds: [onlineEmbed], allowedMentions: { repliedUser: false } });
+        } catch (err) {
+            return message.reply({ content: `❌ Error al consultar jugadores de Minecraft: ${err.message}` });
+        }
+    }
+
+    // =========================================================================
+    // COMANDO SREGLAS (NORMATIVA OFICIAL)
+    // =========================================================================
+    if (primaryCmd === 'sreglas' || primaryCmd === 'reglas') {
+        const reglasEmbed = new EmbedBuilder()
+            .setTitle('📜 Normativa Oficial de DrakesCraft Network')
+            .setColor(0xF1C40F)
+            .setDescription('Para mantener una comunidad justa y divertida, todos los miembros deben respetar:')
+            .addFields(
+                { name: '1. Respeto y Convivencia', value: 'Cero toxicidad, insultos graves, discriminación, acoso o lenguaje de odio en canales públicos o chats in-game.', inline: false },
+                { name: '2. Prohibición de Trampas y Ventajas Desleales', value: 'Uso de hacks, auto-clickers, x-ray, barítonos o modificación de clientes para obtener ventajas está penado con ban permanente.', inline: false },
+                { name: '3. Respeto a Parcelas y Protecciones', value: 'Grifear alrededor de zonas protegidas, robar en cofres no asegurados con bugs o bloquear accesos está estrictamente prohibido.', inline: false },
+                { name: '4. Economía y Comercio Limpio', value: 'Prohibidas las estafas en transacciones de dinero (`/pay`), tiendas de jugadores (`/qs`) o comercio de ítems.', inline: false },
+                { name: '5. Seguridad de Cuentas y Enlaces', value: 'Prohibido compartir enlaces maliciosos, IP loggers, phishing o publicidad de otros servidores.', inline: false }
+            )
+            .setFooter({ text: 'Consulta el canal de reglas para la versión completa y detallada' });
+        return message.reply({ embeds: [reglasEmbed], allowedMentions: { repliedUser: false } });
+    }
+
+    // =========================================================================
+    // COMANDO SMISROLES (PERFIL DE USUARIO Y ROLES ASIGNADOS)
+    // =========================================================================
+    if (primaryCmd === 'smisroles' || (primaryCmd === 'sroles' && cmdArgs[0]?.toLowerCase() === 'misroles')) {
+        const member = message.member;
+        if (!member) return message.reply({ content: '❌ Solo puedes consultar tus roles dentro del servidor.' });
+
+        const userRoles = member.roles.cache;
+        
+        let plataforma = 'No seleccionada';
+        if (userRoles.has('1544920853471432777')) plataforma = '☕ Java Edition';
+        else if (userRoles.has('1544920854930985160')) plataforma = '📱 Bedrock / Móvil';
+
+        const modalidades = [];
+        if (userRoles.has('1544920856684265533')) modalidades.push('⚡ Slimefun & Tech');
+        if (userRoles.has('1544920860861927516')) modalidades.push('🏝️ OneBlock');
+        if (userRoles.has('1544920865173671938')) modalidades.push('☁️ SkyBlock');
+        if (userRoles.has('1544920866851127379')) modalidades.push('⚔️ Survival Clásico');
+        if (userRoles.has('1544920867866148917')) modalidades.push('🎯 PvP & Arenas');
+
+        const avisos = [];
+        if (userRoles.has('1539644011214807181')) avisos.push('📢 Avisos Discord');
+        if (userRoles.has('1539644151165882418')) avisos.push('⛏️ Avisos MC');
+        if (userRoles.has('1539644230941806602')) avisos.push('🎁 Sorteos');
+        if (userRoles.has('1539644293914824814')) avisos.push('🚀 Changelogs');
+
+        const topRole = member.roles.highest;
+
+        const perfilEmbed = new EmbedBuilder()
+            .setTitle(`👤 Perfil de Roles · ${member.displayName}`)
+            .setColor(0x9B59B6)
+            .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
+            .addFields(
+                { name: '👑 Rol Principal', value: `${topRole} (\`${topRole.name}\`)`, inline: true },
+                { name: '🎮 Plataforma', value: plataforma, inline: true },
+                { name: '🕹️ Modalidades Favoritas', value: modalidades.length > 0 ? modalidades.join('\n') : '*(Ninguna seleccionada en #auto-roles)*', inline: false },
+                { name: '🔔 Notificaciones Activas', value: avisos.length > 0 ? avisos.join(' · ') : '*(Ninguna seleccionada)*', inline: false }
+            )
+            .setFooter({ text: 'Personaliza tus roles en el canal #🎭・auto-roles' })
+            .setTimestamp();
+
+        return message.reply({ embeds: [perfilEmbed], allowedMentions: { repliedUser: false } });
+    }
+
+    // =========================================================================
+    // SUITE DE ALTA MODERACIÓN (skick, sban, smute, sunmute, swarn, slowmode, slock, sunlock)
+    // =========================================================================
+    if (primaryCmd === 'skick' || primaryCmd === 'kick') {
+        if (!isStaffMember) {
+            return message.reply({ content: '❌ Solo los miembros del Staff tienen autorización para expulsar usuarios.', allowedMentions: { repliedUser: false } });
+        }
+        const targetMember = message.mentions.members.first() || await message.guild.members.fetch(cmdArgs[0]).catch(() => null);
+        if (!targetMember) {
+            return message.reply({ content: '📌 Uso: `skick @usuario [motivo]`\n*Ejemplo:* `skick @Steve Toxicidad reiterada en chat`', allowedMentions: { repliedUser: false } });
+        }
+        if (targetMember.id === client.user.id) return message.reply({ content: '❌ No puedes expulsarme a mí, po. 🐺' });
+        if (targetMember.roles.highest.position >= message.member.roles.highest.position && !isJack) {
+            return message.reply({ content: '❌ No puedes sancionar a un miembro con un rol igual o superior al tuyo.' });
+        }
+        const reason = cmdArgs.slice(1).join(' ').trim() || 'Incumplimiento de normativas de la comunidad';
+        try {
+            await targetMember.send(`⚠️ Has sido expulsado de **DrakesCraft Network** por **${message.author.tag}**.\n**Motivo:** ${reason}`).catch(() => {});
+            await targetMember.kick(`${message.author.tag}: ${reason}`);
+
+            const kickEmbed = new EmbedBuilder()
+                .setTitle('👢 Miembro Expulsado')
+                .setColor(0xE67E22)
+                .addFields(
+                    { name: '👤 Usuario Expulsado', value: `${targetMember.user} (\`${targetMember.user.tag}\` · \`${targetMember.id}\`)`, inline: true },
+                    { name: '🛡️ Moderador', value: `${message.author} (\`${message.author.tag}\`)`, inline: true },
+                    { name: '📝 Motivo', value: reason, inline: false }
+                )
+                .setFooter({ text: 'DrakesCraft Moderation Suite' })
+                .setTimestamp();
+
+            await message.reply({ embeds: [kickEmbed], allowedMentions: { repliedUser: false } });
+            await sendAuditLog(kickEmbed);
+            return;
+        } catch (e) {
+            return message.reply({ content: `❌ Error al expulsar usuario: ${e.message}` });
+        }
+    }
+
+    if (primaryCmd === 'sban' || primaryCmd === 'ban') {
+        if (!isStaffMember) {
+            return message.reply({ content: '❌ Solo los miembros del Staff tienen autorización para banear usuarios.', allowedMentions: { repliedUser: false } });
+        }
+        const targetMember = message.mentions.members.first() || await message.guild.members.fetch(cmdArgs[0]).catch(() => null);
+        const targetId = targetMember ? targetMember.id : cmdArgs[0]?.replace(/[^0-9]/g, '');
+        if (!targetId) {
+            return message.reply({ content: '📌 Uso: `sban @usuario [motivo]`\n*Ejemplo:* `sban @Steve Uso reiterado de cheats / hacks`', allowedMentions: { repliedUser: false } });
+        }
+        if (targetMember && targetMember.roles.highest.position >= message.member.roles.highest.position && !isJack) {
+            return message.reply({ content: '❌ No puedes sancionar a un miembro con un rol igual o superior al tuyo.' });
+        }
+        const reason = cmdArgs.slice(1).join(' ').trim() || 'Infracción grave de normativas';
+        try {
+            if (targetMember) {
+                await targetMember.send(`🔨 Has sido baneado de **DrakesCraft Network** por **${message.author.tag}**.\n**Motivo:** ${reason}`).catch(() => {});
+            }
+            await message.guild.bans.create(targetId, { reason: `${message.author.tag}: ${reason}` });
+
+            const banEmbed = new EmbedBuilder()
+                .setTitle('🔨 Miembro Baneado del Servidor')
+                .setColor(0x992D22)
+                .addFields(
+                    { name: '👤 Usuario Sancionado', value: targetMember ? `${targetMember.user} (\`${targetMember.user.tag}\`)` : `ID: \`${targetId}\``, inline: true },
+                    { name: '🛡️ Moderador', value: `${message.author} (\`${message.author.tag}\`)`, inline: true },
+                    { name: '📝 Motivo', value: reason, inline: false }
+                )
+                .setFooter({ text: 'DrakesCraft Moderation Suite' })
+                .setTimestamp();
+
+            await message.reply({ embeds: [banEmbed], allowedMentions: { repliedUser: false } });
+            await sendAuditLog(banEmbed);
+            return;
+        } catch (e) {
+            return message.reply({ content: `❌ Error al banear usuario: ${e.message}` });
+        }
+    }
+
+    if (primaryCmd === 'smute' || primaryCmd === 'mute' || primaryCmd === 'stimeout') {
+        if (!isStaffMember) {
+            return message.reply({ content: '❌ Solo los miembros del Staff tienen autorización para aislar / mutear usuarios.', allowedMentions: { repliedUser: false } });
+        }
+        const targetMember = message.mentions.members.first();
+        if (!targetMember) {
+            return message.reply({ content: '📌 Uso: `smute @usuario <minutos> [motivo]`\n*Ejemplo:* `smute @Steve 30 Flood y spam en canal general`' });
+        }
+        if (targetMember.roles.highest.position >= message.member.roles.highest.position && !isJack) {
+            return message.reply({ content: '❌ No puedes sancionar a un miembro con un rol igual o superior al tuyo.' });
+        }
+        const minutes = parseInt(cmdArgs[1], 10);
+        if (isNaN(minutes) || minutes < 1 || minutes > 40320) {
+            return message.reply({ content: '⚠️ Por favor especifica un tiempo válido en minutos (entre 1 y 40320 minutos / 28 días).' });
+        }
+        const reason = cmdArgs.slice(2).join(' ').trim() || 'Conducta inapropiada en chat';
+        const durationMs = minutes * 60 * 1000;
+        try {
+            await targetMember.timeout(durationMs, `${message.author.tag}: ${reason}`);
+            await targetMember.send(`🔇 Has sido silenciado temporalmente en **DrakesCraft Network** por **${minutes} minutos**.\n**Motivo:** ${reason}`).catch(() => {});
+
+            const muteEmbed = new EmbedBuilder()
+                .setTitle('🔇 Usuario Silenciado (Timeout)')
+                .setColor(0xF39C12)
+                .addFields(
+                    { name: '👤 Usuario', value: `${targetMember.user} (\`${targetMember.user.tag}\`)`, inline: true },
+                    { name: '⏳ Duración', value: `\`${minutes} minutos\` (hasta <t:${Math.floor((Date.now() + durationMs) / 1000)}:R>)`, inline: true },
+                    { name: '🛡️ Moderador', value: `${message.author} (\`${message.author.tag}\`)`, inline: true },
+                    { name: '📝 Motivo', value: reason, inline: false }
+                )
+                .setFooter({ text: 'DrakesCraft Moderation Suite' })
+                .setTimestamp();
+
+            await message.reply({ embeds: [muteEmbed], allowedMentions: { repliedUser: false } });
+            await sendAuditLog(muteEmbed);
+            return;
+        } catch (e) {
+            return message.reply({ content: `❌ Error al silenciar: ${e.message}` });
+        }
+    }
+
+    if (primaryCmd === 'sunmute' || primaryCmd === 'unmute') {
+        if (!isStaffMember) {
+            return message.reply({ content: '❌ Solo los miembros del Staff pueden retirar silencios.', allowedMentions: { repliedUser: false } });
+        }
+        const targetMember = message.mentions.members.first();
+        if (!targetMember) {
+            return message.reply({ content: '📌 Uso: `sunmute @usuario`' });
+        }
+        try {
+            await targetMember.timeout(null, `Retirado por ${message.author.tag}`);
+            return message.reply({ content: `🔊 Se ha retirado el silencio a **${targetMember.user.tag}** exitosamente.` });
+        } catch (e) {
+            return message.reply({ content: `❌ Error al retirar silencio: ${e.message}` });
+        }
+    }
+
+    if (primaryCmd === 'swarn' || primaryCmd === 'warn') {
+        if (!isStaffMember) {
+            return message.reply({ content: '❌ Solo los miembros del Staff pueden emitir advertencias formales.', allowedMentions: { repliedUser: false } });
+        }
+        const targetMember = message.mentions.members.first();
+        if (!targetMember) {
+            return message.reply({ content: '📌 Uso: `swarn @usuario <motivo>`\n*Ejemplo:* `swarn @Steve Respeta a los demás miembros en el chat de texto.`' });
+        }
+        const reason = cmdArgs.slice(1).join(' ').trim();
+        if (!reason) {
+            return message.reply({ content: '⚠️ Debes indicar el motivo de la advertencia formal.' });
+        }
+        try {
+            await targetMember.send(`⚠️ **ADVERTENCIA FORMAL EN DRAKESCRAFT NETWORK**\nHas recibido una advertencia por parte de **${message.author.tag}**.\n**Motivo:** ${reason}\n*Por favor revisa las normas en <#${CHANNELS.REGLAS}> para evitar sanciones mayores.*`).catch(() => {});
+
+            const warnEmbed = new EmbedBuilder()
+                .setTitle('⚠️ Advertencia Formal Emitida')
+                .setColor(0xF1C40F)
+                .addFields(
+                    { name: '👤 Usuario Advertido', value: `${targetMember.user} (\`${targetMember.user.tag}\`)`, inline: true },
+                    { name: '🛡️ Moderador', value: `${message.author} (\`${message.author.tag}\`)`, inline: true },
+                    { name: '📝 Motivo', value: reason, inline: false }
+                )
+                .setFooter({ text: 'DrakesCraft Moderation Suite · Advertencia Registrada' })
+                .setTimestamp();
+
+            await message.reply({ embeds: [warnEmbed], allowedMentions: { repliedUser: false } });
+            await sendAuditLog(warnEmbed);
+            return;
+        } catch (e) {
+            return message.reply({ content: `❌ Error al registrar advertencia: ${e.message}` });
+        }
+    }
+
+    if (primaryCmd === 'slowmode') {
+        if (!isStaffMember) {
+            return message.reply({ content: '❌ Solo los miembros del Staff pueden ajustar el modo pausado.', allowedMentions: { repliedUser: false } });
+        }
+        const seconds = parseInt(cmdArgs[0], 10);
+        if (isNaN(seconds) || seconds < 0 || seconds > 21600) {
+            return message.reply({ content: '📌 Uso: `slowmode <segundos>` (entre 0 y 21600 segundos). Usa `slowmode 0` para desactivar.' });
+        }
+        try {
+            await message.channel.setRateLimitPerUser(seconds, `Ajustado por ${message.author.tag}`);
+            return message.reply({ content: seconds === 0 ? '⚡ Modo pausado desactivado en este canal.' : `⏳ Modo pausado establecido en **${seconds} segundos** por mensaje.` });
+        } catch (e) {
+            return message.reply({ content: `❌ Error al ajustar slowmode: ${e.message}` });
+        }
+    }
+
+    if (primaryCmd === 'slock' || primaryCmd === 'lock') {
+        if (!isStaffMember) {
+            return message.reply({ content: '❌ Solo los miembros del Staff pueden bloquear canales.', allowedMentions: { repliedUser: false } });
+        }
+        try {
+            await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, { SendMessages: false }, { reason: `Bloqueado por ${message.author.tag}` });
+            return message.reply({ content: '🔒 **Canal bloqueado.** Los miembros `@everyone` no pueden enviar mensajes temporalmente.' });
+        } catch (e) {
+            return message.reply({ content: `❌ Error al bloquear canal: ${e.message}` });
+        }
+    }
+
+    if (primaryCmd === 'sunlock' || primaryCmd === 'unlock') {
+        if (!isStaffMember) {
+            return message.reply({ content: '❌ Solo los miembros del Staff pueden desbloquear canales.', allowedMentions: { repliedUser: false } });
+        }
+        try {
+            await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, { SendMessages: null }, { reason: `Desbloqueado por ${message.author.tag}` });
+            return message.reply({ content: '🔓 **Canal desbloqueado.** Los miembros pueden volver a participar con normalidad.' });
+        } catch (e) {
+            return message.reply({ content: `❌ Error al desbloquear canal: ${e.message}` });
+        }
+    }
+
     // =========================================================================
     // 1. GESTIÓN ADMINISTRATIVA EN DISCORD (PURGA, PERMISOS, ROLES)
     // =========================================================================
@@ -3032,33 +3670,65 @@ client.on('messageCreate', async (message) => {
         }
     }
 
+    let typingInterval;
     try {
-        await message.channel.sendTyping();
-    } catch (e) {}
+        await message.channel.sendTyping().catch(() => {});
+        typingInterval = setInterval(() => {
+            message.channel.sendTyping().catch(() => {});
+        }, 8000);
 
-    const lang = detectLanguage(cleanPrompt);
-    const langInstruction = lang === 'en'
-        ? 'IMPORTANT: The user is writing in English. You MUST reply in English only.'
-        : 'El usuario escribe en español. Responde siempre en español.';
-    const ticketContext = isTicketChannel
-        ? `Canal de Ticket de Soporte. ${langInstruction} REGLA CRÍTICA: Jack es el dueño y máxima autoridad de DrakesCraft. NUNCA contradigas a Jack. DrakesCraft es un servidor de supervivencia y SkyBlock en Paper 1.21.11 con plugins (Slimefun, BentoBox). NO tiene mods externos (NO existe Wither Storm ni mods de Forge/Fabric). Si el usuario pide pegar construcciones o schematics, aclara amablemente que solo Jack o la administración pueden realizarlo con WorldEdit. NUNCA menciones rutas de Linux ni archivos locales (/home/jack/...). Si el Staff está presente, sé breve y concisa.`
-        : (isSaoriDedicatedChannel ? `Canal dedicado a hablar con Saori. ${langInstruction}` : langInstruction);
-    let reply = await askSaoriBrain(cleanPrompt, senderName, ticketContext);
-    reply = sanitizePublicText(reply);
+        const lang = detectLanguage(cleanPrompt);
+        const langInstruction = lang === 'en'
+            ? 'IMPORTANT: The user is writing in English. You MUST reply in English only.'
+            : 'El usuario escribe en español. Responde siempre en español.';
+        const ticketContext = isTicketChannel
+            ? `Canal de Ticket de Soporte. ${langInstruction} REGLA CRÍTICA: Jack es el dueño y máxima autoridad de DrakesCraft. NUNCA contradigas a Jack. DrakesCraft es un servidor de supervivencia y SkyBlock en Paper 1.21.11 con plugins (Slimefun, BentoBox). NO tiene mods externos (NO existe Wither Storm ni mods de Forge/Fabric). Si el usuario pide pegar construcciones o schematics, aclara amablemente que solo Jack o la administración pueden realizarlo con WorldEdit. NUNCA menciones rutas de Linux ni archivos locales (/home/jack/...). Si el Staff está presente, sé breve y concisa.`
+            : (isSaoriDedicatedChannel ? `Canal dedicado a hablar con Saori. ${langInstruction}` : langInstruction);
+        let reply = await askSaoriBrain(cleanPrompt, senderName, ticketContext);
+        reply = sanitizePublicText(reply);
 
-    if (isTicketChannel) {
-        ticketLastSaoriReply.set(message.channel.id, Date.now());
-    }
+        if (isTicketChannel) {
+            ticketLastSaoriReply.set(message.channel.id, Date.now());
+        }
 
-    try {
-        if (message.reference) {
-            await message.channel.send({ content: reply });
+        if (reply.length <= 2000) {
+            if (message.reference) {
+                await message.channel.send({ content: reply });
+            } else {
+                await message.reply({ content: reply, allowedMentions: { repliedUser: false } });
+            }
         } else {
-            await message.reply({ content: reply, allowedMentions: { repliedUser: false } });
+            let remaining = reply;
+            let isFirst = true;
+            while (remaining.length > 0) {
+                if (remaining.length <= 1990) {
+                    if (isFirst && !message.reference) {
+                        await message.reply({ content: remaining, allowedMentions: { repliedUser: false } });
+                    } else {
+                        await message.channel.send({ content: remaining });
+                    }
+                    break;
+                }
+                let sliceIdx = remaining.lastIndexOf('\n', 1990);
+                if (sliceIdx <= 0) sliceIdx = remaining.lastIndexOf(' ', 1990);
+                if (sliceIdx <= 0) sliceIdx = 1990;
+
+                const chunk = remaining.slice(0, sliceIdx);
+                remaining = remaining.slice(sliceIdx).trim();
+
+                if (isFirst && !message.reference) {
+                    await message.reply({ content: chunk, allowedMentions: { repliedUser: false } });
+                    isFirst = false;
+                } else {
+                    await message.channel.send({ content: chunk });
+                }
+            }
         }
         console.log(`[SAORI-DISCORD] 📤 Mensaje enviado a Discord.`);
     } catch (e) {
         console.error('[SAORI-DISCORD] Error enviando mensaje:', e.message);
+    } finally {
+        if (typingInterval) clearInterval(typingInterval);
     }
 });
 
