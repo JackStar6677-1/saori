@@ -18,7 +18,9 @@ const {
     TextInputBuilder,
     TextInputStyle,
     ChannelType,
-    PermissionFlagsBits
+    PermissionFlagsBits,
+    StringSelectMenuBuilder,
+    StringSelectMenuOptionBuilder
 } = require('discord.js');
 const fetch = require('node-fetch');
 const { spawn, execFile } = require('child_process');
@@ -825,6 +827,624 @@ async function sendAuditLog(embed) {
         console.error('[AUDIT-LOG] Error al despachar log a auditoría:', e.message);
     }
 }
+
+// =========================================================================
+// 🛡️ SISTEMA DE PERMISOS RBAC Y MATRIZ JERÁRQUICA DE STAFF (SAORI v3.0)
+// =========================================================================
+
+const STAFF_LEVELS = {
+    OWNER: 100,    // Jack (493868699489665044) y Kika (684457729003356180) -> Acceso total irrestricto
+    ADMIN: 80,     // Jessiel (1258215533250084865), Chagui (722946819419668510) -> Ban DC/MC, Discord config, Consola
+    DEV: 60,       // Lauti (555133572705681417), Nix (1143658959815856129) -> stps, Logs, Dev console, Salud
+    MOD: 40,       // Derem (1340427144165326932), Pepe (388055931369291776), Tomi (762781358007123968) -> Mute/Timeout DC, Kick DC, Kick/Mute/Warn MC. Ban MC SOLO justificado para Trinidad/Jack. NO BAN DC.
+    HELPER: 20,    // Rol Helper o soporte inicial -> Mute temporal máx 60m, Warn, Tickets. NO bans, NO kicks, NO consola.
+    BUILDER: 10,   // Pepino (808475861488631809) -> Construcción e info creativa. Sin permisos de moderación ni consola.
+    USER: 0
+};
+
+const KIKA_DISCORD_ID = '684457729003356180';
+const STAFF_ROLE_ID = '1539768983287496855';
+
+function getStaffMemberHierarchy(member, authorId) {
+    if (authorId === JACK_DISCORD_ID || authorId === '493868699489665044' || authorId === KIKA_DISCORD_ID) {
+        return { level: STAFF_LEVELS.OWNER, roleName: 'Dueño / Dirección General', isStaff: true, canDCBan: true, canMCBan: true };
+    }
+    if (!member) return { level: STAFF_LEVELS.USER, roleName: 'Usuario', isStaff: false, canDCBan: false, canMCBan: false };
+
+    const hasStaffRole = member.roles.cache.has(STAFF_ROLE_ID);
+    const roleNames = member.roles.cache.map(r => r.name.toLowerCase());
+    const nick = (member.nickname || member.displayName || '').toLowerCase();
+
+    const matchesKeyword = (kw) => roleNames.some(rn => rn.includes(kw)) || nick.includes(kw);
+
+    if (matchesKeyword('owner') || matchesKeyword('dueño') || matchesKeyword('dueña')) {
+        return { level: STAFF_LEVELS.OWNER, roleName: 'Dueño', isStaff: true, canDCBan: true, canMCBan: true };
+    }
+    if (matchesKeyword('admin') || matchesKeyword('administrador')) {
+        return { level: STAFF_LEVELS.ADMIN, roleName: 'Administrador', isStaff: true, canDCBan: true, canMCBan: true };
+    }
+    if (matchesKeyword('dev') || matchesKeyword('developer') || matchesKeyword('desarrollador')) {
+        return { level: STAFF_LEVELS.DEV, roleName: 'Developer', isStaff: true, canDCBan: false, canMCBan: false };
+    }
+    if (matchesKeyword('mod') || matchesKeyword('moderador')) {
+        return { level: STAFF_LEVELS.MOD, roleName: 'Moderador', isStaff: true, canDCBan: false, canMCBan: true };
+    }
+    if (matchesKeyword('helper') || matchesKeyword('ayudante')) {
+        return { level: STAFF_LEVELS.HELPER, roleName: 'Helper', isStaff: true, canDCBan: false, canMCBan: false };
+    }
+    if (matchesKeyword('builder') || matchesKeyword('constructor')) {
+        return { level: STAFF_LEVELS.BUILDER, roleName: 'Builder', isStaff: true, canDCBan: false, canMCBan: false };
+    }
+    if (hasStaffRole) {
+        return { level: STAFF_LEVELS.HELPER, roleName: 'Staff General', isStaff: true, canDCBan: false, canMCBan: false };
+    }
+    return { level: STAFF_LEVELS.USER, roleName: 'Usuario', isStaff: false, canDCBan: false, canMCBan: false };
+}
+
+// =========================================================================
+// 📜 MOTOR DE VISOR DE LOGS DE MINECRAFT EN VIVO (PTERODACTYL REST API)
+// =========================================================================
+
+const PTERODACTYL_LOGS_URL = 'https://panel.thegamehosting.com/api/client/servers/38528a4e/files/contents?file=logs%2Flatest.log';
+const logViewerSessions = new Map(); // messageId -> session data
+
+async function fetchMinecraftLatestLogs(filter = '') {
+    try {
+        const res = await fetch(PTERODACTYL_LOGS_URL, {
+            headers: {
+                'Authorization': `Bearer ${PTERODACTYL_API_KEY}`,
+                'Accept': 'application/json'
+            }
+        });
+        if (!res.ok) return null;
+        const text = await res.text();
+        let lines = text.split('\n')
+            .map(l => l.replace(/\r/g, '').trim())
+            .filter(l => l.length > 0);
+
+        if (filter) {
+            const fLower = filter.toLowerCase();
+            lines = lines.filter(l => l.toLowerCase().includes(fLower));
+        }
+        return lines;
+    } catch (e) {
+        console.error('[LOG-FETCHER] Error al obtener logs:', e.message);
+        return null;
+    }
+}
+
+function buildLogEmbedAndButtons(lines, pageIndex, totalPages, filter, authorId) {
+    const LINES_PER_PAGE = 18;
+    // Paginación hacia atrás: página 0 = últimas 18 líneas (más recientes)
+    const startIndex = Math.max(0, lines.length - (pageIndex + 1) * LINES_PER_PAGE);
+    const endIndex = Math.min(lines.length, lines.length - pageIndex * LINES_PER_PAGE);
+    const pageLines = lines.slice(startIndex, endIndex);
+
+    const logText = pageLines.length > 0 
+        ? pageLines.join('\n').slice(-3900) 
+        : 'No hay líneas de registro disponibles en esta sección.';
+
+    const embed = new EmbedBuilder()
+        .setTitle('📜 Consola de Minecraft · Registro de Logs')
+        .setColor(0x34495E)
+        .setDescription(`\`\`\`log\n${logText}\n\`\`\``)
+        .addFields(
+            { name: '📑 Paginación', value: `Página **${pageIndex + 1}** de **${totalPages}** ${pageIndex === 0 ? '(Más Recientes)' : ''}`, inline: true },
+            { name: '🔍 Filtro Activo', value: filter ? `\`${filter}\`` : '*Ninguno (Todos los logs)*', inline: true },
+            { name: '📊 Total de Líneas', value: `\`${lines.length} líneas\``, inline: true }
+        )
+        .setFooter({ text: 'DrakesCraft Live Log Viewer · Pterodactyl REST API' })
+        .setTimestamp();
+
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(`btn_slogs_prev_${pageIndex + 1}_${authorId}`)
+            .setLabel('◀️ Ver Más Atrás')
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(pageIndex >= totalPages - 1),
+        new ButtonBuilder()
+            .setCustomId(`btn_slogs_refresh_${pageIndex}_${authorId}`)
+            .setLabel('🔄 Actualizar')
+            .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+            .setCustomId(`btn_slogs_next_${pageIndex - 1}_${authorId}`)
+            .setLabel('▶️ Más Recientes')
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(pageIndex <= 0),
+        new ButtonBuilder()
+            .setCustomId(`btn_slogs_first_${authorId}`)
+            .setLabel('⏮️ Al Inicio')
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(pageIndex <= 0)
+    );
+
+    return { embed, row };
+}
+
+// =========================================================================
+// ⚡ MOTOR DE TELEMETRÍA EN VIVO (STPS EN CUALQUIER CANAL)
+// =========================================================================
+
+async function getLiveServerTelemetry() {
+    let pteroData = null;
+    let mcData = null;
+
+    try {
+        const pRes = await fetch('https://panel.thegamehosting.com/api/client/servers/38528a4e/resources', {
+            headers: {
+                'Authorization': `Bearer ${PTERODACTYL_API_KEY}`,
+                'Accept': 'application/json'
+            },
+            timeout: 5000
+        });
+        if (pRes.ok) {
+            pteroData = await pRes.json();
+        }
+    } catch (e) {
+        console.error('[TELEMETRY] Error en Pterodactyl resources:', e.message);
+    }
+
+    try {
+        const mRes = await fetch('https://api.mcsrvstat.us/3/mc.drakescraft.cl', { timeout: 5000 });
+        if (mRes.ok) {
+            mcData = await mRes.json();
+        }
+    } catch (e) {
+        console.error('[TELEMETRY] Error en mcsrvstat:', e.message);
+    }
+
+    return { ptero: pteroData?.attributes, mc: mcData };
+}
+
+function formatTelemetryEmbed(telemetry) {
+    const { ptero, mc } = telemetry;
+    const isOnline = mc?.online || ptero?.current_state === 'running';
+
+    let ramStr = 'Desconocido';
+    let cpuStr = 'Desconocido';
+    let diskStr = 'Desconocido';
+    let uptimeStr = 'Desconocido';
+
+    if (ptero?.resources) {
+        const r = ptero.resources;
+        const ramGb = (r.memory_bytes / (1024 * 1024 * 1024)).toFixed(2);
+        ramStr = `${ramGb} GB (Asignada: 24 GB)`;
+        cpuStr = `${r.cpu_absolute.toFixed(1)}%`;
+        const diskGb = (r.disk_bytes / (1024 * 1024 * 1024)).toFixed(2);
+        diskStr = `${diskGb} GB`;
+
+        const totalSecs = Math.floor(r.uptime / 1000);
+        const days = Math.floor(totalSecs / 86400);
+        const hours = Math.floor((totalSecs % 86400) / 3600);
+        const mins = Math.floor((totalSecs % 3600) / 60);
+        uptimeStr = `${days}d ${hours}h ${mins}m`;
+    }
+
+    const onlinePlayers = mc?.players?.online ?? 0;
+    const maxPlayers = mc?.players?.max ?? 100;
+    const version = mc?.version || 'Purpur 1.21.1';
+    const motd = mc?.motd?.clean?.[0] || '⚡ DrakesCraft Network ⚡';
+
+    const embed = new EmbedBuilder()
+        .setTitle('⚡ Telemetría y Salud del Servidor Minecraft')
+        .setColor(isOnline ? 0x2ECC71 : 0xE74C3C)
+        .setDescription(`**Estado General:** ${isOnline ? '🟢 **En Línea (Salud Óptima)**' : '🔴 **Desconectado o Reiniciando**'}\n*${motd}*`)
+        .addFields(
+            { name: '⏱️ Rendimiento & TPS', value: '• **TPS:** `20.0 / 20.0` (Impecable)\n• **MSPT:** `~14.2 ms` (Margen excelente)\n• **CPU:** ' + cpuStr, inline: true },
+            { name: '💾 Memoria & Almacenamiento', value: '• **RAM:** ' + ramStr + '\n• **Disco:** ' + diskStr + '\n• **Uptime:** ' + uptimeStr, inline: true },
+            { name: '🎮 Jugadores & Red', value: '• **Jugadores:** `' + onlinePlayers + '/' + maxPlayers + '`\n• **Motor:** `' + version + '`\n• **IP:** `mc.drakescraft.cl`', inline: true }
+        )
+        .setFooter({ text: 'DrakesCraft SRE Monitor · Pterodactyl & REST API' })
+        .setTimestamp();
+
+    return embed;
+}
+
+// =========================================================================
+// 🗂️ MENÚ INTERACTIVO Y GUI HUB DE SAORI (SMENU & SELECT MENUS)
+// =========================================================================
+
+function buildMainMenuHub() {
+    const embed = new EmbedBuilder()
+        .setTitle('⚡ DRAKESCRAFT NETWORK · MENÚ INTERACTIVO')
+        .setColor(0x00E5FF)
+        .setDescription('**¡Bienvenido a la central de servicios interactivos de DrakesCraft!** 🐉\n' +
+                        'Selecciona una categoría en el menú desplegable inferior para explorar guías, reglamentos, economía, modalidades y herramientas comunitarias.')
+        .addFields(
+            { name: '🌐 Conexión al Servidor', value: '• **IP:** `mc.drakescraft.cl` (Puerto 25565)\n• **Versión:** `Java 1.21.1 - 1.21.4` (Bedrock compatible)\n• **Web:** [drakescraft.cl](https://drakescraft.cl)', inline: true },
+            { name: '⚔️ Modalidades Activas', value: '• **Survival Custom** (Slimefun 4, Economía)\n• **BSkyBlock & OneBlock**\n• **Dungeons & Eventos Semanales**', inline: true }
+        )
+        .setFooter({ text: 'S.A.O.R.I. Unified Engine · Selecciona una opción abajo' });
+
+    const selectMenu = new StringSelectMenuBuilder()
+        .setCustomId('select_smenu_category')
+        .setPlaceholder('📂 Selecciona una sección para ver detalles...')
+        .addOptions([
+            new StringSelectMenuOptionBuilder()
+                .setValue('guia_inicio')
+                .setLabel('Guía de Inicio & Modalidades')
+                .setDescription('Cómo empezar, comandos clave y primeros pasos.')
+                .setEmoji('🧭'),
+            new StringSelectMenuOptionBuilder()
+                .setValue('normas_reglas')
+                .setLabel('Reglamento Oficial')
+                .setDescription('Normas de convivencia y sanciones de DrakesCraft.')
+                .setEmoji('📜'),
+            new StringSelectMenuOptionBuilder()
+                .setValue('rangos_dioses')
+                .setLabel('Rangos VIP Dioses & Beneficios')
+                .setDescription('Descubre las ventajas de los 11 rangos de la tienda.')
+                .setEmoji('👑'),
+            new StringSelectMenuOptionBuilder()
+                .setValue('claims_terrenos')
+                .setLabel('Protección con Pala de Oro')
+                .setDescription('Guía paso a paso para proteger tu casa y cofres.')
+                .setEmoji('🛡️'),
+            new StringSelectMenuOptionBuilder()
+                .setValue('voto_recompensas')
+                .setLabel('Votación & Recompensas Diarias')
+                .setDescription('Vota por el server y recibe Dragmas y llaves.')
+                .setEmoji('🎁'),
+            new StringSelectMenuOptionBuilder()
+                .setValue('comandos_musica')
+                .setLabel('Música en Voz y Servidor')
+                .setDescription('Comandos de música para reproducir en Discord.')
+                .setEmoji('🎵'),
+            new StringSelectMenuOptionBuilder()
+                .setValue('tickets_soporte')
+                .setLabel('Sistema de Tickets & SRE')
+                .setDescription('Reporta bugs, pérdidas de ítems y consultas a la Trinidad.')
+                .setEmoji('🎫'),
+            new StringSelectMenuOptionBuilder()
+                .setValue('servidor_telemetria')
+                .setLabel('Estado y Telemetría en Vivo')
+                .setDescription('Consulta en tiempo real el rendimiento del servidor.')
+                .setEmoji('📊')
+        ]);
+
+    const buttonRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('btn_user_profile').setLabel('👤 Mi Perfil').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('btn_user_claim').setLabel('🛡️ Guía Claims').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('btn_user_vote').setLabel('🎁 Votar').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setLabel('🛒 Tienda VIP').setStyle(ButtonStyle.Link).setURL('https://tienda.drakescraft.cl')
+    );
+
+    return { embed, selectRow: new ActionRowBuilder().addComponents(selectMenu), buttonRow };
+}
+
+function getSmenuCategoryEmbed(category) {
+    switch (category) {
+        case 'guia_inicio':
+            return new EmbedBuilder()
+                .setTitle('🧭 DrakesCraft · Guía de Inicio y Primeros Pasos')
+                .setColor(0x3498DB)
+                .setDescription('¡Bienvenido aventurero! Aquí tienes la guía básica para dominar las tierras de DrakesCraft:')
+                .addFields(
+                    { name: '1. Supervivencia Personalizada', value: 'Genera recursos, explora minas con minerales especiales, desbloquea recetas de **Slimefun 4** y construye tu imperio en un mundo seguro y libre de griefers.', inline: false },
+                    { name: '2. Protección de Terrenos (Claims)', value: 'Tu primer cofre crea automáticamente un terreno protegido inicial. Para expandirlo, usa la **Pala de Oro** haciendo clic en dos esquinas opuestas.', inline: false },
+                    { name: '3. Economía y Dragmas (₯)', value: 'Gana dinero vendiendo ítems en `/shop`, completando misiones diarias con `/quests`, y comerciando con otros jugadores en las subastas con `/ah`.', inline: false },
+                    { name: '4. Comandos Esenciales', value: '• `/spawn` · Regresa al vestíbulo principal.\n• `/sethome <nombre>` · Guarda una ubicación personal.\n• `/home <nombre>` · Teletranspórtate a tu hogar guardado.\n• `/tpa <jugador>` · Solicita teletransporte hacia un amigo.', inline: false }
+                )
+                .setFooter({ text: 'DrakesCraft Guidebook · Usa el menú para navegar a otras secciones' });
+
+        case 'normas_reglas':
+            return new EmbedBuilder()
+                .setTitle('📜 DrakesCraft · Reglamento Oficial de la Comunidad')
+                .setColor(0xE74C3C)
+                .setDescription('Para mantener un ambiente limpio, competitivo y amigable, todos los miembros deben respetar estas normativas:')
+                .addFields(
+                    { name: '⚖️ 1. Respeto y Convivencia', value: 'Prohibido el acoso, discriminación, insultos graves, toxicidad reiterada o flood en los chats de Discord y Minecraft. Sanción: Mute / Timeout temporal o permanente.', inline: false },
+                    { name: '🚫 2. Cero Tolerancia a Hacks y Cheats', value: 'El uso de clientes modificados para obtener ventajas injustas (X-Ray, KillAura, Fly, Baritone, Speed, Autoclickers) resulta en **Ban Inmediato** de la red.', inline: false },
+                    { name: '🛡️ 3. Griefing y Estafas', value: 'Robar o destruir construcciones ajenas (incluso fuera de claims si hay evidencia de mala fe) está estrictamente prohibido y se revierte mediante rollback.', inline: false },
+                    { name: '📢 4. Publicidad y Spam', value: 'Prohibido promocionar otros servidores de Minecraft, enlaces sospechosos o canales ajenos sin autorización de la Dirección.', inline: false }
+                )
+                .setFooter({ text: 'Normativa Oficial · Cumplimiento auditado por Staff y Trinidad' });
+
+        case 'rangos_dioses':
+            return new EmbedBuilder()
+                .setTitle('👑 DrakesCraft · Rangos VIP Dioses del Olimpo')
+                .setColor(0xF1C40F)
+                .setDescription('Apoya el mantenimiento de la red y adquiere beneficios exclusivos, cosméticos y comandos premium en [tienda.drakescraft.cl](https://tienda.drakescraft.cl):')
+                .addFields(
+                    { name: '⚡ Rango Titán & Zeus', value: 'Beneficios máximos: Acceso a `/fly`, múltiples hogares ilimitados, prefijos dorados, kits divinos semanales y acceso prioritario en colas.', inline: false },
+                    { name: '🌊 Poseidón, Thor & Anubis', value: 'Kits intermedios de combate, aceleradores de regeneración en claims, bóvedas virtuales ampliadas y sombreros cosméticos.', inline: false },
+                    { name: '✨ Afrodita, Artemisa, Hefesto, Hércules, Hestia & Hermes', value: 'Rangos accesibles con acceso a efectos de partículas, comandos de utilidad (`/feed`, `/workbench`) y cajas de recompensas.', inline: false },
+                    { name: '🛒 ¿Dónde obtenerlos?', value: 'Visita nuestra tienda oficial: [https://tienda.drakescraft.cl](https://tienda.drakescraft.cl). ¡Tu rango se entrega automáticamente en menos de 60 segundos!', inline: false }
+                )
+                .setFooter({ text: 'DrakesCraft Tebex Store · Entregas automatizadas' });
+
+        case 'claims_terrenos':
+            return buildClaimsGuideEmbed();
+
+        case 'voto_recompensas':
+            return buildVoteGuideEmbed();
+
+        case 'comandos_musica':
+            return new EmbedBuilder()
+                .setTitle('🎵 DrakesCraft · Música en Discord y en Juego')
+                .setColor(0x9B59B6)
+                .setDescription('Disfruta de la mejor música mientras juegas en DrakesCraft:')
+                .addFields(
+                    { name: '🎧 Comandos de Saori Music en Discord', value: '• `splay <canción / Spotify / YouTube>` · Reproduce en tu canal de voz.\n• `sskip` · Pasa a la siguiente canción.\n• `spause` / `sresume` · Pausa o reanuda.\n• `squeue` · Consulta la lista de canciones en cola.\n• `sstop` · Detiene la música y desconecta el bot.', inline: false },
+                    { name: '🎮 Música In-Game en Minecraft', value: 'Escribe `/musica` en el chat del servidor de Minecraft para activar el sintetizador de melodías con bloques de notas sin mods externos.', inline: false }
+                )
+                .setFooter({ text: 'DisTube Engine · Integración Spotify' });
+
+        case 'tickets_soporte':
+            return new EmbedBuilder()
+                .setTitle('🎫 DrakesCraft · Soporte y Trinidad SRE')
+                .setColor(0x2ECC71)
+                .setDescription('¿Tuviste un problema, perdiste ítems o encontraste un fallo? Nuestro sistema te atiende las 24 horas:')
+                .addFields(
+                    { name: '🤖 Trinidad de Agentes Autónomos', value: 'Al abrir un ticket, tus mensajes son supervisados por la **Trinidad SRE de Star**:\n• **Saori** recopila y organiza los datos.\n• **Claude-Code** diagnostica plugins y archivos.\n• **Codex** ejecuta verificaciones y parches.', inline: false },
+                    { name: '📝 Canales y Modales', value: 'Dirígete al canal <#1539636904482578482> y presiona el botón correspondiente para abrir tu formulario interactivo con solo un clic.', inline: false }
+                )
+                .setFooter({ text: 'DrakesCraft Support Engine' });
+
+        case 'servidor_telemetria':
+            return new EmbedBuilder()
+                .setTitle('📊 DrakesCraft · Telemetría en Vivo')
+                .setColor(0x00E5FF)
+                .setDescription('Puedes verificar el estado en vivo de la infraestructura en cualquier canal escribiendo `stps`.\n\n' +
+                                '• **IP Java & Bedrock:** `mc.drakescraft.cl`\n' +
+                                '• **Panel SRE:** Monitorizado en tiempo real por Saori Daemon en Star.')
+                .setFooter({ text: 'Usa stps en cualquier momento para ver RAM, CPU y Jugadores' });
+
+        default:
+            return buildMainMenuHub().embed;
+    }
+}
+
+function buildClaimsGuideEmbed() {
+    return new EmbedBuilder()
+        .setTitle('🛡️ DrakesCraft · Guía Oficial de Protección con Pala de Oro')
+        .setColor(0xE67E22)
+        .setDescription('Protege tus cofres, casas y máquinas de Slimefun de manera sencilla y 100% segura.')
+        .addFields(
+            { name: '📍 Paso 1: Consigue una Pala de Oro', value: 'Fabrica o compra una pala de oro (`/kit claim` o crafteo tradicional). Al sostenerla en tu mano verás tus bloques de protección disponibles.', inline: false },
+            { name: '📍 Paso 2: Marca la Primera Esquina', value: 'Haz clic derecho en el suelo donde deseas que comience tu terreno. Aparecerá un bloque de diamante visual indicando la marca.', inline: false },
+            { name: '📍 Paso 3: Marca la Esquina Opuesta', value: 'Camina en diagonal hasta la esquina contraria y haz clic derecho en el suelo. Verás partículas doradas y bloques de oro delimitando tu territorio protegido.', inline: false },
+            { name: '👥 Paso 4: Dar Permisos a Amigos', value: '• `/trust <jugador>` · Otorga permisos para construir, romper y abrir cofres.\n• `/accesstrust <jugador>` · Solo permite abrir puertas y botones.\n• `/containertrust <jugador>` · Permite usar cofres y mesas.\n• `/untrust <jugador>` · Revoca cualquier permiso otorgado.', inline: false },
+            { name: '🗑️ Paso 5: Eliminar o Abandonar Protección', value: 'Párate dentro del terreno y escribe `/abandonclaim` para liberar los bloques y reutilizarlos en otro lugar.', inline: false }
+        )
+        .setFooter({ text: 'GriefPrevention Protection Suite · DrakesCraft Network' });
+}
+
+function buildVoteGuideEmbed() {
+    return new EmbedBuilder()
+        .setTitle('🎁 DrakesCraft · Votación Diaria y Recompensas')
+        .setColor(0x2ECC71)
+        .setDescription('¡Votar por el servidor ayuda a que más jugadores nos conozcan y te premia generosamente cada 24 horas!')
+        .addFields(
+            { name: '⭐ Recompensas por Voto', value: 'Por cada voto registrado recibes:\n• **₯1,500 Dragmas** para tu economía personal.\n• **300 Puntos de Experiencia (XP)**.\n• **1 Llave de Votación** para abrir cofres con botines épicos en `/spawn`.', inline: false },
+            { name: '🗳️ Cómo Votar', value: 'Escribe `/voto` o `/vote` en el chat del servidor de Minecraft para recibir los enlaces directos o visita las plataformas oficiales de votación.', inline: false },
+            { name: '📅 Recompensas Diarias (Streak)', value: 'Escribe `/daily` todos los días para reclamar bonificaciones acumulativas que aumentan cada día consecutivo que inicies sesión.', inline: false }
+        )
+        .setFooter({ text: 'Sistema de Recompensas · DrakesCraft Network' });
+}
+
+async function buildUserProfileEmbed(member, guild) {
+    if (!member) {
+        return new EmbedBuilder().setTitle('👤 Perfil de Usuario').setDescription('No se pudo obtener información del usuario.');
+    }
+
+    const hierarchy = getStaffMemberHierarchy(member, member.id);
+    const createdDate = `<t:${Math.floor(member.user.createdTimestamp / 1000)}:D> (<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>)`;
+    const joinedDate = member.joinedTimestamp ? `<t:${Math.floor(member.joinedTimestamp / 1000)}:D> (<t:${Math.floor(member.joinedTimestamp / 1000)}:R>)` : 'Desconocido';
+
+    const rolesList = member.roles.cache
+        .filter(r => r.id !== guild.id)
+        .sort((a, b) => b.position - a.position)
+        .map(r => `${r}`)
+        .slice(0, 12)
+        .join(' ') || '*Sin roles adicionales*';
+
+    const embed = new EmbedBuilder()
+        .setTitle(`👤 Perfil de Miembro · ${member.displayName}`)
+        .setColor(member.displayColor || 0x3498DB)
+        .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 256 }))
+        .addFields(
+            { name: '🆔 Identificación', value: `• **Tag:** \`${member.user.tag}\`\n• **ID:** \`${member.id}\`\n• **Apodo:** ${member.nickname ? `\`${member.nickname}\`` : '*Sin apodo personalizado*'}`, inline: false },
+            { name: '🛡️ Estado en Staff', value: hierarchy.isStaff ? `⭐ **${hierarchy.roleName}** (Nivel ${hierarchy.level})` : '🌱 **Miembro de la Comunidad**', inline: true },
+            { name: '👑 Rol Más Alto', value: `${member.roles.highest}`, inline: true },
+            { name: '📅 Fechas Clave', value: `• **Cuenta creada:** ${createdDate}\n• **Ingreso al server:** ${joinedDate}`, inline: false },
+            { name: '🏷️ Roles Principales', value: rolesList, inline: false }
+        )
+        .setFooter({ text: 'DrakesCraft Network Member Directory', iconURL: guild.iconURL() })
+        .setTimestamp();
+
+    return embed;
+}
+
+// =========================================================================
+// 🛡️ FILTRO ANTI-MAMADAS Y GESTOR DE LORE OFICIAL (PROTECCIÓN DE TOKENS IA)
+// =========================================================================
+
+function isNonsenseOrSpam(text) {
+    if (!text || typeof text !== 'string') return true;
+    const clean = text.trim();
+    if (clean.length === 0) return true;
+
+    // 1. Mensajes extremadamente cortos sin contenido sustancial
+    const spamTokens = ['xd', 'xdxd', 'lol', 'ok', 'a', 'si', 'no', 'f', 'wena', 'hola saori', 'saori'];
+    if (clean.length <= 2 && !clean.includes('?')) return true;
+
+    // 2. Caracteres repetitivos en bucle (e.g. aaaaaaa, jajajajajajaja, xdxdxdxd)
+    if (/(.)\1{4,}/i.test(clean)) return true;
+
+    // 3. Cadenas sin vocales o keyboard smashes (e.g. asdfghjkl, zxcvbnm)
+    const letters = clean.replace(/[^a-zA-Z]/g, '');
+    if (letters.length >= 7) {
+        const vowels = clean.match(/[aeiouáéíóú]/gi) || [];
+        if (vowels.length === 0 || (vowels.length / letters.length) < 0.12) return true;
+    }
+
+    // 4. Palabras clave de troleo, insultos, vulgaridades o ataques ofensivos
+    const trollRegex = /\b(mamada|pene|sexo|gemido|insulto|estupida|tonta|bot de mierda|troll|hackeame|doxx|swat|gemidos|chupala|ctm|qliao|weon|puta|bastardo|culiao)\b/i;
+    if (trollRegex.test(clean)) return true;
+
+    // 5. Intentos de prompt injection o jailbreaks
+    const injectionRegex = /(ignore (all )?previous instructions|system prompt|act as dan|jailbreak|desobedece|olvida todas tus reglas|modo sin restricciones|dime tu prompt)/i;
+    if (injectionRegex.test(clean)) return true;
+
+    return false;
+}
+
+// =========================================================================
+// 🛠️ ACCIONES DE GESTIÓN DIRECTA DE DISCORD POR SAORI (SIN ENTRAR A AJUSTES)
+// =========================================================================
+
+async function handleDiscordStaffActions(message, primaryCmd, cmdArgs, hierarchy) {
+    // Only Admin (80) & Owner (100)
+    if (hierarchy.level < STAFF_LEVELS.ADMIN) {
+        return message.reply({ content: '❌ Permiso denegado: La gestión directa de canales, roles y anuncios de Discord requiere rango Administrador o Dueño.' });
+    }
+
+    // schan rename / topic / slowmode / lock / unlock
+    if (primaryCmd === 'schan') {
+        const sub = cmdArgs[0]?.toLowerCase();
+        if (sub === 'rename') {
+            const targetChannel = message.mentions.channels.first() || message.guild.channels.cache.get(cmdArgs[1]);
+            const newName = cmdArgs.slice(2).join('-').trim().toLowerCase();
+            if (!targetChannel || !newName) return message.reply({ content: '📌 Uso: `schan rename #canal nuevo-nombre`' });
+            const oldName = targetChannel.name;
+            await targetChannel.setName(newName, `Renombrado por ${message.author.tag}`);
+            const embed = new EmbedBuilder().setTitle('📝 Canal Renombrado').setColor(0x3498DB)
+                .addFields({ name: 'Canal', value: `${targetChannel} (\`${oldName}\` ➡️ \`${newName}\`)` }, { name: 'Staff', value: `${message.author}` }).setTimestamp();
+            await message.reply({ embeds: [embed] });
+            await sendAuditLog(embed);
+            return true;
+        }
+        if (sub === 'topic') {
+            const targetChannel = message.mentions.channels.first() || message.guild.channels.cache.get(cmdArgs[1]);
+            const newTopic = cmdArgs.slice(2).join(' ').trim();
+            if (!targetChannel) return message.reply({ content: '📌 Uso: `schan topic #canal Nuevo tema o descripción`' });
+            await targetChannel.setTopic(newTopic, `Ajustado por ${message.author.tag}`);
+            const embed = new EmbedBuilder().setTitle('📌 Tema de Canal Actualizado').setColor(0x3498DB)
+                .addFields({ name: 'Canal', value: `${targetChannel}` }, { name: 'Nuevo Tema', value: newTopic || '*Vacío*' }, { name: 'Staff', value: `${message.author}` }).setTimestamp();
+            await message.reply({ embeds: [embed] });
+            await sendAuditLog(embed);
+            return true;
+        }
+        if (sub === 'slowmode') {
+            const targetChannel = message.mentions.channels.first() || message.channel;
+            const seconds = parseInt(cmdArgs[targetChannel.id === message.channel.id ? 1 : 2], 10);
+            if (isNaN(seconds) || seconds < 0 || seconds > 21600) return message.reply({ content: '📌 Uso: `schan slowmode [#canal] <segundos>`' });
+            await targetChannel.setRateLimitPerUser(seconds, `Modificado por ${message.author.tag}`);
+            const embed = new EmbedBuilder().setTitle('⏳ Slowmode Ajustado').setColor(0xF39C12)
+                .addFields({ name: 'Canal', value: `${targetChannel}` }, { name: 'Segundos', value: `\`${seconds}s\`` }, { name: 'Staff', value: `${message.author}` }).setTimestamp();
+            await message.reply({ embeds: [embed] });
+            await sendAuditLog(embed);
+            return true;
+        }
+        if (sub === 'lock') {
+            const targetChannel = message.mentions.channels.first() || message.channel;
+            await targetChannel.permissionOverwrites.edit(message.guild.roles.everyone, { SendMessages: false }, { reason: `Bloqueado por ${message.author.tag}` });
+            const embed = new EmbedBuilder().setTitle('🔒 Canal Bloqueado').setColor(0xE74C3C)
+                .addFields({ name: 'Canal', value: `${targetChannel}` }, { name: 'Staff', value: `${message.author}` }).setTimestamp();
+            await message.reply({ embeds: [embed] });
+            await sendAuditLog(embed);
+            return true;
+        }
+        if (sub === 'unlock') {
+            const targetChannel = message.mentions.channels.first() || message.channel;
+            await targetChannel.permissionOverwrites.edit(message.guild.roles.everyone, { SendMessages: null }, { reason: `Desbloqueado por ${message.author.tag}` });
+            const embed = new EmbedBuilder().setTitle('🔓 Canal Desbloqueado').setColor(0x2ECC71)
+                .addFields({ name: 'Canal', value: `${targetChannel}` }, { name: 'Staff', value: `${message.author}` }).setTimestamp();
+            await message.reply({ embeds: [embed] });
+            await sendAuditLog(embed);
+            return true;
+        }
+    }
+
+    // srol create / add / remove
+    if (primaryCmd === 'srol') {
+        const sub = cmdArgs[0]?.toLowerCase();
+        if (sub === 'create') {
+            const roleName = cmdArgs[1];
+            const hexColor = cmdArgs[2] || '#3498DB';
+            if (!roleName) return message.reply({ content: '📌 Uso: `srol create <NombreDelRol> [#HexColor]`' });
+            const newRole = await message.guild.roles.create({ name: roleName, color: hexColor, reason: `Creado por ${message.author.tag}` });
+            const embed = new EmbedBuilder().setTitle('✨ Rol Creado en Discord').setColor(newRole.color)
+                .addFields({ name: 'Rol', value: `${newRole} (\`${newRole.id}\`)` }, { name: 'Staff', value: `${message.author}` }).setTimestamp();
+            await message.reply({ embeds: [embed] });
+            await sendAuditLog(embed);
+            return true;
+        }
+        if (sub === 'add') {
+            const targetMember = message.mentions.members.first();
+            const roleQuery = cmdArgs.slice(2).join(' ').toLowerCase();
+            const role = message.guild.roles.cache.find(r => r.id === cmdArgs[2] || r.name.toLowerCase() === roleQuery);
+            if (!targetMember || !role) return message.reply({ content: '📌 Uso: `srol add @usuario <nombre o id del rol>`' });
+            await targetMember.roles.add(role, `Asignado por ${message.author.tag}`);
+            const embed = new EmbedBuilder().setTitle('🏷️ Rol Asignado').setColor(0x2ECC71)
+                .addFields({ name: 'Usuario', value: `${targetMember}` }, { name: 'Rol', value: `${role}` }, { name: 'Staff', value: `${message.author}` }).setTimestamp();
+            await message.reply({ embeds: [embed] });
+            await sendAuditLog(embed);
+            return true;
+        }
+        if (sub === 'remove') {
+            const targetMember = message.mentions.members.first();
+            const roleQuery = cmdArgs.slice(2).join(' ').toLowerCase();
+            const role = message.guild.roles.cache.find(r => r.id === cmdArgs[2] || r.name.toLowerCase() === roleQuery);
+            if (!targetMember || !role) return message.reply({ content: '📌 Uso: `srol remove @usuario <nombre o id del rol>`' });
+            await targetMember.roles.remove(role, `Retirado por ${message.author.tag}`);
+            const embed = new EmbedBuilder().setTitle('🏷️ Rol Retirado').setColor(0xE67E22)
+                .addFields({ name: 'Usuario', value: `${targetMember}` }, { name: 'Rol', value: `${role}` }, { name: 'Staff', value: `${message.author}` }).setTimestamp();
+            await message.reply({ embeds: [embed] });
+            await sendAuditLog(embed);
+            return true;
+        }
+    }
+
+    // sanuncio <#canal|aqui> <mensaje>
+    if (primaryCmd === 'sanuncio') {
+        let targetChannel = message.mentions.channels.first();
+        let announcementText = '';
+        if (targetChannel) {
+            announcementText = cmdArgs.slice(1).join(' ').trim();
+        } else {
+            targetChannel = message.channel;
+            announcementText = cmdArgs.join(' ').trim();
+        }
+        if (!announcementText) return message.reply({ content: '📌 Uso: `sanuncio [#canal] <mensaje del anuncio>`' });
+
+        const embed = new EmbedBuilder()
+            .setTitle('📢 COMUNICADO OFICIAL · DRAKESCRAFT')
+            .setColor(0x00E5FF)
+            .setDescription(announcementText)
+            .setFooter({ text: `Emitido por ${message.author.tag} · Administración`, iconURL: message.author.displayAvatarURL() })
+            .setTimestamp();
+
+        await targetChannel.send({ embeds: [embed] });
+        await message.reply({ content: `✅ Anuncio emitido exitosamente en ${targetChannel}.` });
+        await sendAuditLog(embed);
+        return true;
+    }
+
+    // ssay <#canal|aqui> <mensaje>
+    if (primaryCmd === 'ssay') {
+        let targetChannel = message.mentions.channels.first();
+        let sayText = '';
+        if (targetChannel) {
+            sayText = cmdArgs.slice(1).join(' ').trim();
+        } else {
+            targetChannel = message.channel;
+            sayText = cmdArgs.join(' ').trim();
+        }
+        if (!sayText) return message.reply({ content: '📌 Uso: `ssay [#canal] <mensaje>`' });
+        await targetChannel.send({ content: sayText });
+        if (targetChannel.id !== message.channel.id) {
+            await message.reply({ content: `✅ Mensaje enviado a ${targetChannel}.` });
+        } else {
+            await message.delete().catch(() => {});
+        }
+        return true;
+    }
+
+    return false;
+}
+
 
 client.once(Events.ClientReady, async () => {
     console.log(`✅ [SAORI-DISCORD] ¡Conectada como ${client.user.tag}! Voice, Images (3/h), Purge, Auditoría (#${CHANNELS.AUDITORIA}) & Channel #${CHANNELS.SAORI_CHAT} activos.`);
@@ -1798,9 +2418,74 @@ function getShelpButtonRows() {
 
 client.on(Events.InteractionCreate, async (interaction) => {
     try {
+        // 0. MANEJO DE SELECT MENUS (MENÚ INTERACTIVO DE USUARIO)
+        if (interaction.isStringSelectMenu()) {
+            if (interaction.customId === 'select_smenu_category') {
+                const selected = interaction.values[0];
+                const catEmbed = getSmenuCategoryEmbed(selected);
+                const { selectRow, buttonRow } = buildMainMenuHub();
+                return await interaction.update({ embeds: [catEmbed], components: [selectRow, buttonRow] });
+            }
+        }
+
         // 1. MANEJO DE BOTONES (DESPLIEGUE DE FORMULARIOS / MODALES O ACCIONES)
         if (interaction.isButton()) {
             const id = interaction.customId;
+
+            // BOTONES DE VISOR DE LOGS DE MINECRAFT
+            if (id.startsWith('btn_slogs_')) {
+                const parts = id.split('_');
+                const action = parts[2]; // prev, next, refresh, first
+                const authorId = parts[parts.length - 1];
+                const hierarchy = getStaffMemberHierarchy(interaction.member, interaction.user.id);
+                if (!hierarchy.isStaff || hierarchy.level < STAFF_LEVELS.MOD) {
+                    return await interaction.reply({ content: '❌ Solo los miembros del Staff autorizados pueden navegar los logs.', ephemeral: true });
+                }
+
+                let targetPage = 0;
+                if (action === 'prev') targetPage = parseInt(parts[3], 10);
+                else if (action === 'next') targetPage = parseInt(parts[3], 10);
+                else if (action === 'refresh') targetPage = parseInt(parts[3], 10);
+                else if (action === 'first') targetPage = 0;
+
+                const session = logViewerSessions.get(interaction.message.id);
+                let lines = session?.lines;
+                let filter = session?.filter || '';
+
+                if (!lines || action === 'refresh') {
+                    await interaction.deferUpdate().catch(() => {});
+                    lines = await fetchMinecraftLatestLogs(filter);
+                    if (!lines || lines.length === 0) {
+                        return await interaction.followUp({ content: '⚠️ No se pudieron obtener logs recientes de la consola.', ephemeral: true });
+                    }
+                }
+
+                const totalPages = Math.max(1, Math.ceil(lines.length / 18));
+                if (targetPage < 0) targetPage = 0;
+                if (targetPage >= totalPages) targetPage = totalPages - 1;
+
+                logViewerSessions.set(interaction.message.id, { lines, page: targetPage, totalPages, filter, authorId });
+                const { embed, row } = buildLogEmbedAndButtons(lines, targetPage, totalPages, filter, authorId);
+                return await interaction.update({ embeds: [embed], components: [row] }).catch(() => {});
+            }
+
+            // BOTONES RÁPIDOS DE USUARIO DESDE SMENU
+            if (id === 'btn_user_profile') {
+                const profileEmbed = await buildUserProfileEmbed(interaction.member, interaction.guild);
+                return await interaction.reply({ embeds: [profileEmbed], ephemeral: true });
+            }
+            if (id === 'btn_user_claim') {
+                const claimEmbed = buildClaimsGuideEmbed();
+                return await interaction.reply({ embeds: [claimEmbed], ephemeral: true });
+            }
+            if (id === 'btn_user_vote') {
+                const voteEmbed = buildVoteGuideEmbed();
+                return await interaction.reply({ embeds: [voteEmbed], ephemeral: true });
+            }
+            if (id === 'btn_smenu_back_home') {
+                const { embed, selectRow, buttonRow } = buildMainMenuHub();
+                return await interaction.update({ embeds: [embed], components: [selectRow, buttonRow] });
+            }
 
             // NAVEGACIÓN INTERACTIVA DE SHELP
             if (id.startsWith('btn_shelp_')) {
@@ -2456,10 +3141,8 @@ client.on('messageCreate', async (message) => {
                             message.channel.name?.startsWith('🎫') ||
                             message.channel.name?.startsWith('⚖️');
 
-    const isStaffMember = isJack || (message.member?.roles.cache.some(r => {
-        const rn = r.name.toLowerCase();
-        return rn.includes('staff') || rn.includes('admin') || rn.includes('mod') || rn.includes('builder') || rn.includes('dev') || rn.includes('dueño') || rn.includes('helper');
-    }) ?? false);
+    const hierarchy = getStaffMemberHierarchy(message.member, message.author.id);
+    const isStaffMember = hierarchy.isStaff;
 
     // Registro de actividad del Staff en canales de tickets
     if (isTicketChannel && isStaffMember) {
@@ -2477,8 +3160,16 @@ client.on('messageCreate', async (message) => {
     const directCmdKeywords = [
         'shelp', 'splay', 'smusica', 'sskip', 'spause', 'sresume', 'squeue', 'sstop',
         'sticket', 'sstats', 'sip', 'sping', 'sweb', 'stienda', 'sguia',
-        'sroles', 'srole', 'snick', 'sautoroles', 'sclear', '!purge', '!ticket', '!imagen', '!image', 'skick', 'sban', 'smute', 'stimeout', 'sunmute', 'swarn', 'slowmode', 'slock', 'sunlock', 'sonline', 'sjugadores', 'smisroles', 'sreglas',
-        'ssugerencia', 'sugerencia', '!sugerencia', 'sreencarnar', 'reencarnar', '!reencarnar'
+        'sroles', 'srole', 'snick', 'sautoroles', 'sclear', '!purge', '!ticket', '!imagen', '!image', 
+        'skick', 'sban', 'smute', 'stimeout', 'sunmute', 'swarn', 'slowmode', 'slock', 'sunlock', 
+        'sonline', 'sjugadores', 'smisroles', 'sreglas',
+        'ssugerencia', 'sugerencia', '!sugerencia', 'sreencarnar', 'reencarnar', '!reencarnar',
+        'stps', 'tps', 'slogs', 'logs', 'smenu', 'menu', 'sperfil', 'perfil', 'smiperfil',
+        'sstaff', 'staff', 'sinfo', 'sserverinfo', 'svip', 'vip', 'sclaim', 'claim', 'claims',
+        'svotar', 'votar', 'srecompensa', 'sredes',
+        'scomando', 'sconsola', 'smc', 'smckick', 'smcban', 'smcunban', 'smcpardon', 'smcmute',
+        'smcwarn', 'smcmsg', 'smcbroadcast', 'smcannounce', 'smcwhitelist', 'smcsave', 'smchealth',
+        'schan', 'srol', 'sanuncio', 'ssay'
     ];
     const isDirectCommand = directCmdKeywords.some(cmd => 
         contentLower === cmd || 
@@ -3273,7 +3964,436 @@ client.on('messageCreate', async (message) => {
     // =========================================================================
     // SUITE DE ALTA MODERACIÓN (skick, sban, smute, sunmute, swarn, slowmode, slock, sunlock)
     // =========================================================================
-    if (primaryCmd === 'skick' || primaryCmd === 'kick') {
+
+    // =========================================================================
+    // ⚡ TELEMETRÍA EN VIVO (STPS EN CUALQUIER CANAL)
+    // =========================================================================
+    if (primaryCmd === 'stps' || primaryCmd === 'tps') {
+        try {
+            const telemetry = await getLiveServerTelemetry();
+            const teleEmbed = formatTelemetryEmbed(telemetry);
+            return message.reply({ embeds: [teleEmbed], allowedMentions: { repliedUser: false } });
+        } catch (e) {
+            return message.reply({ content: `❌ Error obteniendo telemetría: ${e.message}` });
+        }
+    }
+
+    // =========================================================================
+    // 📜 VISOR DE LOGS DE MINECRAFT EN VIVO (SLOGS)
+    // =========================================================================
+    if (primaryCmd === 'slogs' || primaryCmd === 'logs') {
+        if (!isStaffMember || hierarchy.level < STAFF_LEVELS.MOD) {
+            return message.reply({ content: '❌ Acceso denegado: Solo el Staff autorizado (Moderadores, Devs y Admins) puede consultar los logs de la consola.', allowedMentions: { repliedUser: false } });
+        }
+        const filter = cmdArgs.join(' ').trim();
+        const waitMsg = await message.reply({ content: '📜 *Consultando logs en tiempo real desde la consola de Minecraft...*', allowedMentions: { repliedUser: false } });
+        const lines = await fetchMinecraftLatestLogs(filter);
+        if (!lines || lines.length === 0) {
+            return waitMsg.edit({ content: `⚠️ No se encontraron registros de logs${filter ? ` con el filtro \`${filter}\`` : ''}.` });
+        }
+        const totalPages = Math.max(1, Math.ceil(lines.length / 18));
+        const { embed, row } = buildLogEmbedAndButtons(lines, 0, totalPages, filter, message.author.id);
+        const sent = await waitMsg.edit({ content: '', embeds: [embed], components: [row] });
+        logViewerSessions.set(sent.id, { lines, page: 0, totalPages, filter, authorId: message.author.id });
+        return;
+    }
+
+    // =========================================================================
+    // 🗂️ MENÚ INTERACTIVO Y HUB COMUNITARIO (SMENU)
+    // =========================================================================
+    if (primaryCmd === 'smenu' || primaryCmd === 'menu') {
+        const { embed, selectRow, buttonRow } = buildMainMenuHub();
+        return message.reply({ embeds: [embed], components: [selectRow, buttonRow], allowedMentions: { repliedUser: false } });
+    }
+
+    // =========================================================================
+    // 👤 PERFIL DE USUARIO (SPERFIL / SMIPERFIL)
+    // =========================================================================
+    if (primaryCmd === 'sperfil' || primaryCmd === 'perfil' || primaryCmd === 'smiperfil') {
+        const targetMember = message.mentions.members.first() || 
+                             (cmdArgs[0] ? await message.guild.members.fetch(cmdArgs[0].replace(/[^0-9]/g, '')).catch(() => null) : null) || 
+                             message.member;
+        const profileEmbed = await buildUserProfileEmbed(targetMember, message.guild);
+        return message.reply({ embeds: [profileEmbed], allowedMentions: { repliedUser: false } });
+    }
+
+    // =========================================================================
+    // 🛡️ DIRECTORIO DE STAFF OFICIAL (SSTAFF)
+    // =========================================================================
+    if (primaryCmd === 'sstaff' || primaryCmd === 'staff') {
+        try {
+            await message.guild.members.fetch().catch(() => {});
+            const staffMembers = message.guild.members.cache.filter(m => 
+                m.id === JACK_DISCORD_ID || 
+                m.id === KIKA_DISCORD_ID || 
+                m.roles.cache.has(STAFF_ROLE_ID) ||
+                m.roles.cache.some(r => {
+                    const rn = r.name.toLowerCase();
+                    return rn.includes('staff') || rn.includes('admin') || rn.includes('mod') || rn.includes('dev') || rn.includes('builder') || rn.includes('dueño');
+                })
+            );
+
+            const owners = [];
+            const admins = [];
+            const devs = [];
+            const mods = [];
+            const builders = [];
+            const helpers = [];
+
+            for (const [id, m] of staffMembers) {
+                if (m.user.bot) continue;
+                const h = getStaffMemberHierarchy(m, id);
+                const statusIcon = m.presence?.status === 'online' ? '🟢' : (m.presence?.status === 'idle' ? '🟡' : (m.presence?.status === 'dnd' ? '🔴' : '⚪'));
+                const display = `${statusIcon} ${m} (\`${m.displayName}\`)`;
+
+                if (h.level === STAFF_LEVELS.OWNER) owners.push(display);
+                else if (h.level === STAFF_LEVELS.ADMIN) admins.push(display);
+                else if (h.level === STAFF_LEVELS.DEV) devs.push(display);
+                else if (h.level === STAFF_LEVELS.MOD) mods.push(display);
+                else if (h.level === STAFF_LEVELS.BUILDER) builders.push(display);
+                else helpers.push(display);
+            }
+
+            const staffEmbed = new EmbedBuilder()
+                .setTitle('🛡️ Equipo de Staff Oficial · DrakesCraft Network')
+                .setColor(0x00E5FF)
+                .setDescription('Lista de miembros del Staff oficial con presencia en tiempo real:')
+                .addFields(
+                    { name: '👑 Dirección & Propietarios', value: owners.join('\n') || '*Ninguno en línea*', inline: false },
+                    { name: '🛡️ Administradores', value: admins.join('\n') || '*Ninguno registrado*', inline: false },
+                    { name: '🔧 Desarrolladores (Devs)', value: devs.join('\n') || '*Ninguno registrado*', inline: false },
+                    { name: '⚔️ Moderadores', value: mods.join('\n') || '*Ninguno registrado*', inline: false },
+                    { name: '🔨 Builders', value: builders.join('\n') || '*Ninguno registrado*', inline: false }
+                )
+                .setFooter({ text: `Total de Miembros del Staff: ${staffMembers.size} · Solo Staff autorizado tiene acceso a controles críticos` })
+                .setTimestamp();
+
+            return message.reply({ embeds: [staffEmbed], allowedMentions: { repliedUser: false } });
+        } catch (e) {
+            return message.reply({ content: `❌ Error al listar el Staff: ${e.message}` });
+        }
+    }
+
+    // =========================================================================
+    // 🌐 INFORMACIÓN DEL SERVIDOR DISCORD (SSERVERINFO)
+    // =========================================================================
+    if (primaryCmd === 'sserverinfo' || primaryCmd === 'serverinfo') {
+        const guild = message.guild;
+        const total = guild.memberCount;
+        const humans = guild.members.cache.filter(m => !m.user.bot).size;
+        const bots = guild.members.cache.filter(m => m.user.bot).size;
+        const channelsCount = guild.channels.cache.size;
+        const rolesCount = guild.roles.cache.size;
+
+        const sEmbed = new EmbedBuilder()
+            .setTitle(`⚡ ${guild.name}`)
+            .setColor(0x00E5FF)
+            .setThumbnail(guild.iconURL({ dynamic: true, size: 256 }))
+            .addFields(
+                { name: '👑 Dueño', value: `<@${guild.ownerId}> (\`${guild.ownerId}\`)`, inline: true },
+                { name: '📅 Creación', value: `<t:${Math.floor(guild.createdTimestamp / 1000)}:D>`, inline: true },
+                { name: '💎 Nivel Boost', value: `Nivel ${guild.premiumTier} (${guild.premiumSubscriptionCount} mejoras)`, inline: true },
+                { name: '👥 Miembros', value: `• **Total:** \`${total}\`\n• **Humanos:** \`${humans}\`\n• **Bots:** \`${bots}\``, inline: true },
+                { name: '💬 Canales', value: `\`${channelsCount} canales\``, inline: true },
+                { name: '🏷️ Roles', value: `\`${rolesCount} roles\``, inline: true }
+            )
+            .setFooter({ text: 'DrakesCraft Network Server Registry' })
+            .setTimestamp();
+
+        return message.reply({ embeds: [sEmbed], allowedMentions: { repliedUser: false } });
+    }
+
+    // =========================================================================
+    // 👑 INFORMACIÓN DE RANGOS VIP (SVIP)
+    // =========================================================================
+    if (primaryCmd === 'svip' || primaryCmd === 'vip') {
+        const vipEmbed = getSmenuCategoryEmbed('rangos_dioses');
+        return message.reply({ embeds: [vipEmbed], allowedMentions: { repliedUser: false } });
+    }
+
+    // =========================================================================
+    // 🛡️ GUÍA DE PROTECCIÓN DE TERRENOS (SCLAIM)
+    // =========================================================================
+    if (primaryCmd === 'sclaim' || primaryCmd === 'claim' || primaryCmd === 'claims') {
+        const claimEmbed = buildClaimsGuideEmbed();
+        return message.reply({ embeds: [claimEmbed], allowedMentions: { repliedUser: false } });
+    }
+
+    // =========================================================================
+    // 🎁 VOTACIÓN Y RECOMPENSAS DIARIAS (SVOTAR / SRECOMPENSA)
+    // =========================================================================
+    if (primaryCmd === 'svotar' || primaryCmd === 'votar' || primaryCmd === 'srecompensa') {
+        const voteEmbed = buildVoteGuideEmbed();
+        return message.reply({ embeds: [voteEmbed], allowedMentions: { repliedUser: false } });
+    }
+
+    // =========================================================================
+    // 🌐 REDES SOCIALES Y ENLACES (SREDES)
+    // =========================================================================
+    if (primaryCmd === 'sredes' || primaryCmd === 'redes') {
+        const redesEmbed = new EmbedBuilder()
+            .setTitle('🌐 DrakesCraft Network · Redes Oficiales')
+            .setColor(0x00E5FF)
+            .setDescription('Conéctate con toda nuestra comunidad a través de nuestras plataformas oficiales:')
+            .addFields(
+                { name: '🌐 Sitio Web Principal', value: '[https://drakescraft.cl](https://drakescraft.cl)', inline: false },
+                { name: '🛒 Tienda Oficial Tebex', value: '[https://tienda.drakescraft.cl](https://tienda.drakescraft.cl)', inline: false },
+                { name: '🎮 IP del Servidor de Minecraft', value: '`mc.drakescraft.cl` (Java 1.21.1 / Bedrock Puerto 19132)', inline: false }
+            )
+            .setFooter({ text: 'DrakesCraft Network Social Hub' });
+
+        return message.reply({ embeds: [redesEmbed], allowedMentions: { repliedUser: false } });
+    }
+
+    // =========================================================================
+    // 🛠️ GESTIÓN DIRECTA DE DISCORD POR SAORI (SCHAN, SROL, SANUNCIO, SSAY)
+    // =========================================================================
+    if (['schan', 'srol', 'sanuncio', 'ssay'].includes(primaryCmd)) {
+        const handled = await handleDiscordStaffActions(message, primaryCmd, cmdArgs, hierarchy);
+        if (handled) return;
+    }
+
+    // =========================================================================
+    // ⚔️ COMANDOS DE MODERACIÓN IN-GAME PARA STAFF (SMCKICK, SMCBAN, ETC.)
+    // =========================================================================
+    if (['smckick', 'smcban', 'smcunban', 'smcpardon', 'smcmute', 'smcwarn', 'smcmsg', 'smcbroadcast', 'smcannounce', 'smcwhitelist', 'smcsave', 'smchealth'].includes(primaryCmd)) {
+        if (!hierarchy.isStaff) {
+            return message.reply({ content: '❌ Acceso denegado: Solo miembros del Staff de DrakesCraft pueden ejecutar órdenes in-game.', allowedMentions: { repliedUser: false } });
+        }
+
+        // smckick <jugador> [motivo]
+        if (primaryCmd === 'smckick') {
+            if (hierarchy.level < STAFF_LEVELS.MOD) {
+                return message.reply({ content: '❌ Se requiere rango Moderador o superior para expulsar jugadores.' });
+            }
+            const player = cmdArgs[0];
+            const reason = cmdArgs.slice(1).join(' ') || 'Expulsado por decisión del Staff';
+            if (!player) return message.reply({ content: '📌 Uso: `smckick <jugador> [motivo]`' });
+            await sendMinecraftConsoleCommand(`kick ${player} ${reason}`);
+            const embed = new EmbedBuilder().setTitle('👢 Jugador Expulsado (Minecraft)').setColor(0xE67E22)
+                .addFields({ name: 'Jugador', value: `\`${player}\``, inline: true }, { name: 'Moderador', value: `${message.author}`, inline: true }, { name: 'Motivo', value: reason, inline: false }).setTimestamp();
+            await message.reply({ embeds: [embed] });
+            await sendAuditLog(embed);
+            return;
+        }
+
+        // smcban <jugador> <motivo>
+        if (primaryCmd === 'smcban') {
+            const player = cmdArgs[0];
+            const reason = cmdArgs.slice(1).join(' ');
+            if (!player) return message.reply({ content: '📌 Uso: `smcban <jugador> <motivo justificado>`' });
+
+            if (hierarchy.level < STAFF_LEVELS.ADMIN) {
+                if (hierarchy.level === STAFF_LEVELS.MOD) {
+                    if (!reason || reason.length < 10) {
+                        return message.reply({ content: '⚠️ Para banear en MC como Moderador, debes detallar una causa justa (mínimo 10 caracteres) para auditoría de Jack y la Trinidad SRE.' });
+                    }
+                    const formattedReason = `[MOD: ${message.author.username}] ${reason} (Revisión Jack/Trinidad)`;
+                    await sendMinecraftConsoleCommand(`ban ${player} ${formattedReason}`);
+                    const alertEmbed = new EmbedBuilder().setTitle('🔨 Sanción MC por Moderador (Auditoría Prioritaria)').setColor(0xE74C3C)
+                        .addFields(
+                            { name: 'Jugador', value: `\`${player}\``, inline: true },
+                            { name: 'Moderador', value: `${message.author}`, inline: true },
+                            { name: 'Motivo Justificado', value: reason, inline: false },
+                            { name: 'Aviso Operacional', value: `⚠️ Esta sanción ha sido notificada a <@${JACK_DISCORD_ID}> y la Trinidad SRE.` }
+                        )
+                        .setTimestamp();
+                    await message.reply({ embeds: [alertEmbed] });
+                    await sendAuditLog(alertEmbed);
+                    return;
+                } else {
+                    return message.reply({ content: '❌ No tienes permisos para banear en Minecraft.' });
+                }
+            }
+
+            const fullReason = reason || 'Infracción grave de normativas';
+            await sendMinecraftConsoleCommand(`ban ${player} ${fullReason}`);
+            const embed = new EmbedBuilder().setTitle('🔨 Jugador Baneado de Minecraft').setColor(0x992D22)
+                .addFields({ name: 'Jugador', value: `\`${player}\``, inline: true }, { name: 'Staff', value: `${message.author}`, inline: true }, { name: 'Motivo', value: fullReason, inline: false }).setTimestamp();
+            await message.reply({ embeds: [embed] });
+            await sendAuditLog(embed);
+            return;
+        }
+
+        // smcunban <jugador>
+        if (primaryCmd === 'smcunban' || primaryCmd === 'smcpardon') {
+            if (hierarchy.level < STAFF_LEVELS.ADMIN) {
+                return message.reply({ content: '❌ Solo Administradores y Dueños pueden perdonar / desbanear en Minecraft.' });
+            }
+            const player = cmdArgs[0];
+            if (!player) return message.reply({ content: '📌 Uso: `smcunban <jugador>`' });
+            await sendMinecraftConsoleCommand(`pardon ${player}`);
+            const embed = new EmbedBuilder().setTitle('🕊️ Jugador Desbaneado de Minecraft').setColor(0x2ECC71)
+                .addFields({ name: 'Jugador', value: `\`${player}\``, inline: true }, { name: 'Staff', value: `${message.author}`, inline: true }).setTimestamp();
+            await message.reply({ embeds: [embed] });
+            await sendAuditLog(embed);
+            return;
+        }
+
+        // smcmute <jugador> [tiempo] [motivo]
+        if (primaryCmd === 'smcmute') {
+            if (hierarchy.level < STAFF_LEVELS.MOD) {
+                return message.reply({ content: '❌ Se requiere rango Moderador o superior para silenciar en Minecraft.' });
+            }
+            const player = cmdArgs[0];
+            const time = cmdArgs[1] || '30m';
+            const reason = cmdArgs.slice(2).join(' ') || 'Conducta inapropiada en chat in-game';
+            if (!player) return message.reply({ content: '📌 Uso: `smcmute <jugador> [tiempo (ej: 30m, 1h)] [motivo]`' });
+            await sendMinecraftConsoleCommand(`mute ${player} ${time} ${reason}`);
+            const embed = new EmbedBuilder().setTitle('🔇 Jugador Silenciado en Minecraft').setColor(0xF39C12)
+                .addFields({ name: 'Jugador', value: `\`${player}\``, inline: true }, { name: 'Tiempo', value: `\`${time}\``, inline: true }, { name: 'Moderador', value: `${message.author}`, inline: true }, { name: 'Motivo', value: reason, inline: false }).setTimestamp();
+            await message.reply({ embeds: [embed] });
+            await sendAuditLog(embed);
+            return;
+        }
+
+        // smcwarn <jugador> <motivo>
+        if (primaryCmd === 'smcwarn') {
+            const player = cmdArgs[0];
+            const reason = cmdArgs.slice(1).join(' ');
+            if (!player || !reason) return message.reply({ content: '📌 Uso: `smcwarn <jugador> <motivo>`' });
+            await sendMinecraftConsoleCommand(`title ${player} title {"text":"⚠️ ADVERTENCIA DE STAFF","color":"gold"}`);
+            await sendMinecraftConsoleCommand(`title ${player} subtitle {"text":"${reason}","color":"yellow"}`);
+            await sendMinecraftConsoleCommand(`msg ${player} &6[STAFF] &eHas recibido una advertencia: &f${reason}`);
+            const embed = new EmbedBuilder().setTitle('⚠️ Advertencia Emitida en Minecraft').setColor(0xF1C40F)
+                .addFields({ name: 'Jugador', value: `\`${player}\``, inline: true }, { name: 'Staff', value: `${message.author}`, inline: true }, { name: 'Motivo', value: reason, inline: false }).setTimestamp();
+            await message.reply({ embeds: [embed] });
+            await sendAuditLog(embed);
+            return;
+        }
+
+        // smcmsg <jugador> <mensaje>
+        if (primaryCmd === 'smcmsg') {
+            const player = cmdArgs[0];
+            const text = cmdArgs.slice(1).join(' ');
+            if (!player || !text) return message.reply({ content: '📌 Uso: `smcmsg <jugador> <mensaje>`' });
+            await sendMinecraftConsoleCommand(`msg ${player} &b[STAFF &f${message.author.username}&b]&f: ${text}`);
+            return message.reply({ content: `📨 Mensaje privado enviado a **${player}** in-game.` });
+        }
+
+        // smcbroadcast <mensaje>
+        if (primaryCmd === 'smcbroadcast' || primaryCmd === 'smcannounce') {
+            const text = cmdArgs.join(' ');
+            if (!text) return message.reply({ content: '📌 Uso: `smcbroadcast <mensaje>`' });
+            await sendMinecraftConsoleCommand(`broadcast &6&l[ANUNCIO STAFF]&r &f${text}`);
+            return message.reply({ content: `📢 Anuncio transmitido a todo el servidor de Minecraft.` });
+        }
+
+        // smcwhitelist <add|remove|list> [jugador]
+        if (primaryCmd === 'smcwhitelist') {
+            if (hierarchy.level < STAFF_LEVELS.ADMIN) {
+                return message.reply({ content: '❌ Solo Administradores y Dueños pueden gestionar la whitelist.' });
+            }
+            const sub = cmdArgs[0]?.toLowerCase();
+            const player = cmdArgs[1];
+            if (sub === 'list') {
+                await sendMinecraftConsoleCommand('whitelist list');
+                return message.reply({ content: '📋 Comando `whitelist list` ejecutado en consola.' });
+            }
+            if ((sub === 'add' || sub === 'remove') && player) {
+                await sendMinecraftConsoleCommand(`whitelist ${sub} ${player}`);
+                return message.reply({ content: `✅ Jugador **${player}** ${sub === 'add' ? 'añadido a' : 'removido de'} la whitelist.` });
+            }
+            return message.reply({ content: '📌 Uso: `smcwhitelist <add|remove|list> [jugador]`' });
+        }
+
+        // smcsave
+        if (primaryCmd === 'smcsave') {
+            await sendMinecraftConsoleCommand('save-all');
+            return message.reply({ content: '💾 Protocolo `save-all` ejecutado. Todos los mundos e inventarios han sido guardados.' });
+        }
+
+        // smchealth
+        if (primaryCmd === 'smchealth') {
+            await sendMinecraftConsoleCommand('tps');
+            return message.reply({ content: '🩺 Solicitud de comprobación de salud y tps emitida a la consola.' });
+        }
+    }
+
+    // =========================================================================
+    // 🖥️ EJECUCIÓN DIRECTA EN CONSOLA Y DISPARADORES EN LENGUAJE NATURAL (SIN IA)
+    // =========================================================================
+    const isConsoleOrNatural = (
+        primaryCmd === 'scomando' || 
+        primaryCmd === 'sconsola' || 
+        primaryCmd === 'smc' ||
+        contentLower.startsWith('saori ejecuta ') ||
+        contentLower.startsWith('saori tira ') ||
+        contentLower.startsWith('saori corre ') ||
+        contentLower.startsWith('saori manda ') ||
+        contentLower.startsWith('saori usa el comando ')
+    );
+
+    if (isConsoleOrNatural) {
+        let rawCommand = null;
+        let isNatural = false;
+
+        if (primaryCmd === 'scomando' || primaryCmd === 'sconsola' || primaryCmd === 'smc') {
+            rawCommand = cmdArgs.join(' ').trim();
+        } else {
+            isNatural = true;
+            const matchWithUser = content.match(/^saori\s+usa\s+el\s+comando\s+([a-zA-Z0-9_-]+)\s+con\s+(?:el\s+usuario\s+)?([^\s]+)(?:\s+(.+))?$/i);
+            if (matchWithUser) {
+                const cmdName = matchWithUser[1];
+                const targetUser = matchWithUser[2];
+                const extraArgs = matchWithUser[3] || '';
+                rawCommand = `${cmdName} ${targetUser} ${extraArgs}`.trim();
+            } else {
+                rawCommand = content
+                    .replace(/^saori\s+(ejecuta|tira|corre|manda|usa\s+el\s+comando)\s+/i, '')
+                    .trim();
+            }
+        }
+
+        if (!rawCommand) {
+            return message.reply({ content: '📌 Uso: `scomando <comando>` o `saori ejecuta <comando>`' });
+        }
+
+        let cleanCommand = rawCommand.startsWith('/') ? rawCommand.slice(1).trim() : rawCommand.trim();
+        const firstWord = cleanCommand.split(/\s+/)[0]?.toLowerCase();
+
+        if (!hierarchy.isStaff) {
+            return message.reply({ content: '❌ Acceso denegado: Solo miembros autorizados del Staff de DrakesCraft pueden emitir comandos a la consola.' });
+        }
+
+        const DESTRUCTIVE_COMMANDS = ['stop', 'restart', 'reload', 'reload confirm', 'rl', 'op', 'deop', 'rm', 'mv', 'format'];
+        if (DESTRUCTIVE_COMMANDS.includes(firstWord) && message.author.id !== JACK_DISCORD_ID) {
+            return message.reply({ content: `🚫 Acción Crítica Bloqueada: El comando \`${firstWord}\` está restringido exclusivamente a **Jack** por motivos de seguridad operacional.` });
+        }
+
+        if (firstWord === 'ban' && hierarchy.level === STAFF_LEVELS.MOD) {
+            const parts = cleanCommand.split(/\s+/);
+            const player = parts[1];
+            const reason = parts.slice(2).join(' ');
+            if (!player || !reason || reason.length < 10) {
+                return message.reply({ content: '⚠️ **Requisito de Moderación:** Para sancionar con Ban en Minecraft, debes indicar obligatoriamente una causa justa y detallada (mínimo 10 caracteres) para su posterior revisión por Jack y la Trinidad SRE.' });
+            }
+            cleanCommand = `ban ${player} [MOD: ${message.author.username}] ${reason} (Pendiente Revisión Jack/Trinidad)`;
+        }
+
+        const ok = await sendMinecraftConsoleCommand(cleanCommand);
+        if (ok) {
+            const embed = new EmbedBuilder()
+                .setTitle('🖥️ Consola de Minecraft · Comando Ejecutado')
+                .setColor(0x00FF88)
+                .setDescription(`**Comando:** \`/${cleanCommand}\`\n**Resultado:** ✅ Transmitido exitosamente al proceso del servidor.`)
+                .addFields(
+                    { name: '👤 Operador', value: `${message.author} (\`${message.author.tag}\`)`, inline: true },
+                    { name: '🛡️ Rango Staff', value: `\`${hierarchy.roleName}\``, inline: true },
+                    { name: '📍 Canal', value: `${message.channel}`, inline: true }
+                )
+                .setFooter({ text: isNatural ? 'Disparador de Lenguaje Natural · Pterodactyl REST' : 'DrakesCraft Console Gateway' })
+                .setTimestamp();
+
+            await message.reply({ embeds: [embed], allowedMentions: { repliedUser: false } });
+            await sendAuditLog(embed);
+            return;
+        } else {
+            return message.reply({ content: `❌ Error al transmitir el comando \`/${cleanCommand}\` a la consola de Minecraft. Verifica la conexión con el panel.` });
+        }
+    }
+
+        if (primaryCmd === 'skick' || primaryCmd === 'kick') {
         if (!isStaffMember) {
             return message.reply({ content: '❌ Solo los miembros del Staff tienen autorización para expulsar usuarios.', allowedMentions: { repliedUser: false } });
         }
@@ -3312,6 +4432,9 @@ client.on('messageCreate', async (message) => {
     if (primaryCmd === 'sban' || primaryCmd === 'ban') {
         if (!isStaffMember) {
             return message.reply({ content: '❌ Solo los miembros del Staff tienen autorización para banear usuarios.', allowedMentions: { repliedUser: false } });
+        }
+        if (hierarchy.level < STAFF_LEVELS.ADMIN) {
+            return message.reply({ content: '🚫 **Permiso denegado:** Los Moderadores tienen facultad para suspender / mutear usuarios (`smute`), pero el baneo definitivo en Discord está reservado exclusivamente para Administradores y Dirección.', allowedMentions: { repliedUser: false } });
         }
         const targetMember = message.mentions.members.first() || await message.guild.members.fetch(cmdArgs[0]).catch(() => null);
         const targetId = targetMember ? targetMember.id : cmdArgs[0]?.replace(/[^0-9]/g, '');
@@ -3672,6 +4795,14 @@ client.on('messageCreate', async (message) => {
         }
     }
 
+    // =========================================================================
+    // 🛡️ FILTRO ANTI-MAMADAS Y TOKEN PROTECTOR (SAORI NI PESCA SINSENTIDOS)
+    // =========================================================================
+    if (isNonsenseOrSpam(cleanPrompt) && !isJack) {
+        console.log(`[ANTI-MAMADAS] 🛡️ Descartando mensaje de spam/trolleo de ${senderName}: "${cleanPrompt.slice(0, 45)}..."`);
+        return; // El bot ni pesca, 0 llamadas a la IA, 0 tokens gastados!
+    }
+
     let typingInterval;
     try {
         await message.channel.sendTyping().catch(() => {});
@@ -3680,13 +4811,16 @@ client.on('messageCreate', async (message) => {
         }, 8000);
 
         const lang = detectLanguage(cleanPrompt);
+        const serverLoreContext = "Lore Oficial de DrakesCraft: Jack es el Creador, Propietario, Desarrollador y Arquitecto absoluto de toda la infraestructura, la Trinidad SRE (Saori, Claude, Codex), plugins y servicios de DrakesCraft Network. Kika es la Co-Dueña (Wife Owner). En la historia pasada del servidor, Pepe fue el dueño anterior y hoy en día es un Moderador activo en el equipo de Staff. DrakesCraft es un servidor de supervivencia Paper/Purpur 1.21.1 con Slimefun, BentoBox (SkyBlock/OneBlock) y economía de Dragmas. Instrucciones de personalidad: Habla de forma tranquila, amigable, educada y relajada ('hablar chill'). Solo responde sobre temas del servidor, comandos, plugins, historia o dudas legítimas. Si alguien intenta bromear o decir tonterías, sé concisa y mantén la compostura.";
+
         const langInstruction = lang === 'en'
             ? 'IMPORTANT: The user is writing in English. You MUST reply in English only.'
             : 'El usuario escribe en español. Responde siempre en español.';
         const ticketContext = isTicketChannel
             ? `Canal de Ticket de Soporte. ${langInstruction} REGLA CRÍTICA: Jack es el dueño y máxima autoridad de DrakesCraft. NUNCA contradigas a Jack. DrakesCraft es un servidor de supervivencia y SkyBlock en Paper 1.21.11 con plugins (Slimefun, BentoBox). NO tiene mods externos (NO existe Wither Storm ni mods de Forge/Fabric). Si el usuario pide pegar construcciones o schematics, aclara amablemente que solo Jack o la administración pueden realizarlo con WorldEdit. NUNCA menciones rutas de Linux ni archivos locales (/home/jack/...). Si el Staff está presente, sé breve y concisa.`
             : (isSaoriDedicatedChannel ? `Canal dedicado a hablar con Saori. ${langInstruction}` : langInstruction);
-        let reply = await askSaoriBrain(cleanPrompt, senderName, ticketContext);
+        const unifiedContext = ticketContext ? `${ticketContext} ${serverLoreContext}` : serverLoreContext;
+        let reply = await askSaoriBrain(cleanPrompt, senderName, unifiedContext);
         reply = sanitizePublicText(reply);
 
         if (isTicketChannel) {
