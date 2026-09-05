@@ -827,6 +827,123 @@ async function sendAuditLog(embed) {
         console.error('[AUDIT-LOG] Error al despachar log a auditoría:', e.message);
     }
 }
+const CHANNELS_MOD_LOGS = '1539637396856111165'; // #🚨・ᴍᴏᴅ-ʟᴏɢs
+
+async function sendModLog(embed) {
+    try {
+        const modChan = client.channels.cache.get(CHANNELS_MOD_LOGS) || 
+                        await client.channels.fetch(CHANNELS_MOD_LOGS).catch(() => null);
+        if (modChan) {
+            await modChan.send({ embeds: [embed] });
+        }
+    } catch (e) {
+        console.error('[MOD-LOG] Error al despachar log a mod-logs:', e.message);
+    }
+}
+
+function buildShelpStaffEmbed(category = 'all') {
+    const embed = new EmbedBuilder()
+        .setColor(0x00E5FF)
+        .setFooter({ text: 'DrakesCraft SRE & Staff Operational Suite v3.0' })
+        .setTimestamp();
+
+    if (category === 'all') {
+        embed.setTitle('🛡️ S.A.O.R.I. · Manual Operativo del Staff (shelpstaff)')
+            .setDescription('**Guía de Comandos y Directivas para el Staff de DrakesCraft Network** 🐉\n' +
+                            'Selecciona los botones inferiores para filtrar por categoría jerárquica.')
+            .addFields(
+                {
+                    name: '👑 1. Dirección & Propietarios (Jack & Kika)',
+                    value: '• `scomando <stop|restart|reload confirm|op|deop>` · Comandos críticos de consola.\n' +
+                           '• Acceso total a infraestructura, bypass de filtros y autorizaciones especiales.'
+                },
+                {
+                    name: '🛡️ 2. Administradores (Jessiel & Chagui)',
+                    value: '• `sban @usuario [motivo]` · Baneo definitivo en Discord.\n' +
+                           '• `smcban <jugador> [motivo]` · Baneo en consola de Minecraft.\n' +
+                           '• `smcunban <jugador>` · Desbaneo en Minecraft.\n' +
+                           '• `schan <rename|topic|slowmode|lock|unlock>` · Gestión directa de canales en Discord.\n' +
+                           '• `srol <create|add|remove>` · Gestión directa de roles en Discord.\n' +
+                           '• `sanuncio [#canal] <msg>` · Comunicado institucional con firma de Staff.\n' +
+                           '• `scomando <cmd>` · Ejecución general en consola de Minecraft.\n' +
+                           '• `smcwhitelist <add|remove|list> [jugador]` · Gestión de lista blanca.'
+                },
+                {
+                    name: '🔧 3. Desarrolladores (Lauti & Nix)',
+                    value: '• `stps` · Telemetría en vivo (RAM, CPU%, Uptime, Jugadores y TPS 20.0).\n' +
+                           '• `slogs [filtro]` · Visor interactivo de logs con botones de paginación.\n' +
+                           '• `smchealth` · Comprobación de salud y latencia del servidor.'
+                },
+                {
+                    name: '⚔️ 4. Moderadores (Derem, Pepe & Tomi)',
+                    value: '• `smute @usuario <minutos> [motivo]` · Silencio temporal (timeout).\n' +
+                           '• `sunmute @usuario` · Retirar silencio.\n' +
+                           '• `skick @usuario [motivo]` · Expulsión de Discord.\n' +
+                           '• `swarn @usuario <motivo>` · Advertencia formal al usuario.\n' +
+                           '• `smckick <jugador> [motivo]` · Expulsar jugador de Minecraft.\n' +
+                           '• `smcmute <jugador> [tiempo] [motivo]` · Silenciar jugador in-game.\n' +
+                           '• `smcwarn <jugador> <motivo>` · Advertencia en pantalla y chat in-game.\n' +
+                           '• `smcmsg <jugador> <mensaje>` · Mensaje privado oficial in-game.\n' +
+                           '• `smcbroadcast <mensaje>` · Transmitir anuncio global in-game.\n' +
+                           '• `smcban <jugador> <motivo>` · **Ban en MC condicionado** (requiere causa justificada de +10 caracteres; audita a Jack y Trinidad).\n' +
+                           '⚠️ *Aviso: Los Moderadores tienen prohibido banear de Discord (`sban`).*'
+                },
+                {
+                    name: '🗣️ 5. Lenguaje Natural para Staff (Sin IA)',
+                    value: '• `saori ejecuta <cmd>` / `saori tira <cmd>` / `saori corre <cmd>`\n' +
+                           '• `saori usa el comando <cmd>`\n' +
+                           '• `saori usa el comando <kick|ban|mute> con el usuario <jugador> [motivo]`'
+                }
+            );
+    } else if (category === 'admin') {
+        embed.setTitle('🛡️ Manual Operativo · Comandos de Administradores')
+            .setColor(0x9B59B6)
+            .setDescription('Capacidades exclusivas para miembros con rango **Administrador** y **Dueños**:')
+            .addFields(
+                { name: '🔨 Sanciones Globales', value: '• `sban @usuario [motivo]` · Baneo definitivo en Discord con log.\n• `smcban <jugador> [motivo]` · Ban directo en Minecraft.\n• `smcunban <jugador>` · Perdón/Unban en Minecraft.' },
+                { name: '🛠️ Gestión de Discord en Vivo', value: '• `schan rename #canal nuevo-nombre` · Renombrar canales.\n• `schan topic #canal descripción` · Modificar tema del canal.\n• `schan slowmode [#canal] <segundos>` · Ajustar modo pausado.\n• `schan lock [#canal]` · Bloquear canal para `@everyone`.\n• `schan unlock [#canal]` · Desbloquear canal.\n• `srol create <Nombre> [#HexColor]` · Crear rol.\n• `srol add @usuario <rol>` · Asignar rol.\n• `srol remove @usuario <rol>` · Retirar rol.\n• `sanuncio [#canal] <mensaje>` · Publicar anuncio oficial.\n• `ssay [#canal] <mensaje>` · Hablar a través de Saori.' },
+                { name: '🖥️ Consola de Minecraft', value: '• `scomando <comando>` · Despacho directo a Pterodactyl API.\n• `smcwhitelist <add|remove|list> [jugador]` · Gestión de whitelist.\n• `smcsave` · Forzar guardado de mundos e inventarios (`save-all`).' }
+            );
+    } else if (category === 'mod') {
+        embed.setTitle('⚔️ Manual Operativo · Comandos de Moderadores')
+            .setColor(0xE67E22)
+            .setDescription('Directivas y comandos para **Moderadores** en Discord y Minecraft:')
+            .addFields(
+                { name: '🔇 Moderación en Discord', value: '• `smute @usuario <minutos> [motivo]` · Suspender temporalmente (timeout).\n• `sunmute @usuario` · Retirar suspensión.\n• `skick @usuario [motivo]` · Expulsar miembro.\n• `swarn @usuario <motivo>` · Advertencia formal.\n• `slowmode <segundos>` · Ajustar pausa en el canal actual.\n• `slock` / `sunlock` · Bloqueo rápido de emergencia.' },
+                { name: '🎮 Moderación en Minecraft', value: '• `smckick <jugador> [motivo]` · Expulsar del servidor in-game.\n• `smcmute <jugador> [tiempo] [motivo]` · Silenciar chat in-game.\n• `smcwarn <jugador> <motivo>` · Enviar aviso en pantalla y chat.\n• `smcmsg <jugador> <mensaje>` · Mensaje privado oficial del Staff.\n• `smcbroadcast <mensaje>` · Anuncio global a todos los jugadores.' },
+                { name: '⚠️ Protocolo de Baneo en Minecraft', value: '• `smcban <jugador> <motivo justificado>`\n*Requisito obligatorio:* Debes especificar una causa justa y detallada (mínimo 10 caracteres). El ban se aplica con la etiqueta de revisión y envía una alerta de alta prioridad a Jack y a la Trinidad SRE en `#🛡️・auditoría`.' },
+                { name: '🚫 Restricción Estricta', value: 'Los Moderadores **NO tienen autorización para banear en Discord (`sban`)**. Si un caso requiere ban en Discord, escálalo a un Administrador o Dueño.' }
+            );
+    } else if (category === 'dev') {
+        embed.setTitle('🔧 Manual Operativo · Comandos de Desarrolladores & SRE')
+            .setColor(0x3498DB)
+            .setDescription('Herramientas técnicas y de telemetría para **Developers** y diagnóstico:')
+            .addFields(
+                { name: '⚡ Telemetría del Servidor (stps)', value: '• `stps` (o `tps`) en cualquier canal.\n• Muestra en tiempo real: RAM usada (GB), CPU%, Uptime, Disco, Jugadores conectados (`online/max`), versión del motor (`Purpur 1.21.1`) y TPS 20.0.' },
+                { name: '📜 Visor de Logs en Vivo (slogs)', value: '• `slogs [filtro]` · Consulta la consola en tiempo real.\n• Botones interactivos:\n  - `◀️ Ver Más Atrás`: Navega páginas anteriores del log.\n  - `🔄 Actualizar`: Re-consulta los últimos eventos.\n  - `▶️ Más Recientes`: Avanza hacia el presente.\n  - `⏮️ Al Inicio`: Vuelve a la primera página.' },
+                { name: '🩺 Salud del Servidor', value: '• `smchealth` · Solicita informe de TPS y salud a Paper/Purpur.\n• `scomando spark health` · Diagnóstico de rendimiento del motor.' }
+            );
+    } else if (category === 'natural') {
+        embed.setTitle('🗣️ Disparadores en Lenguaje Natural (Staff Direct)')
+            .setColor(0x2ECC71)
+            .setDescription('Puedes emitir órdenes directamente a Saori sin comandos de prefijo (exclusivo Staff):')
+            .addFields(
+                { name: 'Ejecución de Consola', value: '• `saori ejecuta <comando>`\n• `saori tira <comando>`\n• `saori corre <comando>`\n• `saori manda <comando>`\n• `saori usa el comando <comando>`\n*Ejemplo:* `saori ejecuta broadcast Mantenimiento en 15 minutos`' },
+                { name: 'Acciones Dirigidas a Usuarios', value: '• `saori usa el comando <acción> con [el usuario] <jugador> [motivo]`\n*Ejemplo 1:* `saori usa el comando kick con el usuario Steve123 uso indebido de bugs`\n*Ejemplo 2:* `saori usa el comando mute con Pepito 20m flood en general`\n*Ejemplo 3:* `saori usa el comando msg con Steve Por favor revisa el canal de soporte`' }
+            );
+    }
+
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('btn_shelpstaff_all').setLabel('📋 Resumen').setStyle(category === 'all' ? ButtonStyle.Success : ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('btn_shelpstaff_admin').setLabel('🛡️ Admins').setStyle(category === 'admin' ? ButtonStyle.Primary : ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('btn_shelpstaff_mod').setLabel('⚔️ Mods').setStyle(category === 'mod' ? ButtonStyle.Primary : ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('btn_shelpstaff_dev').setLabel('🔧 Devs & SRE').setStyle(category === 'dev' ? ButtonStyle.Primary : ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('btn_shelpstaff_natural').setLabel('🗣️ Natural').setStyle(category === 'natural' ? ButtonStyle.Primary : ButtonStyle.Secondary)
+    );
+
+    return { embed, row };
+}
+
 
 // =========================================================================
 // 🛡️ SISTEMA DE PERMISOS RBAC Y MATRIZ JERÁRQUICA DE STAFF (SAORI v3.0)
@@ -2432,6 +2549,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (interaction.isButton()) {
             const id = interaction.customId;
 
+            // BOTONES DE SHELPSTAFF
+            if (id.startsWith('btn_shelpstaff_')) {
+                const category = id.replace('btn_shelpstaff_', '');
+                const hierarchy = getStaffMemberHierarchy(interaction.member, interaction.user.id);
+                if (!hierarchy.isStaff) {
+                    return await interaction.reply({ content: '❌ Solo los miembros del Staff autorizados pueden navegar el manual de Staff.', ephemeral: true });
+                }
+                const { embed, row } = buildShelpStaffEmbed(category);
+                return await interaction.update({ embeds: [embed], components: [row] });
+            }
+
             // BOTONES DE VISOR DE LOGS DE MINECRAFT
             if (id.startsWith('btn_slogs_')) {
                 const parts = id.split('_');
@@ -3164,7 +3292,7 @@ client.on('messageCreate', async (message) => {
         'skick', 'sban', 'smute', 'stimeout', 'sunmute', 'swarn', 'slowmode', 'slock', 'sunlock', 
         'sonline', 'sjugadores', 'smisroles', 'sreglas',
         'ssugerencia', 'sugerencia', '!sugerencia', 'sreencarnar', 'reencarnar', '!reencarnar',
-        'stps', 'tps', 'slogs', 'logs', 'smenu', 'menu', 'sperfil', 'perfil', 'smiperfil',
+        'shelpstaff', 'staffhelp', 'sstaffhelp', 'stps', 'tps', 'slogs', 'logs', 'smenu', 'menu', 'sperfil', 'perfil', 'smiperfil',
         'sstaff', 'staff', 'sinfo', 'sserverinfo', 'svip', 'vip', 'sclaim', 'claim', 'claims',
         'svotar', 'votar', 'srecompensa', 'sredes',
         'scomando', 'sconsola', 'smc', 'smckick', 'smcban', 'smcunban', 'smcpardon', 'smcmute',
@@ -3966,6 +4094,17 @@ client.on('messageCreate', async (message) => {
     // =========================================================================
 
     // =========================================================================
+    // 🛡️ GUÍA COMPLETA DE COMANDOS DE STAFF (SHELPSTAFF / STAFFHELP)
+    // =========================================================================
+    if (primaryCmd === 'shelpstaff' || primaryCmd === 'staffhelp' || primaryCmd === 'sstaffhelp') {
+        if (!isStaffMember) {
+            return message.reply({ content: '❌ Acceso denegado: El manual operativo de Staff está reservado exclusivamente para miembros del Staff de DrakesCraft.', allowedMentions: { repliedUser: false } });
+        }
+        const { embed, row } = buildShelpStaffEmbed('all');
+        return message.reply({ embeds: [embed], components: [row], allowedMentions: { repliedUser: false } });
+    }
+
+    // =========================================================================
     // ⚡ TELEMETRÍA EN VIVO (STPS EN CUALQUIER CANAL)
     // =========================================================================
     if (primaryCmd === 'stps' || primaryCmd === 'tps') {
@@ -4463,7 +4602,7 @@ client.on('messageCreate', async (message) => {
                 .setTimestamp();
 
             await message.reply({ embeds: [banEmbed], allowedMentions: { repliedUser: false } });
-            await sendAuditLog(banEmbed);
+            await sendAuditLog(banEmbed); await sendModLog(banEmbed);
             return;
         } catch (e) {
             return message.reply({ content: `❌ Error al banear usuario: ${e.message}` });
@@ -4504,7 +4643,7 @@ client.on('messageCreate', async (message) => {
                 .setTimestamp();
 
             await message.reply({ embeds: [muteEmbed], allowedMentions: { repliedUser: false } });
-            await sendAuditLog(muteEmbed);
+            await sendAuditLog(muteEmbed); await sendModLog(muteEmbed);
             return;
         } catch (e) {
             return message.reply({ content: `❌ Error al silenciar: ${e.message}` });
@@ -4554,7 +4693,7 @@ client.on('messageCreate', async (message) => {
                 .setTimestamp();
 
             await message.reply({ embeds: [warnEmbed], allowedMentions: { repliedUser: false } });
-            await sendAuditLog(warnEmbed);
+            await sendAuditLog(warnEmbed); await sendModLog(warnEmbed);
             return;
         } catch (e) {
             return message.reply({ content: `❌ Error al registrar advertencia: ${e.message}` });
