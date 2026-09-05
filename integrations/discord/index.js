@@ -2409,128 +2409,203 @@ async function sendDenunciasPanel(targetChannel) {
 
 
 // =========================================================================
-// GUÍA INTERACTIVA DE COMANDOS SHELP (Navigation Suite 2.0)
+// =========================================================================
+// 🧭 GUÍA INTERACTIVA DE COMANDOS SHELP (Navigation Suite v3.0)
 // =========================================================================
 function getShelpCategoryEmbed(category) {
+    const avatarUrl = client.user?.displayAvatarURL();
     switch (category) {
         case 'tickets':
             return new EmbedBuilder()
-                .setTitle('🎫 Categoría: Tickets & Trinidad SRE')
+                .setTitle('🎫 Categoría: Tickets & Soporte Autónomo SRE')
                 .setColor(0x3498DB)
-                .setDescription('El sistema de soporte autónomo de DrakesCraft resuelve incidencias con IA y asignación directa a la Trinidad:')
+                .setDescription('El sistema de soporte de DrakesCraft combina asistencia por IA y escalado automático a la Trinidad SRE:')
                 .addFields(
-                    { name: '• sticket <problema>', value: 'Abre un ticket técnico en Star. La Trinidad (Claude Code, Codex Astra, Antigravity) analiza los logs del servidor y genera el diagnóstico o parche.' },
-                    { name: '• Paneles Interactivos en #tickets-soporte', value: 'Usa los botones para abrir tickets guiados con modales: Compras Tebex, Bugs, Pérdidas de ítems, Dudas y Postulaciones a Staff.' },
-                    { name: '• Cierre y Auditoría', value: 'Cada ticket se cierra con confirmación segura y se archiva en el canal de auditoría.' }
+                    { 
+                        name: '• sticket <problema>', 
+                        value: 'Abre un ticket técnico en Star. La Trinidad (Claude Code, Codex Astra, Antigravity) analiza logs del servidor en tiempo real y diagnostica anomalías.\n*Ejemplo:* `sticket No puedo abrir la mesa de crafteo reforzada en SkyBlock`' 
+                    },
+                    { 
+                        name: '• Paneles Interactivos en #tickets-soporte', 
+                        value: 'Usa los botones guiados para abrir tickets con formularios ordenados:\n' +
+                               '🛒 *Compras Tebex* · 🐛 *Bugs & Errores* · 🎒 *Pérdidas de Ítems* · ❓ *Dudas Generales* · 🛡️ *Postulación a Staff* · ⚖️ *Denuncias*' 
+                    },
+                    { 
+                        name: '• Protocolo de Cierre Seguro & Auditoría', 
+                        value: 'Los tickets cuentan con confirmación de dos pasos para prevenir cierres accidentales y transcriben un resumen automático en `#🛡️・auditoría`.' 
+                    }
                 )
-                .setFooter({ text: 'S.A.O.R.I. Tickets & SRE Suite' });
+                .setFooter({ text: 'S.A.O.R.I. Tickets & SRE Suite · DrakesCraft', iconURL: avatarUrl });
 
         case 'musica':
             return new EmbedBuilder()
-                .setTitle('🎵 Categoría: Música & Streaming')
+                .setTitle('🎵 Categoría: Música & Streaming en Voz')
                 .setColor(0x9B59B6)
-                .setDescription('Motor de música en alta fidelidad compatible con YouTube y Spotify:')
+                .setDescription('Reproductor de audio de alta fidelidad compatible con YouTube, Spotify y transmisiones web:')
                 .addFields(
-                    { name: '• splay <canción / link>', value: 'Reproduce canciones o playlists de YouTube y Spotify en tu canal de voz actual.' },
-                    { name: '• sskip', value: 'Salta a la siguiente pista de la cola de reproducción.' },
-                    { name: '• spause / sresume', value: 'Pausa o reanuda la música.' },
-                    { name: '• squeue', value: 'Muestra la lista de pistas próximas en cola con duración.' },
-                    { name: '• sstop', value: 'Detiene la música y desconecta al bot del canal de voz.' },
-                    { name: '• smusica', value: 'Guía del reproductor y comando `/musica` dentro de Minecraft.' }
+                    { name: '• splay <canción / link>', value: 'Reproduce pistas o playlists de Spotify/YouTube en tu canal de voz actual.' },
+                    { name: '• sskip', value: 'Salta a la siguiente canción en la cola de reproducción.' },
+                    { name: '• spause / sresume', value: 'Pausa o reanuda la pista actual.' },
+                    { name: '• squeue', value: 'Muestra la lista de canciones en cola con duración total.' },
+                    { name: '• sstop', value: 'Detiene la música, vacía la cola y desconecta a Saori del canal.' },
+                    { name: '• smusica', value: 'Muestra la guía del reproductor y el comando `/musica` disponible in-game.' }
                 )
-                .setFooter({ text: 'S.A.O.R.I. Music Suite' });
+                .setFooter({ text: 'S.A.O.R.I. Music Suite · DrakesCraft', iconURL: avatarUrl });
 
         case 'stats':
             return new EmbedBuilder()
                 .setTitle('📊 Categoría: Telemetría & Rendimiento')
                 .setColor(0x2ECC71)
-                .setDescription('Supervisión en tiempo real de nodos y servidores de la red:')
+                .setDescription('Supervisión en vivo de servidores, nodos de cómputo y estado de la red:')
                 .addFields(
-                    { name: '• sstats / sstats drakes', value: 'TPS del servidor PaperMC, memoria y estado de DrakesCraft.' },
-                    { name: '• sstats star', value: 'Telemetría del servidor central Star (RAM, Docker, Uptime).' },
-                    { name: '• sstats nexus / sstats nova', value: 'Estado de nodos de cómputo y failover.' },
-                    { name: '• sping', value: 'Mide la latencia websocket con Discord y el enlace con Star.' },
-                    { name: '• sonline / sjugadores', value: 'Lista de jugadores conectados actualmente en Minecraft.' }
+                    { 
+                        name: '• stps (o tps)', 
+                        value: 'Telemetría completa en vivo: RAM asignada/usada (GB), CPU%, Uptime, Jugadores conectados (`online/100`), versión del motor (`Purpur 1.21.1`) y TPS 20.0.' 
+                    },
+                    { 
+                        name: '• sonline (o sjugadores)', 
+                        value: 'Lista detallada de jugadores conectados en Minecraft con conteo en tiempo real.' 
+                    },
+                    { 
+                        name: '• sstats / sstats drakes', 
+                        value: 'Rendimiento y estado general de la red Paper/Purpur.' 
+                    },
+                    { 
+                        name: '• sstats star / nova / nexus', 
+                        value: 'Estado del servidor físico central Star (RAM, Docker) y nodos de cómputo.' 
+                    },
+                    { 
+                        name: '• sping', 
+                        value: 'Latencia del WebSocket con Discord y enlace con los nodos de Star.' 
+                    }
                 )
-                .setFooter({ text: 'S.A.O.R.I. Telemetría SRE' });
+                .setFooter({ text: 'S.A.O.R.I. Telemetría SRE · DrakesCraft', iconURL: avatarUrl });
 
         case 'drakes':
             return new EmbedBuilder()
-                .setTitle('🌐 Categoría: DrakesCraft & Enlaces Oficiales')
+                .setTitle('🧭 Categoría: Menú, Servidor & Modalidades')
                 .setColor(0xF39C12)
-                .setDescription('Accesos directos a la infraestructura y comunidad:')
+                .setDescription('Accesos directos al servidor de Minecraft, guías oficiales y utilidades:')
                 .addFields(
-                    { name: '• sip', value: 'Muestra la IP oficial de Java (`mc.drakescraft.cl:25565`) y Bedrock (`19132`).' },
-                    { name: '• sweb', value: 'Enlace al portal web oficial: https://web.drakescraft.cl' },
-                    { name: '• stienda', value: 'Tienda oficial con garantía de entrega y soporte: https://web.drakescraft.cl' },
-                    { name: '• sguia', value: 'Enciclopedia de Slimefun, economía, parcelas y modalidades.' },
-                    { name: '• sreglas', value: 'Normativa oficial de convivencia, juego limpio y protecciones.' },
-                    { name: '• sreencarnar <código>', value: 'Confirma el protocolo de reinicio voluntario con Prestigio iniciado in-game.' }
+                    { name: '• smenu (o menu)', value: 'Abre el menú interactivo con selectores desplegables de 8 categorías y botones rápidos.' },
+                    { name: '• sperfil [@usuario] (o smiperfil)', value: 'Muestra tu ficha de jugador: antigüedad, fecha de ingreso, roles asignados y rango.' },
+                    { name: '• sstaff (o staff)', value: 'Directorio oficial del equipo con estado de presencia en tiempo real (🟢 En línea, 🔴 DND, etc.).' },
+                    { name: '• svip (o vip)', value: 'Catálogo de los 11 rangos Dioses del Olimpo y beneficios exclusivos.' },
+                    { name: '• sclaim (o claim)', value: 'Guía interactiva para proteger terrenos con la Pala de Oro (`/claim`).' },
+                    { name: '• svotar (o votar)', value: 'Enlaces de votación para ganar recompensas diarias y llaves in-game.' },
+                    { name: '• sredes (o redes)', value: 'Nuestras redes sociales oficiales (TikTok, Instagram, YouTube, Discord).' },
+                    { name: '• sip', value: 'IP oficial de conexión: Java (`mc.drakescraft.cl:25565`) y Bedrock (`Puerto: 19132`).' },
+                    { name: '• sweb / stienda', value: 'Portal oficial: https://web.drakescraft.cl · Tienda: https://tienda.drakescraft.cl' },
+                    { name: '• sguia / sreglas', value: 'Enciclopedia de modalidades (Slimefun, Claims, Economía) y normativa comunitaria.' },
+                    { name: '• sreencarnar <código>', value: 'Confirmación de seguridad para renacer con Prestigio tras solicitarlo in-game con `/reencarnar`.' }
                 )
-                .setFooter({ text: 'DrakesCraft Network' });
+                .setFooter({ text: 'DrakesCraft Network · Guía Oficial', iconURL: avatarUrl });
 
         case 'moderacion':
             return new EmbedBuilder()
-                .setTitle('🛡️ Categoría: Moderación & Control Staff')
+                .setTitle('🛡️ Categoría: Moderación & Protocolos de Staff')
                 .setColor(0xE74C3C)
-                .setDescription('Suite de alta moderación exclusiva para miembros del Staff y Jack:')
+                .setDescription('Suite de control y seguridad operativa reservada para el equipo de Staff:\n' +
+                                '💡 *Nota:* Si eres miembro del Staff, ejecuta **`shelpstaff`** para abrir el manual operativo interactivo con directivas completas por rango.')
                 .addFields(
-                    { name: '• sclear <1-100> / !purge <1-100>', value: 'Purga masiva de mensajes recientes en el canal actual.' },
-                    { name: '• skick @usuario [motivo]', value: 'Expulsa a un miembro del servidor con registro en auditoría.' },
-                    { name: '• sban @usuario [motivo]', value: 'Banea permanentemente a un infractor con registro en auditoría.' },
-                    { name: '• smute @usuario <minutos> [motivo]', value: 'Aplica timeout temporal (aislamiento) a un usuario.' },
-                    { name: '• sunmute @usuario', value: 'Retira el timeout a un miembro sancionado.' },
-                    { name: '• swarn @usuario <motivo>', value: 'Emite una advertencia formal con notificación por privado y auditoría.' },
-                    { name: '• slowmode <segundos>', value: 'Ajusta el modo pausado del canal para frenar spam o flood.' },
-                    { name: '• slock / sunlock', value: 'Bloquea o desbloquea el canal para miembros `@everyone`.' },
-                    { name: '• srole dar/quitar @usuario <Rol>', value: 'Asigna o retira un rol de manera directa.' },
-                    { name: '• snick @usuario / snick sync', value: 'Normaliza apodos a tipografía Small Caps griega.' },
-                    { name: '• ssugerencia aceptar/rechazar/implementar <id> [motivo]', value: 'Emite el veredicto oficial de una sugerencia comunitaria.' }
+                    { name: '• shelpstaff (o staffhelp)', value: 'Manual operativo integral del Staff (Admins, Mods, Devs y lenguaje natural).' },
+                    { name: '• sinactivos [dias] / sinactivos purgar [dias]', value: 'Auditoría (Admins) y purga segura (Dueños) de miembros inactivos con whitelist.' },
+                    { name: '• sclear <1-100> / !purge <1-100>', value: 'Purga rápida de mensajes en el canal actual.' },
+                    { name: '• skick @usuario [motivo]', value: 'Expulsa a un usuario de Discord con registro en `#🚨・ᴍᴏᴅ-ʟᴏɢs`.' },
+                    { name: '• sban @usuario [motivo]', value: 'Baneo definitivo en Discord (exclusivo Administradores y Dueños).' },
+                    { name: '• smute @usuario <minutos> [motivo]', value: 'Aplica suspensión temporal (timeout) con registro formal.' },
+                    { name: '• sunmute @usuario', value: 'Retira la suspensión temporal a un miembro.' },
+                    { name: '• swarn @usuario <motivo>', value: 'Envía advertencia oficial por privado al infractor y log a moderación.' },
+                    { name: '• slowmode <segundos>', value: 'Ajusta el modo pausado en el canal actual.' },
+                    { name: '• slock / sunlock', value: 'Bloquea o desbloquea el canal para `@everyone`.' },
+                    { name: '• schan / srol / sanuncio / ssay', value: 'Gestión directa de canales, roles y comunicados (exclusivo Admins).' }
                 )
-                .setFooter({ text: 'S.A.O.R.I. High Moderation Suite' });
+                .setFooter({ text: 'S.A.O.R.I. High Moderation Suite · Staff Only', iconURL: avatarUrl });
 
         case 'comunidad':
             return new EmbedBuilder()
-                .setTitle('💡 Categoría: Comunidad, Sugerencias & Roles')
+                .setTitle('💡 Categoría: Comunidad, Perfiles & Roles')
                 .setColor(0x00E5FF)
-                .setDescription('Participación activa y personalización de identidad:')
+                .setDescription('Funciones de participación, personalización de identidad y utilidades comunitarias:')
                 .addFields(
-                    { name: '• ssugerencia <propuesta>', value: 'Publica una sugerencia con votación 👍/👎 y debate en hilo.' },
-                    { name: '• smisroles', value: 'Muestra tu perfil de roles: plataforma, país, modalidades y rango.' },
-                    { name: '• sautoroles / sroles panel', value: 'Despliega los paneles oficiales de selección en #auto-roles (Staff).' },
-                    { name: '• sroles sync', value: 'Sincroniza retroactivamente reacciones de roles pasados (Staff).' },
-                    { name: '• Chat con Saori', value: 'Habla de forma natural en #habla-con-saori o mencionando a @SAORI.' }
+                    { name: '• smenu (o menu)', value: 'Menú principal con selectores y botones de acceso directo a servicios.' },
+                    { name: '• sperfil [@usuario] (o smiperfil)', value: 'Consulta tu ficha de usuario, antigüedad, roles asignados y rango.' },
+                    { name: '• ssugerencia <propuesta>', value: 'Publica tu idea en <#1539636565188542554> con votación comunitaria 👍/👎 y debate en hilo.' },
+                    { name: '• smisroles', value: 'Verifica los roles de tu perfil: país, plataformas (Java/Bedrock), modalidades y género.' },
+                    { name: '• sautoroles (Staff)', value: 'Publica o refresca los paneles interactivos de auto-roles en <#1539636390751502376>.' },
+                    { name: '• svotar (o votar)', value: 'Apoya a DrakesCraft votando en los tops para ganar llaves y premios in-game.' },
+                    { name: '• !imagen <descripción>', value: 'Genera ilustraciones y arte conceptual en vivo con inteligencia artificial.' },
+                    { name: '• Chat con Saori', value: 'Conversa con Saori de forma natural en <#1544811720571355196> o mencionándola (`@SAORI`).' }
                 )
-                .setFooter({ text: 'DrakesCraft Comunidad' });
+                .setFooter({ text: 'DrakesCraft Comunidad & Identidad', iconURL: avatarUrl });
 
         default:
             return new EmbedBuilder()
-                .setTitle('🐺 S.A.O.R.I. · Guía Completa de Comandos')
+                .setTitle('🐺 S.A.O.R.I. · Guía Completa de Comandos (v3.0)')
                 .setColor(0x00E5FF)
-                .setDescription('**S.A.O.R.I. (Server Autonomous Orchestrator for Resilient Infrastructure)**\nSelecciona una categoría con los botones interactivos de abajo para ver detalles, sintaxis y ejemplos completos:')
-                .addFields(
-                    { name: '🎫 1. Tickets & SRE', value: '• `sticket <problema>` · Diagnóstico y resolución con la Trinidad.' },
-                    { name: '🎵 2. Música & Spotify', value: '• `splay`, `sskip`, `spause`, `squeue`, `sstop`, `smusica`.' },
-                    { name: '📊 3. Telemetría & Servidores', value: '• `sstats`, `sping`, `sonline` · 20.0 TPS, nodos y jugadores.' },
-                    { name: '🌐 4. DrakesCraft & Enlaces', value: '• `sip`, `sweb`, `stienda`, `sguia`, `sreglas`, `sreencarnar`.' },
-                    { name: '🛡️ 5. Moderación & Staff', value: '• `sclear`, `skick`, `sban`, `smute`, `swarn`, `slowmode`, `slock`, `srole`.' },
-                    { name: '💡 6. Comunidad & Roles', value: '• `ssugerencia`, `smisroles`, `sautoroles`, `!imagen`.' }
+                .setDescription(
+                    '**S.A.O.R.I. (Server Autonomous Orchestrator for Resilient Infrastructure)**\n' +
+                    'Bienvenido al catálogo oficial de comandos y servicios de DrakesCraft Network 🐉\n' +
+                    'Selecciona una categoría en los botones inferiores para ver detalles completos o escribe los comandos:'
                 )
-                .setFooter({ text: 'S.A.O.R.I. SRE Core · DrakesCraft Network', iconURL: client.user.displayAvatarURL() });
+                .addFields(
+                    { 
+                        name: '🧭 1. Menú, Perfiles & Comunidad', 
+                        value: '• `smenu` · Menú interactivo con selectores y botones de acceso rápido.\n' +
+                               '• `sperfil [@usuario]` · Consulta tu ficha de jugador, fecha de ingreso y roles.\n' +
+                               '• `sstaff` · Directorio oficial del equipo con estado de presencia en vivo.\n' +
+                               '• `smisroles` · Revisa tus roles asignados de país, plataformas y juegos.' 
+                    },
+                    { 
+                        name: '⛏️ 2. Servidor de Minecraft & Telemetría', 
+                        value: '• `sip` · IP oficial (Java `mc.drakescraft.cl:25565` y Bedrock `Puerto: 19132`).\n' +
+                               '• `stps` (o `tps`) · Telemetría en vivo (TPS 20.0, RAM, CPU, jugadores conectados).\n' +
+                               '• `sonline` · Lista de jugadores conectados en Minecraft.\n' +
+                               '• `sclaim` · Guía oficial de protección de terrenos con pala de oro.' 
+                    },
+                    { 
+                        name: '👑 3. Tienda, VIPs & Recompensas', 
+                        value: '• `svip` · Catálogo de los 11 rangos Dioses del Olimpo y beneficios de rango.\n' +
+                               '• `stienda` · Enlace a la tienda oficial (https://tienda.drakescraft.cl).\n' +
+                               '• `svotar` · Votar por el servidor y reclamar premios diarios in-game.\n' +
+                               '• `sredes` · Redes sociales oficiales (TikTok, Instagram, YouTube, Discord).' 
+                    },
+                    { 
+                        name: '🎵 4. Música & Streaming en Canales de Voz', 
+                        value: '• `splay <canción/link>` · Reproduce canciones de Spotify o YouTube en tu canal de voz.\n' +
+                               '• `sskip`, `spause`, `sresume`, `squeue`, `sstop`, `smusica`.' 
+                    },
+                    { 
+                        name: '🎫 5. Soporte, Tickets & Sugerencias', 
+                        value: '• `sticket <problema>` · Abre un ticket técnico analizado por la Trinidad SRE.\n' +
+                               '• `ssugerencia <propuesta>` · Publica una sugerencia con votación en <#1539636565188542554>.\n' +
+                               '• `sreencarnar <código>` · Confirma el protocolo de reinicio con Prestigio.' 
+                    },
+                    { 
+                        name: '🎨 6. Arte Neural & Chat Inteligente', 
+                        value: '• `!imagen <descripción>` · Genera ilustraciones y arte con IA.\n' +
+                               '• **Chat Natural:** Habla conmigo en <#1544811720571355196> o mencionando a `@SAORI`.' 
+                    },
+                    { 
+                        name: '🛡️ 7. Equipo del Staff & Moderación', 
+                        value: '• Si eres miembro del Staff, ejecuta `shelpstaff` para el manual operativo completo y directivas.' 
+                    }
+                )
+                .setFooter({ text: 'S.A.O.R.I. Suite v3.0 · DrakesCraft Network', iconURL: avatarUrl });
     }
 }
 
 function getShelpButtonRows() {
     const row1 = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('btn_shelp_main').setLabel('🏠 Inicio').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('btn_shelp_tickets').setLabel('🎫 Tickets & SRE').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId('btn_shelp_musica').setLabel('🎵 Música').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId('btn_shelp_stats').setLabel('📊 Telemetría').setStyle(ButtonStyle.Primary)
+        new ButtonBuilder().setCustomId('btn_shelp_drakes').setLabel('🧭 Drakes & Menú').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('btn_shelp_stats').setLabel('📊 Telemetría').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('btn_shelp_musica').setLabel('🎵 Música').setStyle(ButtonStyle.Primary)
     );
     const row2 = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('btn_shelp_drakes').setLabel('🌐 DrakesCraft').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId('btn_shelp_moderacion').setLabel('🛡️ Moderación (Staff)').setStyle(ButtonStyle.Danger),
-        new ButtonBuilder().setCustomId('btn_shelp_comunidad').setLabel('💡 Comunidad & Roles').setStyle(ButtonStyle.Success)
+        new ButtonBuilder().setCustomId('btn_shelp_tickets').setLabel('🎫 Tickets & SRE').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('btn_shelp_comunidad').setLabel('💡 Comunidad & Perfil').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId('btn_shelp_moderacion').setLabel('🛡️ Moderación (Staff)').setStyle(ButtonStyle.Danger)
     );
     return [row1, row2];
 }
@@ -3383,48 +3458,25 @@ client.on('messageCreate', async (message) => {
     let senderName = cleanUserName(rawSender, isJack, isStaffMember);
 
     // =========================================================================
-    // COMANDO SHELP (GUÍA COMPLETA DE COMANDOS SAORI)
+    // COMANDO SHELP (GUÍA COMPLETA DE COMANDOS SAORI v3.0)
     // =========================================================================
-    if (contentLower === 'shelp' || contentLower === '/shelp' || contentLower === '!shelp' || contentLower === 'saori help' || contentLower === 'saori shelp') {
-        const helpEmbed = new EmbedBuilder()
-            .setTitle('🐺 S.A.O.R.I. · Guía Completa de Comandos')
-            .setColor(0x00E5FF)
-            .setDescription('**S.A.O.R.I. (Server Autonomous Orchestrator for Resilient Infrastructure)**\nAquí tienes la lista completa y detallada de todas mis funciones y comandos:')
-            .addFields(
-                { 
-                    name: '🎫 1. Sistema de Tickets & Trinidad SRE (sticket)', 
-                    value: '• `sticket <problema>` · Registra formalmente un ticket técnico en Star.\n*¿Cómo funciona?* Tu reporte se asigna a la Trinidad de Agentes (Claude Code analiza logs, Codex programa el parche y Antigravity compila y verifica). Se notifica automáticamente a Jack por WhatsApp cuando queda solucionado.\n*Ejemplo:* `sticket No puedo abrir la mesa de crafteo reforzada en SkyBlock`' 
-                },
-                { 
-                    name: '🎵 2. Música & Spotify en Canales de Voz', 
-                    value: '• `splay <canción / link spotify>` · Reproduce canciones o playlists en tu canal de voz.\n• `sskip` · Salta a la siguiente pista de la cola.\n• `spause` / `sresume` · Pausa o reanuda la reproducción.\n• `squeue` · Muestra las próximas pistas en cola.\n• `sstop` · Detiene la música y vacía la cola.\n• `smusica` · Guía de música en Discord y reproductor `/musica` in-game.' 
-                },
-                { 
-                    name: '📊 3. Telemetría y Servidor de Minecraft', 
-                    value: '• `sstats` / `sstats drakes` · Rendimiento, 20.0 TPS y estado de DrakesCraft.\n• `sstats star` · Servidor físico central, RAM y Docker.\n• `sstats nova` / `sstats nexus` · Telemetría de nodos de desarrollo y render.\n• `sip` · Direcciones de conexión (Java `mc.drakescraft.cl:25565` y Bedrock `19132`).\n• `sping` · Latencia del bot y enlace con la infraestructura.' 
-                },
-                { 
-                    name: '🌐 4. Enlaces Oficiales & Guías', 
-                    value: '• `sweb` · Portal web oficial de DrakesCraft (https://web.drakescraft.cl).\n• `stienda` · Tienda oficial con garantía de entrega y compensación (https://web.drakescraft.cl).\n• `sguia` · Enciclopedia de Slimefun, economía, trabajos y comandos.' 
-                },
-                { 
-                    name: '🎨 5. Arte Neural & Chat Inteligente', 
-                    value: '• `!imagen <descripción>` · Genera arte e ilustraciones en vivo con IA.\n• **Chat Natural:** Habla conmigo en <#1544811720571355196> o mencióname (`@SAORI`).' 
-                },
-                { 
-                    name: '🛡️ 6. Moderación y Roles (Staff)', 
-                    value: '• `sroles` · Muestra todos los roles del servidor y cantidad de miembros.\n• `srole dar @usuario <Rol>` · Asigna un rol a un miembro.\n• `srole quitar @usuario <Rol>` · Remueve un rol.\n• `sclear <cantidad>` o `!purge <cantidad>` · Purga mensajes de un canal.' 
-                },
-                { 
-                    name: '💡 7. Buzón Oficial de Sugerencias', 
-                    value: '• `ssugerencia <propuesta>` · Publica tu propuesta en <#1539636565188542554> con votación comunitaria 👍/👎 y debate.' 
-                },
-                { 
-                    name: '⚖️ 8. Rito de Reencarnación & Prestigio', 
-                    value: '• `sreencarnar <código>` / `!reencarnar <código>` · Autoriza la confirmación de seguridad para reiniciar tu cuenta y renacer con Prestigio tras solicitarlo in-game con `/reencarnar`.' 
-                }
-            )
-            .setFooter({ text: 'S.A.O.R.I. SRE Core · DrakesCraft Network', iconURL: client.user.displayAvatarURL() });
+    if (contentLower === 'shelp' || contentLower === '/shelp' || contentLower === '!shelp' || 
+        contentLower === 'saori help' || contentLower === 'saori shelp' ||
+        contentLower.startsWith('shelp ') || contentLower.startsWith('/shelp ') || contentLower.startsWith('!shelp ')) {
+        
+        const args = contentLower.replace(/^[\/!]/, '').split(/\s+/).slice(1);
+        let category = 'main';
+        if (args.length > 0) {
+            const requested = args[0].toLowerCase();
+            if (['tickets', 'ticket', 'soporte'].includes(requested)) category = 'tickets';
+            else if (['musica', 'music', 'play', 'cancion'].includes(requested)) category = 'musica';
+            else if (['stats', 'tps', 'telemetria', 'rendimiento', 'online'].includes(requested)) category = 'stats';
+            else if (['drakes', 'menu', 'perfil', 'staff', 'vip', 'claim', 'votar', 'redes', 'ip'].includes(requested)) category = 'drakes';
+            else if (['moderacion', 'mod', 'staffhelp', 'admin'].includes(requested)) category = 'moderacion';
+            else if (['comunidad', 'roles', 'sugerencias', 'perfiles'].includes(requested)) category = 'comunidad';
+        }
+
+        const helpEmbed = getShelpCategoryEmbed(category);
         const shelpRows = getShelpButtonRows();
         return message.reply({ embeds: [helpEmbed], components: shelpRows, allowedMentions: { repliedUser: false } });
     }
