@@ -844,8 +844,10 @@ client.once(Events.ClientReady, async () => {
             setTimeout(() => syncPlayerRanksWithDiscord(guild), 5000);
             setTimeout(() => syncAutoRolesChannel(guild), 8000);
             setTimeout(() => updateServerStats(guild), 12000);
+            setTimeout(() => syncNicknames(guild), 15000);
             setInterval(() => syncPlayerRanksWithDiscord(guild), 10 * 60 * 1000);
             setInterval(() => updateServerStats(guild), 10 * 60 * 1000);
+            setInterval(() => syncNicknames(guild), 30 * 60 * 1000);
         }
     } catch (e) {
         console.error('[AUDIT-CACHE] Error pre-cacheando mensajes:', e.message);
@@ -3746,6 +3748,30 @@ const RANK_MAPPINGS = {
     'zeus': '1539642860473688185',
     'titan': '1539642806480674816'
 };
+
+
+async function syncNicknames(guild) {
+    if (!guild) return;
+    try {
+        const members = await guild.members.fetch().catch(() => null);
+        if (!members) return;
+        let count = 0;
+        for (const [id, m] of members) {
+            if (m.user.bot || m.id === JACK_DISCORD_ID) continue;
+            const rawName = m.nickname || m.user.globalName || m.user.username;
+            const formatted = formatMemberNickname(rawName, m.roles.cache.map(r => r.id), m.id);
+            if (formatted && formatted !== m.nickname) {
+                await m.setNickname(formatted).catch(() => {});
+                count++;
+            }
+        }
+        if (count > 0) {
+            console.log(`[NICK-SYNC] ✅ Sincronización automática: ${count} apodos normalizados a Small Caps.`);
+        }
+    } catch (e) {
+        console.error('[NICK-SYNC] Error en sincronización de apodos:', e.message);
+    }
+}
 
 async function syncPlayerRanksWithDiscord(guild) {
     if (!guild) return;
