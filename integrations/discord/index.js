@@ -3277,6 +3277,26 @@ client.on('messageCreate', async (message) => {
         ticketStaffActivity.set(message.channel.id, Date.now());
     }
 
+    // =========================================================================
+    // MODERACIÓN AUTOMÁTICA DE #🤖・ᴄᴏᴍᴀɴᴅᴏs-ʙᴏᴛs (Solo comandos de bots, 0 charla)
+    // =========================================================================
+    if (message.channel.id === '1539636586663383060' && !message.author.bot && !isStaffMember && !isJack) {
+        // Prefijos válidos de bots: Saori (s + comando), Jockie (m!/M!), Mudae ($), Idle Miner (;), Slash (/), !, ?, etc.
+        const isBotCommand = /^(?:[!/?.$,;+~#%&*<>-]|m!|z!|p!|w!|s[a-z]{2,})/i.test(content);
+        if (!isBotCommand) {
+            try {
+                await message.delete();
+                const warnMsg = await message.channel.send({
+                    content: `⚠️ ${message.author}, este canal es **exclusivo para comandos de bots**. Para conversar, por favor usa <#1539636493725864037> (#💬・general-español).`
+                });
+                setTimeout(() => warnMsg.delete().catch(() => null), 6000);
+            } catch (e) {
+                console.error('[SAORI-BOTS-FILTER] Error al moderar charla en comandos-bots:', e.message);
+            }
+            return;
+        }
+    }
+
     // Filtro de mensajes ultra cortos o fragmentos en tickets
     const spamWords = ['xd', 'xdxd', 'lol', 'ok', 'a', 'si', 'no', 'ui', 'wey', 'wena', 'f', 'gg', 'jaja', 'jajaja', 'haha', 'ty', 'thx', 'gracias'];
     const isTooShort = content.length <= 2 || spamWords.includes(contentLower);
