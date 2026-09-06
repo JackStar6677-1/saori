@@ -3580,9 +3580,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 }, 5000);
                 return;
             }
-        }
 
-                    // ACCIONES DE REENCARNACIÓN Y PRESTIGIO
+            // ACCIONES DE REENCARNACIÓN Y PRESTIGIO
             if (id.startsWith('btn_reencarnar_cancel_')) {
                 const parts = id.split('_');
                 const authorId = parts[4];
@@ -3643,6 +3642,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 }
                 return;
             }
+        }
 
 // 2. MANEJO DE ENVÍO DE FORMULARIOS (MODAL SUBMISSION)
         if (interaction.isModalSubmit()) {
