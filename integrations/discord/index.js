@@ -61,7 +61,9 @@ const CHANNELS = {
     ANUNCIOS_DISCORD: '1539636299395502211',  // 📢・ᴀɴᴜɴᴄɪᴏs-ᴅɪsᴄᴏʀᴅ
     ANUNCIOS_MC: '1539636335307137145',       // ⛏️・ᴀɴᴜɴᴄɪᴏs-ᴍɪɴᴇᴄʀᴀғᴛ
     SORTEOS_EVENTOS: '1539636414495326338',   // 🎁・sᴏʀᴛᴇᴏs-ʏ-ᴇᴠᴇɴᴛᴏs
-    CHANGELOG: '1539636837168185456'          // 🚀・sᴇʀᴠᴇʀ-ᴄʜᴀɴɢᴇʟᴏɢ
+    CHANGELOG: '1539636837168185456',         // 🚀・sᴇʀᴠᴇʀ-ᴄʜᴀɴɢᴇʟᴏɢ
+    BOOSTERS: '1546039773397917769',          // 💎・ʙᴏᴏsᴛᴇʀs
+    DIRECTOS: '1546039775373295707'           // 📺・ᴅɪʀᴇᴄᴛᴏs
 };
 
 // 🔔 Mapeo Oficial de Canales de Anuncios a sus Roles de Notificación
@@ -215,6 +217,8 @@ const ALLOWED_MC_CHAT_ROLES = [
     '1539642806480674816', // ⚡ ︱ ᴛɪᴛᴀɴ
     '1539642703263043634', // 💎 ︱ ʙᴏᴏsᴛᴇʀ
     '1544689169371107439', // Server Booster
+    '1546039769807720508', // 📺 ︱ sᴛʀᴇᴀᴍᴇʀ
+    '1546039771338645545', // 🎥 ︱ ɪɴғʟᴜᴇɴᴄᴇʀ
     '1539768983287496855', // STAFF
     '1539641774392348754', // DUEÑO
     '1539642179822161940', // ADMIN
@@ -1586,7 +1590,7 @@ client.once(Events.ClientReady, async () => {
             setTimeout(() => syncNicknames(guild), 15000);
             setInterval(() => syncPlayerRanksWithDiscord(guild), 10 * 60 * 1000);
             setInterval(() => updateServerStats(guild), 10 * 60 * 1000);
-            setInterval(() => syncNicknames(guild), 30 * 60 * 1000);
+            setInterval(() => syncNicknames(guild), 5 * 60 * 1000);
         }
     } catch (e) {
         console.error('[AUDIT-CACHE] Error pre-cacheando mensajes:', e.message);
@@ -1676,18 +1680,48 @@ client.on('guildMemberAdd', async (member) => {
             const welcomeEmbed = new EmbedBuilder()
                 .setColor(0xE6A8D7)
                 .setTitle(`🌸 ¡Bienvenido/a a ⚡ ᴅʀᴀᴋᴇsᴄʀᴀғᴛ ɴᴇᴛᴡᴏʀᴋ ⚡!`)
-                .setDescription(`¡Hola ${member}! Soy **SAORI**, la IA del servidor. ✨
-
-` +
-                                `Te dejamos unos accesos rápidos:`)
+                .setDescription(
+                    `¡Hola ${member}! Te damos la más cálida bienvenida a nuestra comunidad. Soy **SAORI**, la Inteligencia Artificial y SRE de la red. ✨\n\n` +
+                    `Ya se te otorgó automáticamente la ciudadanía con el rol <@&1539643572251271198> y formateamos tu nick. Aquí tienes la guía completa para comenzar:`
+                )
                 .addFields(
-                    { name: '📜 Reglas', value: `<#${CHANNELS.REGLAS}>`, inline: true },
-                    { name: '🎭 Auto-Roles', value: `<#${CHANNELS.AUTO_ROLES}>`, inline: true },
-                    { name: '💬 Chat con Saori', value: `<#${CHANNELS.SAORI_CHAT}>`, inline: true },
-                    { name: '🎮 IP', value: '`mc.drakescraft.cl`', inline: false }
+                    {
+                        name: '📜 Primeros Pasos & Configuración',
+                        value:
+                            `• **Normativa Oficial:** Lee <#${CHANNELS.REGLAS}> para convivir en paz.\n` +
+                            `• **Personaliza tu Perfil:** En <#${CHANNELS.AUTO_ROLES}> elige tu país, plataforma (Java/Bedrock) y alertas.\n` +
+                            `• **Enlaces Oficiales:** Conoce nuestra web, tienda y WhatsApp en <#1539636367011876945>.`,
+                        inline: false
+                    },
+                    {
+                        name: '💬 Comunidad & Charlas',
+                        value:
+                            `• **Charla General:** <#${CHANNELS.GENERAL_ES}>\n` +
+                            `• **Habla con Saori (IA):** <#${CHANNELS.SAORI_CHAT}>\n` +
+                            `• **Chat Minecraft en vivo:** <#${CHANNELS.MINECRAFT_CHAT}>\n` +
+                            `• **Fotos & Capturas:** <#1539636544099450931>`,
+                        inline: true
+                    },
+                    {
+                        name: '🎁 Eventos, Soporte & Ayuda',
+                        value:
+                            `• **Sorteos & Jefes:** <#${CHANNELS.SORTEOS_EVENTOS}>\n` +
+                            `• **Soporte / Tickets:** <#${CHANNELS.TICKETS_SOPORTE}>\n` +
+                            `• **Buzón de Sugerencias:** <#${CHANNELS.SUGERENCIAS}>\n` +
+                            `• **Reporte de Bugs:** <#1539640716802662532>`,
+                        inline: true
+                    },
+                    {
+                        name: '🎮 Conexión a Minecraft (Multiplataforma)',
+                        value:
+                            '• **IP Java & Bedrock:** `mc.drakescraft.cl` · **Puerto:** `25565`\n' +
+                            '• **Web Oficial:** [web.drakescraft.cl](https://web.drakescraft.cl)\n' +
+                            `• **Comandos Útiles:** Escribe \`smenu\`, \`sperfil\` o \`shelp\` en <#${CHANNELS.GENERAL_ES}> o <#1539636586663383060>.`,
+                        inline: false
+                    }
                 )
                 .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 256 }))
-                .setFooter({ text: 'DrakesCraft AI SRE · Creada por Jack', iconURL: client.user.displayAvatarURL() })
+                .setFooter({ text: '⚡ DrakesCraft Network · Creada por Jack · Impulsada por SAORI AI', iconURL: client.user.displayAvatarURL() })
                 .setTimestamp();
 
             await channel.send({ content: `👋 ¡Bienvenido/a ${member}!`, embeds: [welcomeEmbed] });
@@ -1836,6 +1870,56 @@ client.on('messageUpdate', async (oldMessage, newMessage) => {
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
     try {
         if (newMember.user.bot || newMember.id === JACK_DISCORD_ID) return;
+
+        // 💎 CELEBRACIÓN DE SERVER BOOSTER
+        const wasBoosting = Boolean(oldMember.premiumSinceTimestamp || oldMember.roles.cache.has('1544689169371107439'));
+        const isNowBoosting = Boolean(newMember.premiumSinceTimestamp || newMember.roles.cache.has('1544689169371107439'));
+
+        if (!wasBoosting && isNowBoosting) {
+            try {
+                // Auto-asignar rol cosmético 💎 ︱ ʙᴏᴏsᴛᴇʀ si no lo tiene
+                const customBoosterRoleId = '1539642703263043634';
+                if (!newMember.roles.cache.has(customBoosterRoleId)) {
+                    await newMember.roles.add(customBoosterRoleId).catch(() => {});
+                }
+
+                const boostEmbed = new EmbedBuilder()
+                    .setColor(0xF47FFF)
+                    .setTitle('💎 ¡SERVER BOOST DETECTADO! 💎')
+                    .setDescription(
+                        `¡La esencia celestial de **DrakesCraft** resuena con máxima potencia!\n\n` +
+                        `Muchísimas gracias ${newMember} (\`${newMember.user.tag}\`) por impulsar y bostear nuestro servidor. ` +
+                        `Tu apoyo hace posible que la infraestructura, los mundos y la inteligencia de la red sigan evolucionando. 🐺🌸✨`
+                    )
+                    .setThumbnail(newMember.user.displayAvatarURL({ dynamic: true, size: 256 }))
+                    .addFields(
+                        {
+                            name: '🎁 Ventajas & Beneficios Desbloqueados',
+                            value:
+                                `• **Salón de Honor:** Acceso de escritura exclusivo a <#${CHANNELS.BOOSTERS}>\n` +
+                                `• **Vínculo Interdimensional:** Permiso para enviar mensajes al chat de Minecraft en vivo\n` +
+                                `• **Prestigio Visual:** Rol destacado <@&1539642703263043634> e insignia Nitro Booster\n` +
+                                `• **Soporte de Alta Prioridad:** Atención preferencial en tickets\n` +
+                                `• **Agradecimiento Eterno:** Todo el cariño y lealtad de Saori y Jack 🐺💜`,
+                            inline: false
+                        }
+                    )
+                    .setFooter({ text: '⚡ DrakesCraft Network · Potenciado por Saori AI', iconURL: newMember.guild.iconURL({ dynamic: true }) })
+                    .setTimestamp();
+
+                const boostersCh = newMember.guild.channels.cache.get(CHANNELS.BOOSTERS);
+                if (boostersCh) {
+                    await boostersCh.send({ content: `🎉 ¡Demos una bienvenida de honor a nuestro booster ${newMember}! 💎✨`, embeds: [boostEmbed] }).catch(() => {});
+                }
+                const bienvCh = newMember.guild.channels.cache.get(CHANNELS.BIENVENIDAS);
+                if (bienvCh) {
+                    await bienvCh.send({ content: `💎✨ ¡${newMember} acaba de elevar el nivel de **DrakesCraft** con un Nitro Boost!`, embeds: [boostEmbed] }).catch(() => {});
+                }
+                console.log(`[BOOSTER] 🎉 ¡${newMember.user.tag} ha potenciado el servidor! Anuncios enviados con éxito.`);
+            } catch (boostErr) {
+                console.error('[BOOSTER] Error al procesar evento de Server Booster:', boostErr);
+            }
+        }
 
         // ✨ Sincronización Automática de Apodos y Sufijos de Staff
         const rolesChanged = oldMember.roles.cache.size !== newMember.roles.cache.size ||
@@ -2494,7 +2578,7 @@ function getShelpCategoryEmbed(category) {
                     { name: '• sclaim (o claim)', value: 'Guía interactiva para proteger terrenos con la Pala de Oro (`/claim`).' },
                     { name: '• svotar (o votar)', value: 'Enlaces de votación para ganar recompensas diarias y llaves in-game.' },
                     { name: '• sredes (o redes)', value: 'Nuestras redes sociales oficiales (TikTok, Instagram, YouTube, Discord).' },
-                    { name: '• sip', value: 'IP oficial de conexión: Java (`mc.drakescraft.cl:25565`) y Bedrock (`Puerto: 19132`).' },
+                    { name: '• sip', value: 'IP oficial de conexión: Java & Bedrock (`mc.drakescraft.cl:25565`).' },
                     { name: '• sweb / stienda', value: 'Portal oficial: https://web.drakescraft.cl · Tienda: https://tienda.drakescraft.cl' },
                     { name: '• sguia / sreglas', value: 'Enciclopedia de modalidades (Slimefun, Claims, Economía) y normativa comunitaria.' },
                     { name: '• sreencarnar <código>', value: 'Confirmación de seguridad para renacer con Prestigio tras solicitarlo in-game con `/reencarnar`.' }
@@ -2558,7 +2642,7 @@ function getShelpCategoryEmbed(category) {
                     },
                     { 
                         name: '⛏️ 2. Servidor de Minecraft & Telemetría', 
-                        value: '• `sip` · IP oficial (Java `mc.drakescraft.cl:25565` y Bedrock `Puerto: 19132`).\n' +
+                        value: '• `sip` · IP oficial (Java & Bedrock `mc.drakescraft.cl:25565`).\n' +
                                '• `stps` (o `tps`) · Telemetría en vivo (TPS 20.0, RAM, CPU, jugadores conectados).\n' +
                                '• `sonline` · Lista de jugadores conectados en Minecraft.\n' +
                                '• `sclaim` · Guía oficial de protección de terrenos con pala de oro.' 
@@ -3245,12 +3329,13 @@ client.on('messageCreate', async (message) => {
 
     // 🔔 AUTO-NOTIFICACIONES Y PINGS EN CANALES DE AVISOS
     const targetNotifRoleId = NOTIFICATION_CHANNELS_MAP[message.channel.id];
-    if (targetNotifRoleId && message.author.id !== client.user.id) {
+    if (targetNotifRoleId) {
         const alreadyMentionsRole = message.mentions.roles.has(targetNotifRoleId) || 
                                      message.content.includes(`<@&${targetNotifRoleId}>`);
+        const isSelfPing = message.author.id === client.user.id && message.content.startsWith(`<@&${targetNotifRoleId}>`);
         const now = Date.now();
         const lastNotif = notifChannelCooldowns.get(message.channel.id) || 0;
-        if (!alreadyMentionsRole && (now - lastNotif > 20000)) {
+        if (!alreadyMentionsRole && !isSelfPing && (now - lastNotif > 10000)) {
             notifChannelCooldowns.set(message.channel.id, now);
             try {
                 await message.channel.send({
@@ -3483,7 +3568,7 @@ client.on('messageCreate', async (message) => {
 
     // Comandos directos y accesos rápidos
     if (contentLower === 'sip' || contentLower === '/sip' || contentLower === '!sip') {
-        return message.reply({ content: '⛏️ **IP de Conexión DrakesCraft:**\n• **Java:** `mc.drakescraft.cl:25565` (1.20 - 1.21.x)\n• **Bedrock:** `mc.drakescraft.cl` (Puerto: `19132`)', allowedMentions: { repliedUser: false } });
+        return message.reply({ content: '⛏️ **IP de Conexión DrakesCraft:**\n• **Java & Bedrock:** `mc.drakescraft.cl:25565` (1.20 - 1.21.x / Bedrock Puerto: `25565`)', allowedMentions: { repliedUser: false } });
     }
     if (contentLower === 'sweb' || contentLower === '/sweb' || contentLower === '!sweb') {
         return message.reply({ content: '🌐 **Web Oficial:** https://web.drakescraft.cl', allowedMentions: { repliedUser: false } });
@@ -3881,7 +3966,7 @@ client.on('messageCreate', async (message) => {
             .addFields(
                 { name: '⚡ TPS / Rendimiento', value: '`20.0 / 20.0 TPS` (Estable)', inline: true },
                 { name: '🎮 IP Conexión Java', value: '`mc.drakescraft.cl:25565`', inline: true },
-                { name: '📱 IP Conexión Bedrock', value: '`mc.drakescraft.cl` (19132)', inline: true },
+                { name: '📱 IP Conexión Bedrock', value: '`mc.drakescraft.cl` (Puerto `25565`)', inline: true },
                 { name: '🌐 Portal Web', value: 'https://web.drakescraft.cl', inline: true },
                 { name: '🛒 Tienda Oficial', value: 'https://web.drakescraft.cl', inline: true },
                 { name: '🛡️ Modo SRE', value: 'Protección autónoma 24/7', inline: true }
@@ -4091,7 +4176,7 @@ client.on('messageCreate', async (message) => {
                 .addFields(
                     { name: '👥 Jugadores Detectados', value: onlineCount > 0 ? list.slice(0, 1020) : '📭 No hay jugadores conectados en este momento.', inline: false },
                     { name: '📌 IP Java', value: '`mc.drakescraft.cl:25565`', inline: true },
-                    { name: '📱 IP Bedrock', value: '`mc.drakescraft.cl` (Puerto `19132`)', inline: true }
+                    { name: '📱 IP Bedrock', value: '`mc.drakescraft.cl` (Puerto `25565`)', inline: true }
                 )
                 .setFooter({ text: 'DrakesCraft Network · Telemetría en Vivo', iconURL: client.user.displayAvatarURL() })
                 .setTimestamp();
@@ -4352,7 +4437,7 @@ client.on('messageCreate', async (message) => {
             .addFields(
                 { name: '🌐 Sitio Web Principal', value: '[https://drakescraft.cl](https://drakescraft.cl)', inline: false },
                 { name: '🛒 Tienda Oficial Tebex', value: '[https://tienda.drakescraft.cl](https://tienda.drakescraft.cl)', inline: false },
-                { name: '🎮 IP del Servidor de Minecraft', value: '`mc.drakescraft.cl` (Java 1.21.1 / Bedrock Puerto 19132)', inline: false }
+                { name: '🎮 IP del Servidor de Minecraft', value: '`mc.drakescraft.cl` (Java & Bedrock Puerto 25565)', inline: false }
             )
             .setFooter({ text: 'DrakesCraft Network Social Hub' });
 
@@ -5264,6 +5349,8 @@ client.on('messageCreate', async (message) => {
 
 const RANK_MAPPINGS = {
     'oldschool': '1539643506258092032',
+    'streamer': '1546039769807720508',
+    'influencer': '1546039771338645545',
     'hermes': '1539643334354534490',
     'hestia': '1539643395507752980',
     'hercules': '1539643449186328626',
@@ -5283,15 +5370,27 @@ async function syncNicknames(guild) {
     try {
         const members = await guild.members.fetch().catch(() => null);
         if (!members) return;
+        const polisRoleId = '1539643572251271198'; // 🏛️ ︱ ᴘᴏʟɪs
         let count = 0;
+        let polisCount = 0;
         for (const [id, m] of members) {
             if (m.user.bot || m.id === JACK_DISCORD_ID) continue;
+
+            // 🏛️ Auto-Rol Polis garantizado para todos los miembros humanos
+            if (!m.roles.cache.has(polisRoleId)) {
+                await m.roles.add(polisRoleId).catch(() => {});
+                polisCount++;
+            }
+
             const rawName = m.nickname || m.user.globalName || m.user.username;
             const formatted = formatMemberNickname(rawName, m.roles.cache.map(r => r.id), m.id);
             if (formatted && formatted !== m.nickname) {
                 await m.setNickname(formatted).catch(() => {});
                 count++;
             }
+        }
+        if (polisCount > 0) {
+            console.log(`[POLIS-SYNC] ✅ Sincronización automática: ${polisCount} roles Polis otorgados.`);
         }
         if (count > 0) {
             console.log(`[NICK-SYNC] ✅ Sincronización automática: ${count} apodos normalizados a Small Caps.`);
