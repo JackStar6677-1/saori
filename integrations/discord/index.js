@@ -67,7 +67,11 @@ const CHANNELS = {
     CHANGELOG: '1539636837168185456',         // 🚀・sᴇʀᴠᴇʀ-ᴄʜᴀɴɢᴇʟᴏɢ
     BOOSTERS: '1546039773397917769',          // 💎・ʙᴏᴏsᴛᴇʀs
     DIRECTOS: '1546039775373295707',          // 📺・ᴅɪʀᴇᴄᴛᴏs
-    INTERACCIONES_COMERCIO: '1546051029920125089' // 🏪・ɪɴᴛᴇʀᴀᴄᴄɪᴏɴᴇs-ʏ-ᴄᴏᴍᴇʀᴄɪᴏ
+    INTERACCIONES_COMERCIO: '1546051029920125089', // 🏪・ɪɴᴛᴇʀᴀᴄᴄɪᴏɴᴇs-ʏ-ᴄᴏᴍᴇʀᴄɪᴏ
+    DIRECCION_GENERAL: '1545668317606584341',  // 👑・ᴅɪʀᴇᴄᴄɪóɴ-ɢᴇɴᴇʀᴀʟ
+    GESTION_FINANZAS: '1545668319103680626',   // 💼・ɢᴇsᴛɪóɴ-ʏ-ғɪɴᴀɴᴢᴀs
+    POSTULACIONES_STAFF: '1545668320789798993',// 📋・ᴘᴏsᴛᴜʟᴀᴄɪᴏɴᴇs-sᴛᴀғғ
+    VOZ_DIRECCION: '1545668372753027144'       // 🔊・ᴠᴏᴢ-ᴅɪʀᴇᴄᴄɪóɴ
 };
 
 // 🔔 Mapeo Oficial de Canales de Anuncios a sus Roles de Notificación
@@ -4122,6 +4126,36 @@ client.on('messageCreate', async (message) => {
                     }
                 } catch (e) {
                     console.error('[INTERACCIONES] Error gestionando auto-reacción/hilo:', e.message);
+                }
+            }
+        }
+    }
+
+    // =========================================================================
+    // 📺 GESTIÓN DE #📺・ᴅɪʀᴇᴄᴛᴏs
+    // =========================================================================
+    const isDirectosChannel = message.channel.id === CHANNELS.DIRECTOS || 
+                             (message.channel.isThread() && message.channel.parentId === CHANNELS.DIRECTOS);
+    if (isDirectosChannel && message.guild) {
+        if (!message.channel.isThread()) {
+            const isStreamLink = /(twitch\.tv|youtube\.com|youtu\.be|tiktok\.com|kick\.com)/i.test(message.content);
+            if (isStreamLink) {
+                try {
+                    await message.react('🔴').catch(() => null);
+                    await message.react('✨').catch(() => null);
+                    await message.react('🍿').catch(() => null);
+
+                    const thread = await message.startThread({
+                        name: `🎥 Directo de ${message.author.username}`.slice(0, 50),
+                        autoArchiveDuration: 1440,
+                        reason: 'Hilo de charla y comentarios de la transmisión'
+                    }).catch(() => null);
+
+                    if (thread) {
+                        await thread.send(`🍿 ¡Comenta la transmisión de ${message.author} aquí! Recuerda apoyar el directo y seguir las normas de la comunidad. ✨`).catch(() => null);
+                    }
+                } catch (e) {
+                    console.error('[DIRECTOS] Error gestionando auto-reacción/hilo:', e.message);
                 }
             }
         }
