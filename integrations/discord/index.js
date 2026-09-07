@@ -83,6 +83,33 @@ const NOTIFICATION_CHANNELS_MAP = {
 };
 const notifChannelCooldowns = new Map();
 
+// 🕒 HORARIO LABORAL DE JACK (CLT - America/Santiago)
+// Lunes a Jueves: 07:55 - 17:30 | Viernes: 07:55 - 16:35 | Sábados y Domingos: Libre
+const jackWorkMentionCooldown = new Map(); // key: userId:channelId -> timestamp
+
+function isJackInWorkHours() {
+    try {
+        const now = new Date();
+        const chileTimeStr = now.toLocaleString("en-US", { timeZone: "America/Santiago" });
+        const chileDate = new Date(chileTimeStr);
+        const day = chileDate.getDay(); // 0: Dom, 1: Lun, ..., 5: Vie, 6: Sab
+        const timeMinutes = chileDate.getHours() * 60 + chileDate.getMinutes();
+
+        // Lunes (1) a Jueves (4): 07:55 (475 min) a 17:30 (1050 min)
+        if (day >= 1 && day <= 4) {
+            return timeMinutes >= (7 * 60 + 55) && timeMinutes < (17 * 60 + 30);
+        }
+        // Viernes (5): 07:55 (475 min) a 16:35 (995 min)
+        if (day === 5) {
+            return timeMinutes >= (7 * 60 + 55) && timeMinutes < (16 * 60 + 35);
+        }
+        return false;
+    } catch (e) {
+        console.error("[WORK-HOURS] Error calculando hora de Chile:", e.message);
+        return false;
+    }
+}
+
 // 🛡️ ESCUDOS DE SEGURIDAD Y ANTI-ATAQUES
 const RateLimitShield = {
     userMessages: new Map(), // userId -> Array<timestamps>
@@ -4282,6 +4309,37 @@ client.on('messageCreate', async (message) => {
     }
 
     if (message.author.bot) return;
+
+    // 🕒 RESPUESTA AUTOMÁTICA SI MENCIONAN A JACK EN HORARIO LABORAL
+    if (message.guild && 
+        !message.webhookId && 
+        message.author.id !== JACK_DISCORD_ID &&
+        message.channel.id !== CHANNELS.MINECRAFT_CHAT &&
+        message.mentions.users.has(JACK_DISCORD_ID)) {
+
+        if (isJackInWorkHours()) {
+            // Reaccionar con reloj
+            await message.react("🕒").catch(() => null);
+
+            const cooldownKey = `${message.author.id}:${message.channel.id}`;
+            const lastMentionNotice = jackWorkMentionCooldown.get(cooldownKey) || 0;
+            const now = Date.now();
+
+            // Antispam: 1 aviso por usuario/canal cada 20 minutos
+            if (now - lastMentionNotice > 20 * 60 * 1000) {
+                jackWorkMentionCooldown.set(cooldownKey, now);
+                try {
+                    await message.reply({
+                        content: `🕒 Hola <@${message.author.id}>, Jack se encuentra actualmente en su jornada laboral y no puede atender Discord ni ingresar al juego en este momento. Revisará los mensajes al volver en su horario habitual de la tarde/noche. Si necesitas asistencia técnica o reportar algo del servidor, por favor abre un ticket en <#${CHANNELS.TICKETS_SOPORTE}>. ✨`,
+                        allowedMentions: { repliedUser: true }
+                    });
+                    console.log(`[WORK-AUTO-REPLY] 🕒 Notificado a ${message.author.tag} sobre horario laboral de Jack en #${message.channel.name}`);
+                } catch (err) {
+                    console.error("[WORK-AUTO-REPLY] Error enviando respuesta laboral:", err.message);
+                }
+            }
+        }
+    }
 
     // Si es canal de avisos y no mencionan directamente a Saori, no generar charla con IA
     if (targetNotifRoleId && !message.mentions.users.has(client.user.id)) {
