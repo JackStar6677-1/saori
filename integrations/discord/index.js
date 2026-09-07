@@ -409,6 +409,246 @@ try {
     console.error('[SAORI-AUDIO] Error inicializando servidor local de streaming:', e.message);
 }
 
+// =========================================================================
+// 🌐 SAORI DISCORD REST API SERVER (Para Tríada / Quinteto de IAs)
+// =========================================================================
+const DISCORD_REST_PORT = process.env.DISCORD_REST_PORT || 8095;
+let discordRestServer = null;
+
+function startDiscordRestApiServer(client) {
+    if (discordRestServer) return;
+    try {
+        discordRestServer = http.createServer(async (req, res) => {
+            const sendJson = (status, data) => {
+                res.writeHead(status, {
+                    'Content-Type': 'application/json; charset=utf-8',
+                    'Access-Control-Allow-Origin': '*'
+                });
+                res.end(JSON.stringify(data));
+            };
+
+            const reqUrl = new URL(req.url, `http://127.0.0.1:${DISCORD_REST_PORT}`);
+            const pathname = reqUrl.pathname;
+
+            // Health & Status
+            if (req.method === 'GET' && (pathname === '/' || pathname === '/health' || pathname === '/api/status')) {
+                const guild = client.guilds.cache.first();
+                return sendJson(200, {
+                    ok: true,
+                    bot: client.user ? client.user.tag : 'connecting',
+                    id: client.user ? client.user.id : null,
+                    ping_ms: client.ws ? client.ws.ping : null,
+                    uptime_sec: client.uptime ? Math.floor(client.uptime / 1000) : 0,
+                    guild_name: guild ? guild.name : null,
+                    guild_id: guild ? guild.id : null,
+                    members_total: guild ? guild.memberCount : 0,
+                    channels_total: guild ? guild.channels.cache.size : 0
+                });
+            }
+
+            // Overview de comunidad
+            if (req.method === 'GET' && pathname === '/api/community/overview') {
+                const guild = client.guilds.cache.first();
+                if (!guild) return sendJson(503, { ok: false, error: 'Guild no disponible' });
+
+                const textChannels = guild.channels.cache.filter(c => c.isTextBased()).size;
+                const voiceChannels = guild.channels.cache.filter(c => c.isVoiceBased()).size;
+                return sendJson(200, {
+                    ok: true,
+                    guild: {
+                        id: guild.id,
+                        name: guild.name,
+                        memberCount: guild.memberCount,
+                        premiumTier: guild.premiumTier,
+                        premiumSubscriptionCount: guild.premiumSubscriptionCount,
+                        textChannels,
+                        voiceChannels
+                    }
+                });
+            }
+
+            // Roles y Auditoría de Permisos
+            if (req.method === 'GET' && pathname === '/api/guild/roles') {
+                const guild = client.guilds.cache.first();
+                if (!guild) return sendJson(503, { ok: false, error: 'Guild no disponible' });
+
+                const roles = guild.roles.cache.map(r => ({
+                    id: r.id,
+                    name: r.name,
+                    color: r.hexColor,
+                    position: r.position,
+                    permissions: r.permissions.bitfield.toString(),
+                    membersCount: r.members.size,
+                    hoist: r.hoist,
+                    mentionable: r.mentionable,
+                    managed: r.managed
+                })).sort((a, b) => b.position - a.position);
+
+                return sendJson(200, { ok: true, total: roles.length, roles });
+            }
+
+            // Sugerencias de la comunidad (#💡・sugerencias)
+            if (req.method === 'GET' && pathname === '/api/suggestions') {
+                try {
+                    const limit = Math.min(parseInt(reqUrl.searchParams.get('limit') || '10', 10), 50);
+                    const ch = client.channels.cache.get(CHANNELS.SUGERENCIAS);
+                    if (!ch) return sendJson(404, { ok: false, error: 'Canal de sugerencias no encontrado' });
+
+                    const msgs = await ch.messages.fetch({ limit });
+                    const items = msgs.map(m => ({
+                        id: m.id,
+                        author: m.author.tag,
+                        authorId: m.author.id,
+                        content: m.content,
+                        embeds: m.embeds.map(e => ({ title: e.title, description: e.description })),
+                        reactions: m.reactions.cache.map(r => ({ emoji: r.emoji.name, count: r.count })),
+                        createdAt: m.createdAt
+                    }));
+                    return sendJson(200, { ok: true, total: items.length, suggestions: items });
+                } catch (e) {
+                    return sendJson(500, { ok: false, error: e.message });
+                }
+            }
+
+            // Mensajes recientes de un canal para auditoría de contexto
+            if (req.method === 'GET' && pathname.startsWith('/api/channel/') && pathname.endsWith('/messages')) {
+                try {
+                    const parts = pathname.split('/');
+                    const channelId = parts[3];
+                    const limit = Math.min(parseInt(reqUrl.searchParams.get('limit') || '20', 10), 100);
+                    const ch = client.channels.cache.get(channelId);
+                    if (!ch || !ch.isTextBased()) return sendJson(404, { ok: false, error: 'Canal de texto no encontrado' });
+
+                    const msgs = await ch.messages.fetch({ limit });
+                    const messages = msgs.map(m => ({
+                        id: m.id,
+                        author: m.author.tag,
+                        authorId: m.author.id,
+                        isBot: m.author.bot,
+                        content: m.content,
+                        attachments: m.attachments.map(a => a.url),
+                        createdAt: m.createdAt
+                    }));
+                    return sendJson(200, { ok: true, channelId, total: messages.length, messages });
+                } catch (e) {
+                    return sendJson(500, { ok: false, error: e.message });
+                }
+            }
+
+            // POST /api/announce: Enviar anuncio a canales oficiales con etiquetado automático de rol
+            if (req.method === 'POST' && pathname === '/api/announce') {
+                let body = '';
+                req.on('data', chunk => { body += chunk.toString(); });
+                req.on('end', async () => {
+                    try {
+                        const data = JSON.parse(body || '{}');
+                        const type = (data.type || '').toLowerCase(); // 'minecraft' | 'discord' | 'changelog'
+                        let channelId = data.channel_id;
+
+                        // Mapeo automático de tipo a canal
+                        if (!channelId) {
+                            if (type === 'minecraft' || type === 'mc') channelId = CHANNELS.ANUNCIOS_MC; // 1539636335307137145
+                            else if (type === 'discord' || type === 'dc') channelId = CHANNELS.ANUNCIOS_DISCORD; // 1539636299395502211
+                            else if (type === 'changelog') channelId = CHANNELS.CHANGELOG; // 1539636837168185456
+                            else channelId = CHANNELS.ANUNCIOS_MC;
+                        }
+
+                        const targetChannel = client.channels.cache.get(channelId);
+                        if (!targetChannel || !targetChannel.isTextBased()) {
+                            return sendJson(404, { ok: false, error: `Canal ${channelId} no encontrado o no es de texto` });
+                        }
+
+                        // Resolver rol de notificación oficial
+                        const targetRoleId = data.role_id || NOTIFICATION_CHANNELS_MAP[channelId];
+                        const shouldTag = data.tag_role !== false; // por defecto siempre etiqueta
+
+                        const title = data.title || data.titulo || (type === 'minecraft' ? '⛏️ Actualización de Servidor · Minecraft' : '📢 Comunicado Oficial · Discord');
+                        const content = data.content || data.mensaje || data.descripcion || '';
+                        const agent = data.agent || data.agente || 'SAORI SRE Fleet';
+                        const color = data.color || (type === 'minecraft' || channelId === CHANNELS.ANUNCIOS_MC ? 0x2ECC71 : (type === 'discord' || channelId === CHANNELS.ANUNCIOS_DISCORD ? 0x5865F2 : 0xE67E22));
+
+                        const embed = new EmbedBuilder()
+                            .setTitle(title)
+                            .setDescription(content)
+                            .setColor(color)
+                            .setFooter({ text: `SAORI Autonomous Fleet · Motor: ${agent}` })
+                            .setTimestamp();
+
+                        if (data.fields && Array.isArray(data.fields)) {
+                            for (const f of data.fields) {
+                                if (f.name && f.value) embed.addFields({ name: f.name, value: f.value, inline: !!f.inline });
+                            }
+                        }
+
+                        const sendPayload = { embeds: [embed] };
+                        if (shouldTag && targetRoleId) {
+                            sendPayload.content = `<@&${targetRoleId}> 🔔`;
+                            sendPayload.allowedMentions = { roles: [targetRoleId] };
+                        }
+
+                        const sentMsg = await targetChannel.send(sendPayload);
+                        console.log(`[SAORI-REST] 📢 Anuncio publicado en #${targetChannel.name} (${channelId}) por ${agent}`);
+
+                        return sendJson(200, {
+                            ok: true,
+                            messageId: sentMsg.id,
+                            channelId,
+                            channelName: targetChannel.name,
+                            roleTagged: (shouldTag && targetRoleId) ? targetRoleId : null
+                        });
+                    } catch (err) {
+                        console.error('[SAORI-REST] Error publicando anuncio:', err.message);
+                        return sendJson(400, { ok: false, error: err.message });
+                    }
+                });
+                return;
+            }
+
+            // POST /api/message: Enviar mensaje genérico a cualquier canal
+            if (req.method === 'POST' && pathname === '/api/message') {
+                let body = '';
+                req.on('data', chunk => { body += chunk.toString(); });
+                req.on('end', async () => {
+                    try {
+                        const data = JSON.parse(body || '{}');
+                        const channelId = data.channel_id;
+                        const targetChannel = client.channels.cache.get(channelId);
+                        if (!targetChannel || !targetChannel.isTextBased()) {
+                            return sendJson(404, { ok: false, error: `Canal ${channelId} no encontrado` });
+                        }
+
+                        const sendPayload = {};
+                        if (data.content) sendPayload.content = data.content;
+                        if (data.embed) {
+                            const em = new EmbedBuilder();
+                            if (data.embed.title) em.setTitle(data.embed.title);
+                            if (data.embed.description) em.setDescription(data.embed.description);
+                            if (data.embed.color) em.setColor(data.embed.color);
+                            sendPayload.embeds = [em];
+                        }
+                        const sent = await targetChannel.send(sendPayload);
+                        return sendJson(200, { ok: true, messageId: sent.id });
+                    } catch (e) {
+                        return sendJson(400, { ok: false, error: e.message });
+                    }
+                });
+                return;
+            }
+
+            return sendJson(404, { ok: false, error: 'Ruta no encontrada' });
+        });
+
+        discordRestServer.listen(DISCORD_REST_PORT, '127.0.0.1', () => {
+            console.log(`✅ [SAORI-DISCORD] API REST interna activa en 127.0.0.1:${DISCORD_REST_PORT}`);
+        }).on('error', (err) => {
+            console.warn('[SAORI-DISCORD] Advertencia API REST server:', err.message);
+        });
+    } catch (err) {
+        console.error('[SAORI-DISCORD] Error iniciando API REST server:', err.message);
+    }
+}
+
+
 // Plugin personalizado para DisTube que conecta directamente con nuestro streamer local
 class SaoriStreamPlugin extends PlayableExtractorPlugin {
     validate(url) {
@@ -1580,6 +1820,9 @@ async function handleDiscordStaffActions(message, primaryCmd, cmdArgs, hierarchy
 client.once(Events.ClientReady, async () => {
     console.log(`✅ [SAORI-DISCORD] ¡Conectada como ${client.user.tag}! Voice, Images (3/h), Purge, Auditoría (#${CHANNELS.AUDITORIA}) & Channel #${CHANNELS.SAORI_CHAT} activos.`);
     client.user.setActivity('DrakesCraft SRE & Auditoría 🛡️', { type: ActivityType.Watching });
+
+    // Iniciar Servidor API REST Interno (puerto 8095) para el Quinteto de IAs
+    startDiscordRestApiServer(client);
 
     // Pre-cachear mensajes recientes de todos los canales para auditoría perfecta
     try {
