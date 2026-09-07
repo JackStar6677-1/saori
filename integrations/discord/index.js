@@ -638,8 +638,8 @@ function startDiscordRestApiServer(client) {
             return sendJson(404, { ok: false, error: 'Ruta no encontrada' });
         });
 
-        discordRestServer.listen(DISCORD_REST_PORT, '127.0.0.1', () => {
-            console.log(`✅ [SAORI-DISCORD] API REST interna activa en 127.0.0.1:${DISCORD_REST_PORT}`);
+        discordRestServer.listen(DISCORD_REST_PORT, '0.0.0.0', () => {
+            console.log(`✅ [SAORI-DISCORD] API REST interna activa en puerto ${DISCORD_REST_PORT}`);
         }).on('error', (err) => {
             console.warn('[SAORI-DISCORD] Advertencia API REST server:', err.message);
         });
