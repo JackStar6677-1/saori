@@ -609,7 +609,8 @@ function startDiscordRestApiServer(client) {
 
                         const sendPayload = { embeds: [embed] };
                         if (shouldTag && targetRoleId) {
-                            sendPayload.content = `<@&${targetRoleId}> 🔔`;
+                            const headerTxt = data.mention_text || (type === "minecraft" || channelId === CHANNELS.ANUNCIOS_MC ? "¡Atención comunidad, traemos novedades importantes sobre el servidor de Minecraft!" : "¡Atención comunidad, traemos novedades importantes!");
+                            sendPayload.content = `<@&${targetRoleId}> 🔔 ${headerTxt}`;
                             sendPayload.allowedMentions = { roles: [targetRoleId] };
                         }
 
@@ -4121,7 +4122,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    prompt: `El usuario ${user.username} ha abierto un ticket de tipo "${tipo}". Resumen: "${summaryText}". Salúdalo cordialmente en 1 o 2 párrafos breves, confirma que sus datos fueron registrados y dale tranquilidad mientras el equipo lo atiende.`,
+                    prompt: `El usuario ${user.username} ha abierto un ticket de tipo "${tipo}". Resumen: "${summaryText}". Salúdalo cordialmente en 1 o 2 párrafos breves, confirma que sus datos fueron registrados en recepción técnica y recuérdale con calma que el equipo contrastará los registros y logs del servidor sin prometer resoluciones automáticas ni devoluciones inmediatas.`,
                     sender: user.username
                 }),
                 timeout: 45000
@@ -4230,18 +4231,8 @@ client.on('messageCreate', async (message) => {
 
                 await message.channel.send(replyText).catch(() => null);
 
-                // Enviar también /say a Minecraft para que el jugador lo lea in-game
-                const ingameSay = isEnglish
-                    ? `say ¡Hi ${player}! I am SAORI. If you need staff help or have an urgent issue, please open a ticket on our Discord!`
-                    : `say ¡Hola ${player}! Soy SAORI. Si necesitas ayuda del staff o reportar algo, abre un ticket en nuestro Discord!`;
-
-                fetch(AI_DAEMON_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt: `ejecuta /${ingameSay}`, sender: 'Staff' })
-                }).catch(() => null);
-
-                console.log(`[SAORI-MC-WATCHER] 🎮 Respondiendo a llamado de staff de ${player}: "${text}"`);
+                // Truth Gate: No ejecutar /say ni simular comandos de consola desde chat externo
+                console.log(`[SAORI-MC-WATCHER] 🎮 Notificación en Discord para llamado de staff de ${player}: "${text}"`);
                 return;
             }
         }
@@ -4265,15 +4256,8 @@ client.on('messageCreate', async (message) => {
                     if (reply) {
                         await message.channel.send(`🌸 **Saori:** ${reply}`).catch(() => null);
 
-                        // Broadcast breve in-game si es confirmación de recado o respuesta corta
-                        if (reply.length <= 150) {
-                            const cleanSay = reply.replace(/[\r\n]+/g, ' ').replace(/"/g, "'").slice(0, 180);
-                            fetch(AI_DAEMON_URL, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ prompt: `ejecuta /say ${cleanSay}`, sender: 'Staff' })
-                            }).catch(() => null);
-                        }
+                        // Truth Gate: Respuestas se canalizan a Discord sin emitir /say in-game sin autorización
+                        console.log(`[SAORI-MC] 🌸 Respuesta emitida a ${player} en Discord.`);
                     }
                 })
                 .catch(err => console.error('[SAORI-MC] Error procesando consulta in-game:', err.message));
@@ -4916,15 +4900,15 @@ client.on('messageCreate', async (message) => {
             message.channel.name
         );
         const ticketEmbed = new EmbedBuilder()
-            .setTitle(`🎫 Ticket Técnico #${ticketId || 'REGISTRADO'}`)
-            .setColor(0x00FF88)
-            .setDescription(`¡Tu reporte fue registrado formalmente en Star!`)
+            .setTitle(`🎫 Reporte de Soporte #${ticketId || 'RECIBIDO'}`)
+            .setColor(0x3498DB)
+            .setDescription(`Tu reporte ha sido registrado en el sistema de recepción de soporte.`)
             .addFields(
-                { name: '📋 Problema Reportado', value: issue },
-                { name: '🤖 Asignación', value: 'Trinidad SRE: **Claude Code** (análisis de logs), **Codex** (código), **Antigravity** (compilación y verificación)' },
-                { name: '📱 Notificación', value: 'Jack fue notificado automáticamente por WhatsApp.' }
+                { name: '📋 Reporte Recibido', value: issue },
+                { name: '🛡️ Estado de Verificación', value: 'Pendiente de correlación con registros del servidor por el equipo técnico.' },
+                { name: 'ℹ️ Seguimiento', value: 'El caso será evaluado conforme a la disponibilidad y prioridad técnica sin prometer resoluciones automáticas.' }
             )
-            .setFooter({ text: 'S.A.O.R.I. Autonomous SRE Fleet · DrakesCraft', iconURL: client.user.displayAvatarURL() });
+            .setFooter({ text: 'DrakesCraft Support System · S.A.O.R.I. Truth Gate', iconURL: client.user.displayAvatarURL() });
         return message.reply({ embeds: [ticketEmbed], allowedMentions: { repliedUser: false } });
     }
 
@@ -6355,14 +6339,11 @@ client.on('messageCreate', async (message) => {
             const ticketId = await dispatchTicketToTriad(ticketTitle, fullDescription, senderName, message.channel.name);
 
             const escalationEmbed = new EmbedBuilder()
-                .setColor(0x00FF88)
-                .setTitle(`🎫 Ticket #${ticketId || 'SRE'} Desplegado a la Tríada de Agentes 🤖`)
-                .setDescription(`He consolidado la información y la he desplegado a los **3 Agentes Autónomos de Star**:\n\n` +
-                                `🏛️ **SAORI SRE Engine** · *Telemetría*\n` +
-                                `⚡ **Claude-Code** · *Plugins y Lógica*\n` +
-                                `🛠️ **Codex Agent** · *Diagnóstico y Ejecución*\n\n` +
-                                `_El reporte ya fue emitido al grupo técnico y al panel de Star._ 🚀`)
-                .setFooter({ text: 'DrakesCraft Autonomous SRE Fleet', iconURL: client.user.displayAvatarURL() });
+                .setColor(0x3498DB)
+                .setTitle(`🎫 Reporte de Asistencia #${ticketId || 'RECIBIDO'}`)
+                .setDescription(`Se ha recopilado el contexto de la conversación para que el Staff técnico lo revise junto a los registros de actividad del servidor.\n\n` +
+                                `🛡️ **Truth Gate Activo:** El caso se encuentra en cola de recepción para verificación técnica antes de cualquier intervención.`)
+                .setFooter({ text: 'DrakesCraft Autonomous SRE Fleet · Truth Gate', iconURL: client.user.displayAvatarURL() });
 
             await message.channel.send({ embeds: [escalationEmbed] });
         }
