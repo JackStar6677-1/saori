@@ -663,6 +663,86 @@ function startDiscordRestApiServer(client) {
                 return;
             }
 
+            // POST /api/irp/approval-request: Alerta interactiva con botón 1-click para Jack (Ticket #350)
+            if (req.method === 'POST' && pathname === '/api/irp/approval-request') {
+                let body = '';
+                req.on('data', chunk => { body += chunk.toString(); });
+                req.on('end', async () => {
+                    try {
+                        const data = JSON.parse(body || '{}');
+                        const player = data.player || data.jugador;
+                        const backupId = data.backup_id || data.backup || 'latest';
+                        const reason = data.reason || data.motivo || 'Reporte de pérdida de inventario';
+                        const reportedAt = data.reported_at || data.hora || new Date().toISOString();
+                        const deltaSummary = data.delta_summary || data.delta || 'No especificado';
+                        const modality = data.modality || data.modalidad || 'clasico';
+                        const channelId = data.channel_id || CHANNELS.DIRECCION_GENERAL || CHANNELS.AUDITORIA;
+
+                        if (!player) {
+                            return sendJson(400, { ok: false, error: 'Parámetro "player" es obligatorio' });
+                        }
+
+                        const targetChannel = client.channels.cache.get(channelId);
+                        if (!targetChannel || !targetChannel.isTextBased()) {
+                            return sendJson(404, { ok: false, error: `Canal ${channelId} no encontrado` });
+                        }
+
+                        const embed = new EmbedBuilder()
+                            .setTitle('⚠️ Alerta Anti-Duplicación: Solicitud de Restauración IRP')
+                            .setColor(0xF39C12)
+                            .setDescription(`Se detectó una solicitud/reporte de pérdida de inventario que **NO cuenta con reinicio técnico reciente (<15m)** o requiere validación humana para evitar duplicaciones abusivas.`)
+                            .addFields(
+                                { name: '👤 Jugador', value: `\`${player}\``, inline: true },
+                                { name: '🗺️ Modalidad', value: `\`${modality}\``, inline: true },
+                                { name: '🕒 Hora del Reporte', value: `${reportedAt}`, inline: true },
+                                { name: '📦 Backup IRP sugerido', value: `\`${backupId}\``, inline: true },
+                                { name: '🔍 Delta de Inventario', value: `${deltaSummary}`, inline: false },
+                                { name: '🛡️ Estado de Reinicio Técnico', value: '❌ **NO detectado en los últimos 15 min**. Riesgo de duplicación.', inline: false },
+                                { name: '💡 Motivo / Causa declarada', value: `${reason}`, inline: false }
+                            )
+                            .setFooter({ text: 'SAORI Anti-Dupe Protection · Ticket #350 · Requiere 1-click de Jack' })
+                            .setTimestamp();
+
+                        const customApproveId = `btn_irp_approve_${player}:${backupId}`;
+                        const customRejectId = `btn_irp_reject_${player}:${backupId}`;
+
+                        const row = new ActionRowBuilder().addComponents(
+                            new ButtonBuilder()
+                                .setCustomId(customApproveId)
+                                .setLabel('Aprobar y Restaurar (1-Click)')
+                                .setStyle(ButtonStyle.Success)
+                                .setEmoji('✅'),
+                            new ButtonBuilder()
+                                .setCustomId(customRejectId)
+                                .setLabel('Rechazar Restauración')
+                                .setStyle(ButtonStyle.Danger)
+                                .setEmoji('❌')
+                        );
+
+                        const content = `<@${JACK_DISCORD_ID}> 🔔 **Solicitud de Restauración de Inventario pendiente de aprobación (Ticket #350)**`;
+                        const sent = await targetChannel.send({
+                            content,
+                            embeds: [embed],
+                            components: [row]
+                        });
+
+                        console.log(`[SAORI-REST] 🛡️ Alerta 1-click IRP enviada a #${targetChannel.name} para ${player}`);
+
+                        return sendJson(200, {
+                            ok: true,
+                            messageId: sent.id,
+                            channelId,
+                            player,
+                            backupId
+                        });
+                    } catch (err) {
+                        console.error('[SAORI-REST] Error en /api/irp/approval-request:', err.message);
+                        return sendJson(400, { ok: false, error: err.message });
+                    }
+                });
+                return;
+            }
+
             return sendJson(404, { ok: false, error: 'Ruta no encontrada' });
         });
 
@@ -3669,6 +3749,72 @@ client.on(Events.InteractionCreate, async (interaction) => {
         // 1. MANEJO DE BOTONES (DESPLIEGUE DE FORMULARIOS / MODALES O ACCIONES)
         if (interaction.isButton()) {
             const id = interaction.customId;
+
+            // 🛡️ TICKET #350: APROBACIÓN 1-CLICK DE RESTAURACIONES IRP (JACK / OWNER)
+            if (id.startsWith('btn_irp_approve_') || id.startsWith('btn_irp_reject_')) {
+                const isApprove = id.startsWith('btn_irp_approve_');
+                // Solo Jack (o Staff nivel OWNER) puede aprobar
+                const isOwner = (interaction.user.id === JACK_DISCORD_ID);
+                const hierarchy = getStaffMemberHierarchy(interaction.member, interaction.user.id);
+                if (!isOwner && (!hierarchy.isStaff || hierarchy.level < STAFF_LEVELS.OWNER)) {
+                    return await interaction.reply({
+                        content: '❌ Solo Jack (Dueño) tiene autoridad para aprobar o rechazar restauraciones de inventario.',
+                        ephemeral: true
+                    });
+                }
+
+                const payload = id.replace(isApprove ? 'btn_irp_approve_' : 'btn_irp_reject_', '');
+                const parts = payload.split(':');
+                const player = parts[0];
+                const backupId = parts[1] || 'latest';
+
+                await interaction.deferUpdate().catch(() => {});
+
+                if (isApprove) {
+                    const cmd = `irp restore ${player} ${backupId} --force`;
+                    const ok = await sendMinecraftConsoleCommand(cmd);
+                    const originalEmbed = interaction.message.embeds[0];
+                    const embed = EmbedBuilder.from(originalEmbed)
+                        .setColor(0x2ECC71)
+                        .setTitle('✅ Restauración de Inventario APROBADA (1-Click)')
+                        .addFields(
+                            { name: '👤 Decisión de Jack', value: `Aprobado por <@${interaction.user.id}> vía Discord 1-Click`, inline: true },
+                            { name: '⚡ Comando Ejecutado', value: `\`/${cmd}\` (${ok ? 'Despachado a consola Pterodactyl' : 'Error al despachar'})`, inline: true }
+                        )
+                        .setFooter({ text: 'SAORI Anti-Dupe Protection · Aprobado por Jack' })
+                        .setTimestamp();
+
+                    await interaction.editReply({ embeds: [embed], components: [] }).catch(() => {});
+
+                    await sendAuditLog(new EmbedBuilder()
+                        .setTitle('🛡️ [IRP] Restauración Aprobada en 1-Click')
+                        .setColor(0x2ECC71)
+                        .setDescription(`**Jack** aprobó la restauración de inventario para el jugador **${player}** (Backup: \`${backupId}\`).`)
+                        .addFields({ name: 'Comando', value: `\`/${cmd}\`` })
+                        .setTimestamp()
+                    );
+                } else {
+                    const originalEmbed = interaction.message.embeds[0];
+                    const embed = EmbedBuilder.from(originalEmbed)
+                        .setColor(0xE74C3C)
+                        .setTitle('❌ Restauración de Inventario RECHAZADA')
+                        .addFields(
+                            { name: '👤 Decisión de Jack', value: `Rechazado por <@${interaction.user.id}> (Protección Anti-Duplicación activa)`, inline: true }
+                        )
+                        .setFooter({ text: 'SAORI Anti-Dupe Protection · Rechazado por Jack' })
+                        .setTimestamp();
+
+                    await interaction.editReply({ embeds: [embed], components: [] }).catch(() => {});
+
+                    await sendAuditLog(new EmbedBuilder()
+                        .setTitle('🛡️ [IRP] Restauración Rechazada')
+                        .setColor(0xE74C3C)
+                        .setDescription(`**Jack** rechazó la restauración para **${player}** (Posible intento de duplicación o reporte sin soporte técnico).`)
+                        .setTimestamp()
+                    );
+                }
+                return;
+            }
 
             // BOTONES DE SHELPSTAFF
             if (id.startsWith('btn_shelpstaff_')) {
