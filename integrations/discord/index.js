@@ -441,6 +441,9 @@ try {
 // =========================================================================
 const DISCORD_REST_PORT = process.env.DISCORD_REST_PORT || 8095;
 let discordRestServer = null;
+const pendingIrpApprovalRequests = new Map();
+const IRP_PLAYER_REGEX = /^\.?[a-zA-Z0-9_]{2,16}$/;
+const IRP_BACKUP_ID_REGEX = /^(latest|\d+|[0-9]{4}-[0-9]{2}-[0-9]{2}(?:_[0-9]{2}-[0-9]{2}-[0-9]{2})?|\d+m)$/;
 
 function startDiscordRestApiServer(client) {
     if (discordRestServer) return;
@@ -670,22 +673,47 @@ function startDiscordRestApiServer(client) {
                 req.on('end', async () => {
                     try {
                         const data = JSON.parse(body || '{}');
-                        const player = data.player || data.jugador;
-                        const backupId = data.backup_id || data.backup || 'latest';
-                        const reason = data.reason || data.motivo || 'Reporte de pérdida de inventario';
+                        const player = (data.player || data.jugador || '').trim();
+                        const backupId = (data.backup_id || data.backup || 'latest').trim();
+                        const reason = (data.reason || data.motivo || 'Reporte de pérdida de inventario').trim();
                         const reportedAt = data.reported_at || data.hora || new Date().toISOString();
                         const deltaSummary = data.delta_summary || data.delta || 'No especificado';
-                        const modality = data.modality || data.modalidad || 'clasico';
+                        const modality = (data.modality || data.modalidad || 'clasico').trim();
                         const channelId = data.channel_id || CHANNELS.DIRECCION_GENERAL || CHANNELS.AUDITORIA;
 
-                        if (!player) {
-                            return sendJson(400, { ok: false, error: 'Parámetro "player" es obligatorio' });
+                        if (!player || !IRP_PLAYER_REGEX.test(player)) {
+                            return sendJson(400, { ok: false, error: 'Parámetro "player" inválido (debe cumplir formato de nick Minecraft / Floodgate)' });
+                        }
+                        if (!backupId || !IRP_BACKUP_ID_REGEX.test(backupId)) {
+                            return sendJson(400, { ok: false, error: 'Parámetro "backup_id" inválido' });
                         }
 
                         const targetChannel = client.channels.cache.get(channelId);
                         if (!targetChannel || !targetChannel.isTextBased()) {
                             return sendJson(404, { ok: false, error: `Canal ${channelId} no encontrado` });
                         }
+
+                        // Generar token nonce único para evitar manipulación en customId y permitir un solo uso
+                        const reqNonce = Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 8);
+                        const now = Date.now();
+
+                        // Limpiar solicitudes con más de 24h
+                        for (const [k, v] of pendingIrpApprovalRequests.entries()) {
+                            if (now - v.createdAt > 24 * 3600 * 1000) {
+                                pendingIrpApprovalRequests.delete(k);
+                            }
+                        }
+
+                        pendingIrpApprovalRequests.set(reqNonce, {
+                            nonce: reqNonce,
+                            player,
+                            backupId,
+                            modality,
+                            reason,
+                            deltaSummary,
+                            createdAt: now,
+                            status: 'PENDING'
+                        });
 
                         const embed = new EmbedBuilder()
                             .setTitle('⚠️ Alerta Anti-Duplicación: Solicitud de Restauración IRP')
@@ -698,13 +726,14 @@ function startDiscordRestApiServer(client) {
                                 { name: '📦 Backup IRP sugerido', value: `\`${backupId}\``, inline: true },
                                 { name: '🔍 Delta de Inventario', value: `${deltaSummary}`, inline: false },
                                 { name: '🛡️ Estado de Reinicio Técnico', value: '❌ **NO detectado en los últimos 15 min**. Riesgo de duplicación.', inline: false },
-                                { name: '💡 Motivo / Causa declarada', value: `${reason}`, inline: false }
+                                { name: '💡 Motivo / Causa declarada', value: `${reason}`, inline: false },
+                                { name: '🔑 Token de Solicitud', value: `\`${reqNonce}\``, inline: true }
                             )
                             .setFooter({ text: 'SAORI Anti-Dupe Protection · Ticket #350 · Requiere 1-click de Jack' })
                             .setTimestamp();
 
-                        const customApproveId = `btn_irp_approve_${player}:${backupId}`;
-                        const customRejectId = `btn_irp_reject_${player}:${backupId}`;
+                        const customApproveId = `btn_irp_approve_${reqNonce}`;
+                        const customRejectId = `btn_irp_reject_${reqNonce}`;
 
                         const row = new ActionRowBuilder().addComponents(
                             new ButtonBuilder()
@@ -726,14 +755,15 @@ function startDiscordRestApiServer(client) {
                             components: [row]
                         });
 
-                        console.log(`[SAORI-REST] 🛡️ Alerta 1-click IRP enviada a #${targetChannel.name} para ${player}`);
+                        console.log(`[SAORI-REST] 🛡️ Alerta 1-click IRP enviada a #${targetChannel.name} para ${player} (Nonce: ${reqNonce})`);
 
                         return sendJson(200, {
                             ok: true,
                             messageId: sent.id,
                             channelId,
                             player,
-                            backupId
+                            backupId,
+                            nonce: reqNonce
                         });
                     } catch (err) {
                         console.error('[SAORI-REST] Error en /api/irp/approval-request:', err.message);
@@ -3763,10 +3793,44 @@ client.on(Events.InteractionCreate, async (interaction) => {
                     });
                 }
 
-                const payload = id.replace(isApprove ? 'btn_irp_approve_' : 'btn_irp_reject_', '');
-                const parts = payload.split(':');
-                const player = parts[0];
-                const backupId = parts[1] || 'latest';
+                const tokenOrPayload = id.replace(isApprove ? 'btn_irp_approve_' : 'btn_irp_reject_', '');
+                let player = null;
+                let backupId = 'latest';
+                let modality = 'clasico';
+
+                const requestData = pendingIrpApprovalRequests.get(tokenOrPayload);
+                if (requestData) {
+                    if (requestData.status !== 'PENDING') {
+                        return await interaction.reply({
+                            content: `⚠️ Esta solicitud ya fue resuelta previamente con estado: **${requestData.status}**.`,
+                            ephemeral: true
+                        });
+                    }
+                    player = requestData.player;
+                    backupId = requestData.backupId;
+                    modality = requestData.modality || 'clasico';
+                    requestData.status = isApprove ? 'APPROVED' : 'REJECTED';
+                    requestData.decidedAt = Date.now();
+                    requestData.decidedBy = interaction.user.id;
+                } else if (tokenOrPayload.includes(':')) {
+                    // Soporte de compatibilidad hacia atrás
+                    const parts = tokenOrPayload.split(':');
+                    player = parts[0];
+                    backupId = parts[1] || 'latest';
+                } else {
+                    return await interaction.reply({
+                        content: '⚠️ La solicitud de restauración ha expirado o no es válida.',
+                        ephemeral: true
+                    });
+                }
+
+                // Validación estricta anti-inyección de comandos en consola de Minecraft
+                if (!player || !IRP_PLAYER_REGEX.test(player) || !backupId || !IRP_BACKUP_ID_REGEX.test(backupId)) {
+                    return await interaction.reply({
+                        content: '❌ Parámetros de restauración inválidos o sospechosos detectados.',
+                        ephemeral: true
+                    });
+                }
 
                 await interaction.deferUpdate().catch(() => {});
 
