@@ -28,6 +28,7 @@ const {
 const fetch = require('node-fetch');
 const { spawn, execFile } = require('child_process');
 const http = require('http');
+const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const { DisTube, PlayableExtractorPlugin, Song } = require('distube');
@@ -445,6 +446,85 @@ const pendingIrpApprovalRequests = new Map();
 const IRP_PLAYER_REGEX = /^\.?[a-zA-Z0-9_]{2,16}$/;
 const IRP_BACKUP_ID_REGEX = /^(latest|\d+|[0-9]{4}-[0-9]{2}-[0-9]{2}(?:_[0-9]{2}-[0-9]{2}-[0-9]{2})?|\d+m)$/;
 
+// ── Blindaje de la API REST interna (Ticket #366) ────────────────────────────
+// Esta API publica rutas mutantes (anuncios, mensajes, alertas IRP) y permite
+// leer los mensajes de cualquier canal. Sin autenticacion, cualquier host con
+// ruta de red al puerto podia publicar como el bot oficial o leer canales de
+// staff. Se exige token, se acota el origen de red, el cuerpo y la cadencia.
+const REST_AUTH_TOKEN = process.env.SAORI_REST_TOKEN || '';
+const REST_MAX_BODY_BYTES = parseInt(process.env.SAORI_REST_MAX_BODY || '65536', 10);
+const REST_RATE_WINDOW_MS = 60 * 1000;
+const REST_RATE_MAX_READ = parseInt(process.env.SAORI_REST_RATE_READ || '120', 10);
+const REST_RATE_MAX_WRITE = parseInt(process.env.SAORI_REST_RATE_WRITE || '20', 10);
+const REST_ALLOWED_CIDRS = (process.env.SAORI_REST_ALLOWED_CIDRS
+    || '127.0.0.0/8,100.64.0.0/10,172.16.0.0/12,192.168.0.0/16')
+    .split(',').map(s => s.trim()).filter(Boolean);
+const restRateBuckets = new Map();
+
+function restNormalizeIp(raw) {
+    const ip = (raw || '').trim();
+    if (ip.startsWith('::ffff:')) return ip.slice(7);
+    return ip;
+}
+
+function restIpv4ToInt(ip) {
+    const parts = ip.split('.');
+    if (parts.length !== 4) return null;
+    let acc = 0;
+    for (const part of parts) {
+        const n = Number(part);
+        if (!Number.isInteger(n) || n < 0 || n > 255) return null;
+        acc = (acc * 256) + n;
+    }
+    return acc;
+}
+
+function restIpInCidr(ip, cidr) {
+    const [net, bitsRaw] = cidr.split('/');
+    const bits = Number(bitsRaw);
+    const ipInt = restIpv4ToInt(ip);
+    const netInt = restIpv4ToInt(net);
+    if (ipInt === null || netInt === null || !Number.isInteger(bits) || bits < 0 || bits > 32) return false;
+    if (bits === 0) return true;
+    const mask = (0xFFFFFFFF << (32 - bits)) >>> 0;
+    return ((ipInt & mask) >>> 0) === ((netInt & mask) >>> 0);
+}
+
+function restOriginAllowed(ip) {
+    if (!ip) return false;
+    if (ip === '::1') return true;
+    return REST_ALLOWED_CIDRS.some(cidr => restIpInCidr(ip, cidr));
+}
+
+// Comparacion en tiempo constante sobre digest, para no filtrar longitud ni prefijo.
+function restTokenValid(req) {
+    if (!REST_AUTH_TOKEN) return false;
+    const header = req.headers['authorization'] || '';
+    const presented = header.toLowerCase().startsWith('bearer ')
+        ? header.slice(7).trim()
+        : String(req.headers['x-saori-token'] || '').trim();
+    if (!presented) return false;
+    const a = crypto.createHash('sha256').update(presented).digest();
+    const b = crypto.createHash('sha256').update(REST_AUTH_TOKEN).digest();
+    return crypto.timingSafeEqual(a, b);
+}
+
+function restRateLimited(ip, isWrite) {
+    const now = Date.now();
+    for (const [k, v] of restRateBuckets.entries()) {
+        if (now - v.start > REST_RATE_WINDOW_MS) restRateBuckets.delete(k);
+    }
+    const key = `${ip}|${isWrite ? 'w' : 'r'}`;
+    const limit = isWrite ? REST_RATE_MAX_WRITE : REST_RATE_MAX_READ;
+    const bucket = restRateBuckets.get(key);
+    if (!bucket || now - bucket.start > REST_RATE_WINDOW_MS) {
+        restRateBuckets.set(key, { start: now, count: 1 });
+        return false;
+    }
+    bucket.count += 1;
+    return bucket.count > limit;
+}
+
 function startDiscordRestApiServer(client) {
     if (discordRestServer) return;
     try {
@@ -452,16 +532,57 @@ function startDiscordRestApiServer(client) {
             const sendJson = (status, data) => {
                 res.writeHead(status, {
                     'Content-Type': 'application/json; charset=utf-8',
-                    'Access-Control-Allow-Origin': '*'
+                    'Cache-Control': 'no-store'
                 });
                 res.end(JSON.stringify(data));
             };
 
             const reqUrl = new URL(req.url, `http://127.0.0.1:${DISCORD_REST_PORT}`);
             const pathname = reqUrl.pathname;
+            const clientIp = restNormalizeIp(req.socket && req.socket.remoteAddress);
+            const isWrite = req.method !== 'GET' && req.method !== 'HEAD';
 
-            // Health & Status
-            if (req.method === 'GET' && (pathname === '/' || pathname === '/health' || pathname === '/api/status')) {
+            // Cortafuegos de aplicacion: solo loopback, tailnet, docker y LAN.
+            if (!restOriginAllowed(clientIp)) {
+                console.warn(`[SAORI-REST] Origen rechazado ${clientIp} -> ${req.method} ${pathname}`);
+                return sendJson(403, { ok: false, error: 'Origen no autorizado' });
+            }
+
+            if (restRateLimited(clientIp, isWrite)) {
+                console.warn(`[SAORI-REST] Rate limit alcanzado por ${clientIp} (${isWrite ? 'escritura' : 'lectura'})`);
+                return sendJson(429, { ok: false, error: 'Demasiadas peticiones' });
+            }
+
+            // Sonda de vida publica: sin datos de la guild ni del bot.
+            if (req.method === 'GET' && (pathname === '/' || pathname === '/health')) {
+                return sendJson(200, { ok: true, service: 'saori-discord-rest', ready: !!client.user });
+            }
+
+            // A partir de aqui todo exige token. Sin token configurado se cierra
+            // la API en vez de degradar a acceso anonimo.
+            if (!REST_AUTH_TOKEN) {
+                console.error('[SAORI-REST] SAORI_REST_TOKEN no definido: API restringida a /health.');
+                return sendJson(503, { ok: false, error: 'API no configurada: falta SAORI_REST_TOKEN' });
+            }
+            if (!restTokenValid(req)) {
+                console.warn(`[SAORI-REST] Token invalido o ausente desde ${clientIp} -> ${req.method} ${pathname}`);
+                return sendJson(401, { ok: false, error: 'No autorizado' });
+            }
+
+            // Tope de cuerpo: corta la conexion antes de acumular en memoria.
+            if (isWrite) {
+                let bodyBytes = 0;
+                req.on('data', (chunk) => {
+                    bodyBytes += chunk.length;
+                    if (bodyBytes > REST_MAX_BODY_BYTES) {
+                        console.warn(`[SAORI-REST] Cuerpo >${REST_MAX_BODY_BYTES}B desde ${clientIp}; conexion abortada`);
+                        req.destroy();
+                    }
+                });
+            }
+
+            // Estado detallado del bot y de la guild
+            if (req.method === 'GET' && pathname === '/api/status') {
                 const guild = client.guilds.cache.first();
                 return sendJson(200, {
                     ok: true,
@@ -1186,9 +1307,13 @@ async function handleDiscordManagement(message, cleanPrompt, isJack) {
 }
 
 const PTERODACTYL_API_URL = 'https://panel.thegamehosting.com/api/client/servers/38528a4e/command';
-const PTERODACTYL_API_KEY = process.env.PTERODACTYL_API_KEY || 'ptlc_uckcZ8Nks4Fduh4J1ulHhouORUn02nyKidwHLtF0xeU';
+const PTERODACTYL_API_KEY = process.env.PTERODACTYL_API_KEY || '';
 
 async function sendMinecraftConsoleCommand(command) {
+    if (!PTERODACTYL_API_KEY) {
+        console.error('[SAORI-PTERODACTYL] PTERODACTYL_API_KEY no definido: comando de consola no despachado.');
+        return false;
+    }
     try {
         const res = await fetch(PTERODACTYL_API_URL, {
             method: 'POST',
@@ -1398,6 +1523,10 @@ const PTERODACTYL_LOGS_URL = 'https://panel.thegamehosting.com/api/client/server
 const logViewerSessions = new Map(); // messageId -> session data
 
 async function fetchMinecraftLatestLogs(filter = '') {
+    if (!PTERODACTYL_API_KEY) {
+        console.error('[SAORI-PTERODACTYL] PTERODACTYL_API_KEY no definido: visor de logs deshabilitado.');
+        return null;
+    }
     try {
         const res = await fetch(PTERODACTYL_LOGS_URL, {
             headers: {
@@ -1479,6 +1608,7 @@ async function getLiveServerTelemetry() {
     let mcData = null;
 
     try {
+        if (!PTERODACTYL_API_KEY) throw new Error('PTERODACTYL_API_KEY no definido');
         const pRes = await fetch('https://panel.thegamehosting.com/api/client/servers/38528a4e/resources', {
             headers: {
                 'Authorization': `Bearer ${PTERODACTYL_API_KEY}`,

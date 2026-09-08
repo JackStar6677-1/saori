@@ -46,3 +46,7 @@ saori_memory.json
 .idea/
 *.swp
 *.tmp
+
+# Copias de seguridad locales: pueden contener credenciales (ticket #366)
+*.bak
+*.bak-*
