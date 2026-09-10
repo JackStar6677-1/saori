@@ -194,7 +194,7 @@ const STATS_CHANNELS = {
 
 async function updateServerStats(guild) {
     try {
-        if (!guild) return;
+        if (!guild || guild.id !== DRAKES_OFFICIAL_GUILD_ID) return;
         await guild.members.fetch().catch(() => {});
 
         const totalMembers = guild.memberCount;
@@ -248,6 +248,32 @@ async function updateServerStats(guild) {
         console.log(`[STATS] ✅ Estadísticas actualizadas: Discord ${totalMembers} (${humans} humanos) | MC Online: ${mcOnline}`);
     } catch (err) {
         console.error('[STATS] Error al actualizar estadísticas:', err.message);
+    }
+}
+
+async function updateNexoStats(guild) {
+    try {
+        if (!guild || guild.id !== legacyGuild.LEGACY_GUILD_ID) return;
+        const stats = legacyGuild.readState()?.channels?.stats;
+        if (!stats) return;
+
+        const humans = guild.members.cache.filter(member => !member.user.bot).size;
+        const staffRoleIds = Object.values(legacyGuild.readState()?.roles?.staff || {});
+        const staff = guild.members.cache.filter(member => !member.user.bot && staffRoleIds.some(roleId => member.roles.cache.has(roleId))).size;
+        const online = guild.members.cache.filter(member => !member.user.bot && member.presence?.status && member.presence.status !== 'offline').size;
+        const labels = {
+            total: `👥・ᴍɪᴇᴍʙʀᴏs: ${guild.memberCount}`,
+            humans: `🧑・ᴜsᴜᴀʀɪᴏs: ${humans}`,
+            staff: `🛡️・sᴛᴀғғ: ${staff}`,
+            online: `🟢・ᴇɴ ʟíɴᴇᴀ: ${online}`
+        };
+        for (const [key, label] of Object.entries(labels)) {
+            const channel = guild.channels.cache.get(stats[key]);
+            if (channel && channel.name !== label) await channel.setName(label, 'Estadísticas automáticas NEXO').catch(() => {});
+        }
+        console.log(`[NEXO-STATS] ${guild.memberCount} miembros, ${humans} humanos, ${staff} staff, ${online} en línea.`);
+    } catch (error) {
+        console.error('[NEXO-STATS] Error actualizando estadísticas:', error.message);
     }
 }
 
@@ -2113,6 +2139,11 @@ client.once(Events.ClientReady, async () => {
     console.log(`✅ [SAORI-DISCORD] ¡Conectada como ${client.user.tag}! Voice, Images (3/h), Purge, Auditoría (#${CHANNELS.AUDITORIA}) & Channel #${CHANNELS.SAORI_CHAT} activos.`);
     client.user.setActivity('DrakesCraft SRE & Auditoría 🛡️', { type: ActivityType.Watching });
     await legacyGuild.onReady(client);
+    const nexoGuild = client.guilds.cache.get(legacyGuild.LEGACY_GUILD_ID);
+    if (nexoGuild) {
+        setTimeout(() => updateNexoStats(nexoGuild), 15_000);
+        setInterval(() => updateNexoStats(nexoGuild), 10 * 60 * 1000);
+    }
 
     // Iniciar Servidor API REST Interno (puerto 8095) para el Quinteto de IAs
     startDiscordRestApiServer(client);
@@ -2878,6 +2909,7 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
         if (reaction.message.partial) await reaction.message.fetch().catch(() => null);
 
         if (reaction.message.channelId !== CHANNELS.AUTO_ROLES) return;
+        if (reaction.message.guildId !== DRAKES_OFFICIAL_GUILD_ID) return;
 
         const roleId = getRoleIdFromEmoji(reaction.emoji.name);
         if (!roleId) return;
@@ -2906,6 +2938,7 @@ client.on(Events.MessageReactionRemove, async (reaction, user) => {
         if (reaction.message.partial) await reaction.message.fetch().catch(() => null);
 
         if (reaction.message.channelId !== CHANNELS.AUTO_ROLES) return;
+        if (reaction.message.guildId !== DRAKES_OFFICIAL_GUILD_ID) return;
 
         const roleId = getRoleIdFromEmoji(reaction.emoji.name);
         if (!roleId) return;
@@ -3968,6 +4001,13 @@ async function handleSlashCommand(interaction) {
 client.on(Events.InteractionCreate, async (interaction) => {
     try {
         if (await legacyGuild.handleInteraction(interaction)) return;
+        if (interaction.guildId === legacyGuild.LEGACY_GUILD_ID) {
+            if (interaction.isChatInputCommand()) {
+                await interaction.reply({ content: 'Este comando pertenece a DrakesCraft y no opera en NEXO.', ephemeral: true });
+            }
+            return;
+        }
+        if (interaction.guildId !== DRAKES_OFFICIAL_GUILD_ID) return;
 
         // -1. MANEJO DE COMANDOS SLASH NATIVOS (/)
         if (interaction.isChatInputCommand()) {
