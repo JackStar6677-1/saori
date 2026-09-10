@@ -39,10 +39,14 @@ async function main() {
     const memberRoleId = JSON.parse(fs.readFileSync(statePath, 'utf8')).roles?.member;
     if (!memberRoleId) throw new Error('No existe el rol base de Usuario en el estado NEXO.');
     setBulkActive(true);
+    progress.phase = 'loading-members';
+    writeProgress(progress);
     try {
         for (;;) {
             const query = new URLSearchParams({ limit: '1000', ...(progress.after ? { after: progress.after } : {}) });
             const members = await request('GET', `/guilds/${LEGACY_GUILD_ID}/members?${query}`);
+            progress.phase = 'processing-members';
+            writeProgress(progress);
             if (!members.length) break;
             for (const member of members) {
                 progress.after = member.user.id;
