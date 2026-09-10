@@ -251,11 +251,18 @@ async function updateServerStats(guild) {
     }
 }
 
+let nexoStatsLastMemberFetch = 0;
 async function updateNexoStats(guild) {
     try {
         if (!guild || guild.id !== legacyGuild.LEGACY_GUILD_ID) return;
         const stats = legacyGuild.readState()?.channels?.stats;
         if (!stats) return;
+
+        // NEXO is large; hydrate only when needed and never more than twice per hour.
+        if (guild.members.cache.size < guild.memberCount && Date.now() - nexoStatsLastMemberFetch > 30 * 60 * 1000) {
+            nexoStatsLastMemberFetch = Date.now();
+            await guild.members.fetch().catch(error => console.warn('[NEXO-STATS] No se pudo hidratar miembros:', error.message));
+        }
 
         const humans = guild.members.cache.filter(member => !member.user.bot).size;
         const staffRoleIds = Object.values(legacyGuild.readState()?.roles?.staff || {});
