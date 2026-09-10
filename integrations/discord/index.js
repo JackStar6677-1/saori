@@ -1346,10 +1346,19 @@ async function sendMinecraftConsoleCommand(command) {
     }
 }
 
-async function sendAuditLog(embed) {
+function auditChannelIdForGuild(guild) {
+    if (guild?.id === legacyGuild.LEGACY_GUILD_ID) {
+        return legacyGuild.readState()?.channels?.audit || null;
+    }
+    return guild?.id === DRAKES_OFFICIAL_GUILD_ID ? CHANNELS.AUDITORIA : null;
+}
+
+async function sendAuditLog(embed, guild = null) {
     try {
-        const auditChan = client.channels.cache.get(CHANNELS.AUDITORIA) || 
-                          await client.channels.fetch(CHANNELS.AUDITORIA).catch(() => null);
+        const auditChannelId = auditChannelIdForGuild(guild);
+        if (!auditChannelId) return;
+        const auditChan = client.channels.cache.get(auditChannelId) ||
+                          await client.channels.fetch(auditChannelId).catch(() => null);
         if (auditChan) {
             await auditChan.send({ embeds: [embed] });
         }
@@ -2198,7 +2207,21 @@ function formatMemberNickname(name, memberRoles = [], memberId = '') {
 // Bienvenidas automáticas y Auditoría de Ingreso
 client.on('guildMemberAdd', async (member) => {
     await legacyGuild.onMemberAdd(member);
-    if (member.guild.id === legacyGuild.LEGACY_GUILD_ID) return;
+    if (member.guild.id === legacyGuild.LEGACY_GUILD_ID) {
+        const accountAgeDays = Math.floor((Date.now() - member.user.createdTimestamp) / (1000 * 60 * 60 * 24));
+        const joinAudit = new EmbedBuilder()
+            .setColor(accountAgeDays < 7 ? 0xE67E22 : 0x2ECC71)
+            .setTitle(accountAgeDays < 7 ? '⚠️ Nuevo miembro NEXO (cuenta reciente)' : '📥 Miembro nuevo en NEXO')
+            .setAuthor({ name: `${member.user.tag} (${member.user.id})`, iconURL: member.user.displayAvatarURL({ dynamic: true }) })
+            .addFields(
+                { name: '👤 Usuario', value: `${member} (\`${member.user.tag}\`)`, inline: true },
+                { name: '📅 Antigüedad', value: `\`${accountAgeDays} días\``, inline: true },
+                { name: '👥 Total', value: `\`${member.guild.memberCount}\``, inline: true }
+            )
+            .setFooter({ text: 'NEXO Security Audit · Ingreso' }).setTimestamp();
+        await sendAuditLog(joinAudit, member.guild);
+        return;
+    }
 
     try {
         // ✨ Auto-Nickname en Small Caps y Asignación de Rol Polis
@@ -2282,7 +2305,7 @@ client.on('guildMemberAdd', async (member) => {
             )
             .setFooter({ text: `ID Usuario: ${member.user.id}` })
             .setTimestamp();
-        await sendAuditLog(joinAudit);
+        await sendAuditLog(joinAudit, member.guild);
 
     } catch (e) {
         console.error('[SAORI-DISCORD] Error enviando bienvenida/auditoría ingreso:', e.message);
@@ -2309,7 +2332,7 @@ client.on('guildMemberRemove', async (member) => {
             .setFooter({ text: `ID Usuario: ${member.user.id}` })
             .setTimestamp();
 
-        await sendAuditLog(embed);
+        await sendAuditLog(embed, member.guild);
     } catch (err) {
         console.error('[AUDIT] Error en guildMemberRemove:', err);
     }
@@ -2319,7 +2342,7 @@ client.on('guildMemberRemove', async (member) => {
 client.on('messageDelete', async (message) => {
     try {
         if (message.author?.bot && message.author.id === client.user.id) return;
-        if (message.channel?.id === CHANNELS.AUDITORIA) return;
+        if (!auditChannelIdForGuild(message.guild) || message.channel?.id === auditChannelIdForGuild(message.guild)) return;
 
         let executor = null;
         if (message.guild) {
@@ -2367,7 +2390,7 @@ client.on('messageDelete', async (message) => {
         embed.setFooter({ text: `ID Mensaje: ${message.id} · ID Autor: ${message.author?.id || 'N/A'}` })
             .setTimestamp();
 
-        await sendAuditLog(embed);
+        await sendAuditLog(embed, message.guild);
     } catch (err) {
         console.error('[AUDIT] Error en messageDelete:', err);
     }
@@ -2378,7 +2401,7 @@ client.on('messageUpdate', async (oldMessage, newMessage) => {
     try {
         if (newMessage.author?.bot) return;
         if (oldMessage.content === newMessage.content) return;
-        if (newMessage.channel?.id === CHANNELS.AUDITORIA) return;
+        if (!auditChannelIdForGuild(newMessage.guild) || newMessage.channel?.id === auditChannelIdForGuild(newMessage.guild)) return;
 
         const authorTag = newMessage.author ? `${newMessage.author.tag}` : 'Desconocido';
         const authorAvatar = newMessage.author?.displayAvatarURL({ dynamic: true }) || client.user.displayAvatarURL();
@@ -2399,7 +2422,7 @@ client.on('messageUpdate', async (oldMessage, newMessage) => {
             .setFooter({ text: `ID Mensaje: ${newMessage.id} · ID Autor: ${newMessage.author?.id || 'N/A'}` })
             .setTimestamp();
 
-        await sendAuditLog(embed);
+        await sendAuditLog(embed, newMessage.guild);
     } catch (err) {
         console.error('[AUDIT] Error en messageUpdate:', err);
     }
@@ -2408,6 +2431,23 @@ client.on('messageUpdate', async (oldMessage, newMessage) => {
 // 🛡️ AUDITORÍA: Modificación de Roles y Apodos de Miembros
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
     try {
+        if (newMember.guild.id === legacyGuild.LEGACY_GUILD_ID) {
+            if (newMember.user.bot || newMember.id === JACK_DISCORD_ID) return;
+            // The bulk normalizer records progress on disk; avoid turning one maintenance run into thousands of audit posts.
+            if (legacyGuild.readState()?.nicknameBulkSyncActive) return;
+            const addedRoles = newMember.roles.cache.filter(role => !oldMember.roles.cache.has(role.id));
+            const removedRoles = oldMember.roles.cache.filter(role => !newMember.roles.cache.has(role.id));
+            const nicknameChanged = oldMember.nickname !== newMember.nickname;
+            if (!addedRoles.size && !removedRoles.size && !nicknameChanged) return;
+            const embed = new EmbedBuilder().setColor(0x38BDF8).setTitle('👤 Miembro actualizado · NEXO')
+                .setAuthor({ name: `${newMember.user.tag} (${newMember.user.id})`, iconURL: newMember.user.displayAvatarURL({ dynamic: true }) }).setTimestamp();
+            if (addedRoles.size) embed.addFields({ name: '➕ Roles asignados', value: addedRoles.map(role => `• \`${role.name}\``).join('\n'), inline: true });
+            if (removedRoles.size) embed.addFields({ name: '➖ Roles retirados', value: removedRoles.map(role => `• \`${role.name}\``).join('\n'), inline: true });
+            if (nicknameChanged) embed.addFields({ name: '🏷️ Apodo', value: `\`${oldMember.nickname || oldMember.user.username}\` → \`${newMember.nickname || newMember.user.username}\``, inline: false });
+            await sendAuditLog(embed, newMember.guild);
+            return;
+        }
+        if (newMember.guild.id !== DRAKES_OFFICIAL_GUILD_ID) return;
         if (newMember.user.bot || newMember.id === JACK_DISCORD_ID) return;
 
         // 💎 CELEBRACIÓN DE SERVER BOOSTER
@@ -2499,7 +2539,7 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
             });
         }
 
-        await sendAuditLog(embed);
+        await sendAuditLog(embed, newMember.guild);
     } catch (err) {
         console.error('[AUDIT] Error en guildMemberUpdate:', err);
     }
@@ -2518,7 +2558,7 @@ client.on('channelCreate', async (channel) => {
             )
             .setFooter({ text: `ID Canal: ${channel.id}` })
             .setTimestamp();
-        await sendAuditLog(embed);
+        await sendAuditLog(embed, channel.guild);
     } catch (e) {}
 });
 
@@ -2534,8 +2574,25 @@ client.on('channelDelete', async (channel) => {
             )
             .setFooter({ text: `ID Canal: ${channel.id}` })
             .setTimestamp();
-        await sendAuditLog(embed);
+        await sendAuditLog(embed, channel.guild);
     } catch (e) {}
+});
+
+client.on('channelUpdate', async (oldChannel, newChannel) => {
+    try {
+        if (!newChannel.guild || !auditChannelIdForGuild(newChannel.guild)) return;
+        const changes = [];
+        if (oldChannel.name !== newChannel.name) changes.push(`Nombre: \`${oldChannel.name}\` → \`${newChannel.name}\``);
+        if (oldChannel.topic !== newChannel.topic) changes.push('Tema o descripción actualizado');
+        if (oldChannel.rateLimitPerUser !== newChannel.rateLimitPerUser) changes.push(`Slowmode: \`${oldChannel.rateLimitPerUser || 0}s\` → \`${newChannel.rateLimitPerUser || 0}s\``);
+        if (!changes.length) return;
+        await sendAuditLog(new EmbedBuilder()
+            .setColor(0xF59E0B).setTitle('⚙️ Canal actualizado')
+            .addFields({ name: '📍 Canal', value: `<#${newChannel.id}> (\`${newChannel.name}\`)`, inline: false }, { name: 'Cambios', value: changes.join('\n'), inline: false })
+            .setFooter({ text: `ID Canal: ${newChannel.id}` }).setTimestamp(), newChannel.guild);
+    } catch (error) {
+        console.error('[AUDIT] Error en channelUpdate:', error.message);
+    }
 });
 
 // 🛡️ AUDITORÍA: Roles Creados, Eliminados y Modificados (Audit Suite 2.0)
@@ -2562,7 +2619,7 @@ client.on('roleCreate', async (role) => {
             embed.addFields({ name: '👤 Creado por', value: `${executor} (\`${executor.tag}\`)`, inline: true });
         }
         embed.setFooter({ text: 'DrakesCraft Audit Suite · Rol Creado' }).setTimestamp();
-        await sendAuditLog(embed);
+        await sendAuditLog(embed, role.guild);
     } catch (e) {}
 });
 
@@ -2589,7 +2646,7 @@ client.on('roleDelete', async (role) => {
             embed.addFields({ name: '👤 Eliminado por', value: `${executor} (\`${executor.tag}\`)`, inline: true });
         }
         embed.setFooter({ text: 'DrakesCraft Audit Suite · Rol Eliminado' }).setTimestamp();
-        await sendAuditLog(embed);
+        await sendAuditLog(embed, role.guild);
     } catch (e) {}
 });
 
@@ -2635,7 +2692,7 @@ client.on('roleUpdate', async (oldRole, newRole) => {
             embed.addFields({ name: '👤 Modificado por', value: `${executor} (\`${executor.tag}\`)`, inline: true });
         }
         embed.setFooter({ text: 'DrakesCraft Audit Suite · Rol Modificado' }).setTimestamp();
-        await sendAuditLog(embed);
+        await sendAuditLog(embed, newRole.guild);
     } catch (e) {}
 });
 
@@ -2666,7 +2723,7 @@ client.on('guildBanAdd', async (ban) => {
             embed.addFields({ name: '🛡️ Moderador', value: `${executor} (\`${executor.tag}\`)`, inline: true });
         }
         embed.setFooter({ text: `ID Usuario: ${ban.user.id}` }).setTimestamp();
-        await sendAuditLog(embed);
+        await sendAuditLog(embed, ban.guild);
     } catch (e) {}
 });
 
@@ -2692,7 +2749,7 @@ client.on('guildBanRemove', async (ban) => {
             embed.addFields({ name: '🛡️ Moderador', value: `${executor} (\`${executor.tag}\`)`, inline: true });
         }
         embed.setFooter({ text: `ID Usuario: ${ban.user.id}` }).setTimestamp();
-        await sendAuditLog(embed);
+        await sendAuditLog(embed, ban.guild);
     } catch (e) {}
 });
 
@@ -2724,7 +2781,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                 .setDescription(desc)
                 .setFooter({ text: `ID Usuario: ${user.id}` })
                 .setTimestamp();
-            await sendAuditLog(embed);
+            await sendAuditLog(embed, newState.guild || oldState.guild);
         }
     } catch (e) {}
 });
@@ -2742,7 +2799,7 @@ client.on('threadCreate', async (thread) => {
             )
             .setFooter({ text: `ID Hilo: ${thread.id}` })
             .setTimestamp();
-        await sendAuditLog(embed);
+        await sendAuditLog(embed, thread.guild);
     } catch (e) {}
 });
 
@@ -4561,8 +4618,10 @@ async function handleNexoSaoriChat(message) {
 }
 
 client.on('messageCreate', async (message) => {
-    if (legacyGuild.isSaoriChannel(message.channel.id)) {
-        return await handleNexoSaoriChat(message);
+    if (message.guildId === legacyGuild.LEGACY_GUILD_ID) {
+        // NEXO uses deterministic bot functions only; it never forwards member messages to the AI pipeline.
+        await legacyGuild.handleMessage(message);
+        return;
     }
     await legacyGuild.handleMessage(message);
 
