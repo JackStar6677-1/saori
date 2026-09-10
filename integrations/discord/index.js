@@ -267,12 +267,23 @@ async function updateNexoStats(guild) {
         const humans = guild.members.cache.filter(member => !member.user.bot).size;
         const staffRoleIds = Object.values(legacyGuild.readState()?.roles?.staff || {});
         const staff = guild.members.cache.filter(member => !member.user.bot && staffRoleIds.some(roleId => member.roles.cache.has(roleId))).size;
-        const online = guild.members.cache.filter(member => !member.user.bot && member.presence?.status && member.presence.status !== 'offline').size;
+        // Presence is not retained after a reconnect unless the privileged Presence intent is enabled.
+        // Discord's guild endpoint gives us the best live, cross-client count without relying on that cache.
+        let online = 0;
+        try {
+            const response = await fetch(`https://discord.com/api/v10/guilds/${guild.id}?with_counts=true`, {
+                headers: { Authorization: `Bot ${DISCORD_BOT_TOKEN}` }
+            });
+            const telemetry = await response.json();
+            online = Number(telemetry.approximate_presence_count) || 0;
+        } catch (error) {
+            console.warn('[NEXO-STATS] No se pudo consultar presencia:', error.message);
+        }
         const labels = {
             total: `👥・ᴍɪᴇᴍʙʀᴏs: ${guild.memberCount}`,
             humans: `🧑・ᴜsᴜᴀʀɪᴏs: ${humans}`,
             staff: `🛡️・sᴛᴀғғ: ${staff}`,
-            online: `🟢・ᴇɴ ʟíɴᴇᴀ: ${online}`
+            online: `🟢・ᴀᴄᴛɪᴠᴏs: ${online}`
         };
         for (const [key, label] of Object.entries(labels)) {
             const channel = guild.channels.cache.get(stats[key]);
