@@ -75,6 +75,19 @@ const CHANNELS = {
     VOZ_DIRECCION: '1545668372753027144'       // 🔊・ᴠᴏᴢ-ᴅɪʀᴇᴄᴄɪóɴ
 };
 
+function buildInteractionThreadName(message) {
+    const firstLine = (message.content || '')
+        .split('\n')[0]
+        .replace(/<[@#&!0-9]+>/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    const fallback = message.attachments?.size > 0
+        ? `Publicacion de ${message.author.username}`
+        : `Conversacion de ${message.author.username}`;
+
+    return `Hilo: ${firstLine || fallback}`.slice(0, 100);
+}
+
 // 🔔 Mapeo Oficial de Canales de Anuncios a sus Roles de Notificación
 const NOTIFICATION_CHANNELS_MAP = {
     '1539636299395502211': '1539644011214807181', // 📢・ᴀɴᴜɴᴄɪᴏs-ᴅɪsᴄᴏʀᴅ -> 📢 ︱ AVISOS DISCORD
@@ -4717,7 +4730,7 @@ client.on('messageCreate', async (message) => {
         }
 
         // 2. Si el mensaje está en el canal principal (no es un hilo)
-        if (!message.channel.isThread()) {
+        if (!message.channel.isThread() && !message.webhookId) {
             const contentLower = message.content.toLowerCase();
             const hasAttachments = message.attachments.size > 0;
             const isTradeOrShowcase = hasAttachments || 
@@ -4731,27 +4744,26 @@ client.on('messageCreate', async (message) => {
                         await message.react('🪙').catch(() => null);
                     }
                     await message.react('💬').catch(() => null);
-
-                    // Si tiene adjuntos (fotos de construcciones o tiendas) o etiquetas explícitas de comercio/trabajo
-                    const needsThread = hasAttachments || /\[(venta|compra|oferta|servicio|subasta|trabajo|construcci[oó]n|tienda)\]/i.test(message.content);
-                    if (needsThread) {
-                        let threadTitle = message.content.split('\n')[0].replace(/<[@#&!0-9]+>/g, '').trim();
-                        if (threadTitle.length > 45) threadTitle = threadTitle.slice(0, 45) + '...';
-                        if (!threadTitle) threadTitle = hasAttachments ? `Publicación de ${message.author.username}` : `Negociación y Charla`;
-
-                        const thread = await message.startThread({
-                            name: `💬 ${threadTitle}`,
-                            autoArchiveDuration: 1440,
-                            reason: 'Hilo de negociación y detalles para interacciones/comercio'
-                        }).catch(() => null);
-
-                        if (thread) {
-                            await thread.send(`👋 ¡Espacio creado para negociar, consultar precios o comentar la publicación de ${message.author}! Mantengan el respeto y sigan las normas del servidor. ✨`).catch(() => null);
-                        }
-                    }
                 } catch (e) {
-                    console.error('[INTERACCIONES] Error gestionando auto-reacción/hilo:', e.message);
+                    console.error('[INTERACCIONES] Error gestionando auto-reaccion:', e.message);
                 }
+            }
+
+            try {
+                // Cada publicacion humana en el mural tiene su conversacion aislada.
+                if (!message.hasThread) {
+                    const thread = await message.startThread({
+                        name: buildInteractionThreadName(message),
+                        autoArchiveDuration: 1440,
+                        reason: 'Hilo automatico para la publicacion de interacciones y comercio'
+                    }).catch(() => null);
+
+                    if (thread) {
+                        await thread.send(`Espacio para comentar la publicacion de ${message.author}. Mantengan el respeto y sigan las normas del servidor.`).catch(() => null);
+                    }
+                }
+            } catch (e) {
+                console.error('[INTERACCIONES] Error creando hilo automatico:', e.message);
             }
         }
     }
@@ -6866,4 +6878,3 @@ async function startDiscordBot() {
     }
 }
 startDiscordBot();
-
