@@ -16,7 +16,9 @@ if (!process.argv.includes('--apply')) {
     throw new Error('Operación destructiva bloqueada. Ejecuta con --apply tras validar el inventario.');
 }
 
-async function request(method, endpoint, body) {
+const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+
+async function request(method, endpoint, body, attempt = 0) {
     const response = await fetch(`${API}${endpoint}`, {
         method,
         headers: {
@@ -25,8 +27,13 @@ async function request(method, endpoint, body) {
         },
         ...(body ? { body: JSON.stringify(body) } : {})
     });
-    if (response.status === 204) return null;
     const data = await response.json().catch(() => ({}));
+    if (response.status === 204) return null;
+    if (response.status === 429 && attempt < 8) {
+        const delayMs = Math.ceil((data.retry_after || 1) * 1000) + 100;
+        await sleep(delayMs);
+        return request(method, endpoint, body, attempt + 1);
+    }
     if (!response.ok) throw new Error(`${method} ${endpoint}: ${response.status} ${JSON.stringify(data)}`);
     return data;
 }
