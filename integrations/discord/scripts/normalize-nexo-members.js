@@ -70,7 +70,8 @@ async function main() {
                 }
                 // One mutation per 750 ms keeps below Discord's member-edit bucket.
                 await sleep(750);
-                if (progress.scanned % 25 === 0) writeProgress(progress);
+                // Persist every member so a restart never repeats a completed assignment.
+                writeProgress(progress);
             }
             writeProgress(progress);
             if (members.length < 1000) break;
