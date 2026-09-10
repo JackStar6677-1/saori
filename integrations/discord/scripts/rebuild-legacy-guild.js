@@ -57,6 +57,16 @@ async function main() {
     ]);
     console.log(`[NEXO] Reconstruyendo ${guild.name} (${channels.length} canales, ${roles.length} roles).`);
 
+    // Community guilds require a rules and updates channel. Move those pointers to temporary
+    // channels so every legacy channel can be removed without disabling Community features.
+    const temporaryRules = await createChannel('nexo-temporal-reglas', 0, null, 'Canal temporal durante la reconstrucción.', true);
+    const temporaryUpdates = await createChannel('nexo-temporal-avisos', 5, null, 'Canal temporal durante la reconstrucción.', true);
+    await patch(`/guilds/${GUILD_ID}`, {
+        rules_channel_id: temporaryRules.id,
+        public_updates_channel_id: temporaryUpdates.id,
+        system_channel_id: null
+    });
+
     // Remove every old category, channel, thread and forum before rebuilding the information architecture.
     for (const channel of channels.sort((a, b) => b.type - a.type)) {
         await del(`/channels/${channel.id}`);
@@ -155,6 +165,14 @@ async function main() {
         }
     };
     fs.writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+
+    await patch(`/guilds/${GUILD_ID}`, {
+        rules_channel_id: rules.id,
+        public_updates_channel_id: migration.id,
+        system_channel_id: welcome.id
+    });
+    await del(`/channels/${temporaryRules.id}`);
+    await del(`/channels/${temporaryUpdates.id}`);
 
     const send = (channelId, body) => post(`/channels/${channelId}/messages`, body);
     await send(welcome.id, { content: '# Bienvenido a NEXO\nUn lugar chill para conocer gente, conversar, jugar y crear. Pasa por <#' + rules.id + '> y luego elige tus roles en <#' + rolesChannel.id + '>.' });
