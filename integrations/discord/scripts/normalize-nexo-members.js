@@ -50,7 +50,7 @@ async function main() {
                 const target = formatNickname(source, member.roles || []);
                 if (!target || target === member.nick) continue;
                 try {
-                    await request('PATCH', `/guilds/${LEGACY_GUILD_ID}/members/${member.user.id}/nick`, { nick: target });
+                    await request('PATCH', `/guilds/${LEGACY_GUILD_ID}/members/${member.user.id}`, { nick: target });
                     progress.updated++;
                 } catch (error) {
                     progress.skipped++;
