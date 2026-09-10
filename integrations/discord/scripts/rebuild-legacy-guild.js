@@ -72,7 +72,11 @@ async function main() {
     ]);
     console.log(`[NEXO] Reconstruyendo ${guild.name} (${channels.length} canales, ${roles.length} roles).`);
 
-    const requiredChannelIds = new Set([guild.rules_channel_id, guild.public_updates_channel_id].filter(Boolean));
+    const requiredChannelIds = new Set([
+        guild.rules_channel_id,
+        guild.public_updates_channel_id,
+        guild.safety_alerts_channel_id
+    ].filter(Boolean));
 
     // Remove every old category, channel, thread and forum before rebuilding the information architecture.
     for (const channel of channels.sort((a, b) => b.type - a.type)) {
@@ -137,6 +141,16 @@ async function main() {
         { id: createdRoles.staff, type: 0, allow: '3072' },
         { id: createdRoles.moderator, type: 0, allow: '3072' }
     ]);
+    const safety = await patch(`/channels/${guild.safety_alerts_channel_id}`, {
+        name: 'alertas-de-seguridad', parent_id: staff.id,
+        topic: 'Avisos privados de seguridad enviados por Discord.',
+        permission_overwrites: [
+            { id: GUILD_ID, type: 0, deny: '1024' },
+            { id: createdRoles.founder, type: 0, allow: '3072' },
+            { id: createdRoles.staff, type: 0, allow: '3072' },
+            { id: createdRoles.moderator, type: 0, allow: '3072' }
+        ]
+    });
 
     const welcome = await createChannel('bienvenida', 0, start.id, 'El punto de partida de NEXO.', true);
     // Discord does not let bots replace Community's required channels. Reuse them after clearing
@@ -178,7 +192,7 @@ async function main() {
         guildId: GUILD_ID,
         migrationEnabled: true,
         lastBroadcastKey: null,
-        channels: { welcome: welcome.id, rules: rules.id, migration: migration.id, roles: rolesChannel.id, generalEs: generalEs.id },
+        channels: { welcome: welcome.id, rules: rules.id, migration: migration.id, roles: rolesChannel.id, generalEs: generalEs.id, safety: safety.id },
         roles: {
             regions: Object.fromEntries(['chile', 'latam', 'espana', 'international'].map(key => [key, createdRoles[key]])),
             interests: Object.fromEntries(['gaming', 'tech', 'creative', 'music'].map(key => [key, createdRoles[key]]))
