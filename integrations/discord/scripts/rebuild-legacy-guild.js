@@ -48,6 +48,14 @@ async function createChannel(name, type, parentId, topic, locked = false, permis
     });
 }
 
+async function clearMessages(channelId) {
+    for (;;) {
+        const messages = await get(`/channels/${channelId}/messages?limit=100`);
+        if (!messages.length) return;
+        for (const message of messages) await del(`/channels/${channelId}/messages/${message.id}`);
+    }
+}
+
 async function main() {
     const [bot, guild, channels, roles] = await Promise.all([
         get('/users/@me'),
@@ -57,18 +65,11 @@ async function main() {
     ]);
     console.log(`[NEXO] Reconstruyendo ${guild.name} (${channels.length} canales, ${roles.length} roles).`);
 
-    // Community guilds require a rules and updates channel. Move those pointers to temporary
-    // channels so every legacy channel can be removed without disabling Community features.
-    const temporaryRules = await createChannel('nexo-temporal-reglas', 0, null, 'Canal temporal durante la reconstrucción.', true);
-    const temporaryUpdates = await createChannel('nexo-temporal-avisos', 5, null, 'Canal temporal durante la reconstrucción.', true);
-    await patch(`/guilds/${GUILD_ID}`, {
-        rules_channel_id: temporaryRules.id,
-        public_updates_channel_id: temporaryUpdates.id,
-        system_channel_id: null
-    });
+    const requiredChannelIds = new Set([guild.rules_channel_id, guild.public_updates_channel_id].filter(Boolean));
 
     // Remove every old category, channel, thread and forum before rebuilding the information architecture.
     for (const channel of channels.sort((a, b) => b.type - a.type)) {
+        if (requiredChannelIds.has(channel.id)) continue;
         await del(`/channels/${channel.id}`);
     }
 
@@ -131,8 +132,20 @@ async function main() {
     ]);
 
     const welcome = await createChannel('bienvenida', 0, start.id, 'El punto de partida de NEXO.', true);
-    const rules = await createChannel('normas-y-seguridad', 0, start.id, 'Convivencia simple: respeto, seguridad y cero actividades ilegales.', true);
-    const migration = await createChannel('mudanza-drakes', 5, start.id, 'Archivo y aviso permanente de migración de DrakesCraft.', true);
+    // Discord does not let bots replace Community's required channels. Reuse them after clearing
+    // their legacy messages and permissions so the rebuilt guild remains a Community server.
+    const rules = await patch(`/channels/${guild.rules_channel_id}`, {
+        name: 'normas-y-seguridad', parent_id: start.id,
+        topic: 'Convivencia simple: respeto, seguridad y cero actividades ilegales.',
+        permission_overwrites: [{ id: GUILD_ID, type: 0, deny: '2048' }]
+    });
+    const migration = await patch(`/channels/${guild.public_updates_channel_id}`, {
+        name: 'mudanza-drakes', parent_id: start.id,
+        topic: 'Archivo y aviso permanente de migración de DrakesCraft.',
+        permission_overwrites: [{ id: GUILD_ID, type: 0, deny: '2048' }]
+    });
+    await clearMessages(rules.id);
+    await clearMessages(migration.id);
     const rolesChannel = await createChannel('elige-tus-roles', 0, start.id, 'Elige región e intereses para conocer mejor a la comunidad.', true);
     const generalEs = await createChannel('general-es', 0, social.id, 'El chat principal en español.');
     await createChannel('general-en', 0, social.id, 'English chat for everyone.');
@@ -165,14 +178,6 @@ async function main() {
         }
     };
     fs.writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
-
-    await patch(`/guilds/${GUILD_ID}`, {
-        rules_channel_id: rules.id,
-        public_updates_channel_id: migration.id,
-        system_channel_id: welcome.id
-    });
-    await del(`/channels/${temporaryRules.id}`);
-    await del(`/channels/${temporaryUpdates.id}`);
 
     const send = (channelId, body) => post(`/channels/${channelId}/messages`, body);
     await send(welcome.id, { content: '# Bienvenido a NEXO\nUn lugar chill para conocer gente, conversar, jugar y crear. Pasa por <#' + rules.id + '> y luego elige tus roles en <#' + rolesChannel.id + '>.' });
