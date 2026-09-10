@@ -4538,6 +4538,8 @@ const MC_STAFF_TRIGGERS = [
 
 // Gestión de Mensajes y Tickets
 client.on('messageCreate', async (message) => {
+    await legacyGuild.handleMessage(message);
+
     // 1. Detección y respuesta en Minecraft Chat (DiscordSRV Webhook / Bridge)
     if (message.channel.id === CHANNELS.MINECRAFT_CHAT) {
         if (message.author.id === client.user.id) return;
@@ -4853,7 +4855,7 @@ client.on('messageCreate', async (message) => {
     if ((message.mentions.everyone || message.content.includes('@everyone') || message.content.includes('@here')) && !message.mentions.users.has(client.user.id)) {
         return;
     }
-    const isSaoriDedicatedChannel = message.channel.id === CHANNELS.SAORI_CHAT;
+    const isSaoriDedicatedChannel = message.channel.id === CHANNELS.SAORI_CHAT || legacyGuild.isSaoriChannel(message.channel.id);
     const content = RateLimitShield.sanitizeInput(message.content.trim());
     const contentLower = content.toLowerCase();
 

@@ -173,6 +173,32 @@ async function handleInteraction(interaction) {
     return true;
 }
 
+function isSaoriChannel(channelId) {
+    return readState()?.channels?.saori === channelId;
+}
+
+function threadName(message, prefix) {
+    const summary = (message.content || 'consulta')
+        .replace(/<[@#&!0-9]+>/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 80);
+    return `${prefix}: ${summary || 'consulta'}`.slice(0, 100);
+}
+
+async function handleMessage(message) {
+    if (message.guildId !== LEGACY_GUILD_ID || message.author.bot || message.channel.isThread()) return;
+    const state = readState();
+    if (!state) return;
+
+    const channels = state.channels || {};
+    if (message.channelId === channels.help || message.channelId === channels.suggestions) {
+        const prefix = message.channelId === channels.help ? 'Ayuda' : 'Idea';
+        await message.startThread({ name: threadName(message, prefix), autoArchiveDuration: 1440 })
+            .catch(error => console.warn('[LEGACY-GUILD] No se pudo abrir hilo:', error.message));
+    }
+}
+
 function roleMenus(state) {
     const regionOptions = [
         ['chile', 'Chile', '🇨🇱'],
@@ -197,4 +223,4 @@ function roleMenus(state) {
     ];
 }
 
-module.exports = { LEGACY_GUILD_ID, migrationText, migrationComponents, onReady, handleInteraction, publishMigrationAnnouncement, readState, roleMenus };
+module.exports = { LEGACY_GUILD_ID, migrationText, migrationComponents, onReady, handleInteraction, handleMessage, isSaoriChannel, publishMigrationAnnouncement, readState, roleMenus };
