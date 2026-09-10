@@ -1589,6 +1589,10 @@ function getStaffMemberHierarchy(member, authorId) {
 
 const PTERODACTYL_LOGS_URL = 'https://panel.thegamehosting.com/api/client/servers/38528a4e/files/contents?file=logs%2Flatest.log';
 const logViewerSessions = new Map(); // messageId -> session data
+const MINECRAFT_PRIVATE_CHAT_AUDIT_ENABLED = process.env.MINECRAFT_PRIVATE_CHAT_AUDIT_ENABLED === 'true';
+const MINECRAFT_PRIVATE_CHAT_AUDIT_NOTICE_ACKNOWLEDGED = process.env.MINECRAFT_PRIVATE_CHAT_AUDIT_NOTICE_ACKNOWLEDGED === 'true';
+const MINECRAFT_PRIVATE_CHAT_AUDIT_STATE_FILE = process.env.MINECRAFT_PRIVATE_CHAT_AUDIT_STATE_FILE || '/app/src/minecraft-private-chat-audit-state.json';
+let minecraftPrivateChatAuditRunning = false;
 
 async function fetchMinecraftLatestLogs(filter = '') {
     if (!PTERODACTYL_API_KEY) {
@@ -1616,6 +1620,126 @@ async function fetchMinecraftLatestLogs(filter = '') {
     } catch (e) {
         console.error('[LOG-FETCHER] Error al obtener logs:', e.message);
         return null;
+    }
+}
+
+function readMinecraftPrivateChatAuditState() {
+    try {
+        const state = JSON.parse(fs.readFileSync(MINECRAFT_PRIVATE_CHAT_AUDIT_STATE_FILE, 'utf8'));
+        return {
+            seenLineHashes: Array.isArray(state.seenLineHashes) ? state.seenLineHashes.slice(-12000) : [],
+            lastRunAt: state.lastRunAt || null,
+            initialized: state.initialized === true
+        };
+    } catch (_) {
+        return { seenLineHashes: [], lastRunAt: null, initialized: false };
+    }
+}
+
+function writeMinecraftPrivateChatAuditState(state) {
+    const tempFile = `${MINECRAFT_PRIVATE_CHAT_AUDIT_STATE_FILE}.tmp`;
+    fs.writeFileSync(tempFile, `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
+    fs.renameSync(tempFile, MINECRAFT_PRIVATE_CHAT_AUDIT_STATE_FILE);
+}
+
+function minecraftPrivateChatSource(line) {
+    if (/issued server command:\s*\/(?:msg|tell|w|whisper|r|reply)\b/i.test(line)) return 'Mensaje privado';
+    if (/issued server command:\s*\/team(?:chat|msg)?\b/i.test(line)) return 'Team chat';
+    if (/(?:\[team(?:chat)?\]|\bteam chat\b|\bteam>)/i.test(line)) return 'Team chat';
+    if (/(?:\bmsg\b|\bwhisper\b|\btell\b).{0,20}(?:->|→|a:)/i.test(line)) return 'Mensaje privado';
+    return null;
+}
+
+function classifyMinecraftPrivateChatRisk(line) {
+    const text = line.toLowerCase();
+    const has = (pattern) => pattern.test(text);
+
+    if (has(/(?:me quiero matar|quiero suicidarme|acabar con mi vida|suicid)/i)) {
+        return { type: 'Posible riesgo de autolesión', severity: 'alta' };
+    }
+    if (has(/(?:te voy a matar|te mato|te voy a buscar|te voy a doxxear)/i) &&
+        has(/(?:irl|vida real|en tu casa|direcci[oó]n|familia)/i)) {
+        return { type: 'Amenaza fuera del juego', severity: 'alta' };
+    }
+    if (has(/(?:dame|p[aá]same|env[ií]ame).{0,40}(?:contrase[nñ]a|token|c[oó]digo de verificaci[oó]n|cuenta)/i)) {
+        return { type: 'Posible robo de cuenta o ingeniería social', severity: 'alta' };
+    }
+    if (has(/(?:ip|direcci[oó]n|tel[eé]fono|n[uú]mero).{0,40}(?:publico|filtr|doxx|p[aá]sa)/i) ||
+        has(/(?:\b\d{1,3}(?:\.\d{1,3}){3}\b|\b\d{7,}\b)/i) && has(/(?:doxx|direcci[oó]n|tel[eé]fono|ip)/i)) {
+        return { type: 'Posible exposición de datos personales', severity: 'alta' };
+    }
+    if (has(/(?:dupe|duplicar|duplicaci[oó]n).{0,50}(?:exploit|bug|glitch|bypass|aprovecha)/i) ||
+        has(/(?:crashear|tirar).{0,35}(?:server|servidor)/i)) {
+        return { type: 'Posible coordinación de exploit', severity: 'media' };
+    }
+    if (has(/(?:manda|env[ií]a).{0,30}(?:nudes|desnuda|fotos? [ií]ntimas)/i) && has(/(?:menor|a[nñ]os|edad)/i)) {
+        return { type: 'Posible contenido sexual con menor de edad', severity: 'alta' };
+    }
+    return null;
+}
+
+function auditEvidence(line) {
+    return line
+        .replace(/@/g, '@\u200b')
+        .replace(/https?:\/\/\S+/gi, '[enlace oculto]')
+        .slice(-900);
+}
+
+async function runMinecraftPrivateChatSafetyAudit() {
+    if (!MINECRAFT_PRIVATE_CHAT_AUDIT_ENABLED || !MINECRAFT_PRIVATE_CHAT_AUDIT_NOTICE_ACKNOWLEDGED || minecraftPrivateChatAuditRunning) {
+        return;
+    }
+
+    minecraftPrivateChatAuditRunning = true;
+    try {
+        const lines = await fetchMinecraftLatestLogs();
+        if (!lines) return;
+
+        const state = readMinecraftPrivateChatAuditState();
+        const knownHashes = new Set(state.seenLineHashes);
+        const freshLines = [];
+        for (const line of lines) {
+            const hash = crypto.createHash('sha256').update(line).digest('hex');
+            if (!knownHashes.has(hash)) freshLines.push({ line, hash });
+        }
+
+        // The first pass establishes a cursor, so historical chat is never re-reviewed as a new event.
+        if (!state.initialized) {
+            writeMinecraftPrivateChatAuditState({
+                seenLineHashes: lines.map((line) => crypto.createHash('sha256').update(line).digest('hex')).slice(-12000),
+                lastRunAt: new Date().toISOString(),
+                initialized: true
+            });
+            console.log('[MC-CHAT-SAFETY] Cursor inicial creado; las próximas revisiones analizarán sólo mensajes nuevos.');
+            return;
+        }
+
+        const alerts = freshLines
+            .map(({ line }) => ({ line, source: minecraftPrivateChatSource(line), risk: classifyMinecraftPrivateChatRisk(line) }))
+            .filter(({ source, risk }) => source && risk)
+            .slice(0, 6);
+        const guild = client.guilds.cache.get(DRAKES_OFFICIAL_GUILD_ID);
+        for (const alert of alerts) {
+            const embed = new EmbedBuilder()
+                .setColor(alert.risk.severity === 'alta' ? 0xE74C3C : 0xF1C40F)
+                .setTitle(`Revision humana: ${alert.risk.type}`)
+                .setDescription('Detección automática de seguridad. No aplica sanciones ni crea perfiles; confirma el contexto antes de actuar.')
+                .addFields(
+                    { name: 'Origen', value: alert.source, inline: true },
+                    { name: 'Severidad', value: alert.risk.severity, inline: true },
+                    { name: 'Evidencia mínima', value: `\`\`\`\n${auditEvidence(alert.line)}\n\`\`\`` }
+                )
+                .setTimestamp();
+            await sendAuditLog(embed, guild);
+        }
+
+        const mergedHashes = [...state.seenLineHashes, ...freshLines.map(({ hash }) => hash)].slice(-12000);
+        writeMinecraftPrivateChatAuditState({ seenLineHashes: mergedHashes, lastRunAt: new Date().toISOString(), initialized: true });
+        console.log(`[MC-CHAT-SAFETY] Revisadas ${freshLines.length} líneas nuevas; ${alerts.length} alertas para revisión humana.`);
+    } catch (error) {
+        console.error('[MC-CHAT-SAFETY] Error durante la revisión:', error.message);
+    } finally {
+        minecraftPrivateChatAuditRunning = false;
     }
 }
 
@@ -2161,6 +2285,14 @@ client.once(Events.ClientReady, async () => {
     if (nexoGuild) {
         setTimeout(() => updateNexoStats(nexoGuild), 15_000);
         setInterval(() => updateNexoStats(nexoGuild), 10 * 60 * 1000);
+    }
+
+    if (MINECRAFT_PRIVATE_CHAT_AUDIT_ENABLED && MINECRAFT_PRIVATE_CHAT_AUDIT_NOTICE_ACKNOWLEDGED) {
+        setTimeout(() => runMinecraftPrivateChatSafetyAudit(), 30_000);
+        setInterval(() => runMinecraftPrivateChatSafetyAudit(), 60 * 60 * 1000);
+        console.log('[MC-CHAT-SAFETY] Watcher horario de seguridad habilitado.');
+    } else {
+        console.log('[MC-CHAT-SAFETY] Watcher deshabilitado: requiere activación y constancia de aviso en las normas.');
     }
 
     // Iniciar Servidor API REST Interno (puerto 8095) para el Quinteto de IAs
