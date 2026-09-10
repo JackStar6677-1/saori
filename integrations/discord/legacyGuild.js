@@ -251,6 +251,10 @@ async function syncNicknames(guild) {
 
 async function onMemberAdd(member) {
     if (member.guild.id !== LEGACY_GUILD_ID || member.user.bot || member.id === OWNER_ID) return;
+    const memberRoleId = readState()?.roles?.member;
+    if (memberRoleId) {
+        await member.roles.add(memberRoleId, 'Rol base automático NEXO').catch(() => {});
+    }
     const target = formatNickname(member.user.globalName || member.user.username, [...member.roles.cache.keys()]);
     if (target) await member.setNickname(target, 'Normalización visual NEXO').catch(() => {});
 }

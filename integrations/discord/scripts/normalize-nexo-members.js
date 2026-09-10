@@ -14,7 +14,7 @@ if (!token) throw new Error('DISCORD_BOT_TOKEN no está definido.');
 
 const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 function readProgress() {
-    try { return JSON.parse(fs.readFileSync(progressPath, 'utf8')); } catch { return { after: null, scanned: 0, updated: 0, skipped: 0, errors: [] }; }
+    try { return JSON.parse(fs.readFileSync(progressPath, 'utf8')); } catch { return { after: null, scanned: 0, updated: 0, rolesAssigned: 0, skipped: 0, errors: [] }; }
 }
 function writeProgress(progress) { fs.writeFileSync(progressPath, `${JSON.stringify(progress, null, 2)}\n`, 'utf8'); }
 function setBulkActive(active) {
@@ -36,6 +36,8 @@ async function request(method, endpoint, body, attempt = 0) {
 
 async function main() {
     const progress = readProgress();
+    const memberRoleId = JSON.parse(fs.readFileSync(statePath, 'utf8')).roles?.member;
+    if (!memberRoleId) throw new Error('No existe el rol base de Usuario en el estado NEXO.');
     setBulkActive(true);
     try {
         for (;;) {
@@ -46,6 +48,16 @@ async function main() {
                 progress.after = member.user.id;
                 progress.scanned++;
                 if (member.user.bot || member.user.id === ownerId) continue;
+                if (!member.roles.includes(memberRoleId)) {
+                    try {
+                        await request('PUT', `/guilds/${LEGACY_GUILD_ID}/members/${member.user.id}/roles/${memberRoleId}`);
+                        progress.rolesAssigned++;
+                    } catch (error) {
+                        progress.skipped++;
+                        if (progress.errors.length < 50) progress.errors.push({ memberId: member.user.id, message: `Rol Usuario: ${error.message}` });
+                    }
+                    await sleep(400);
+                }
                 const source = member.nick || member.user.global_name || member.user.username;
                 const target = formatNickname(source, member.roles || []);
                 if (!target || target === member.nick) continue;
@@ -65,7 +77,7 @@ async function main() {
         }
         progress.completedAt = new Date().toISOString();
         writeProgress(progress);
-        console.log(`[NEXO-NICKS] Completado: ${progress.scanned} revisados, ${progress.updated} actualizados, ${progress.skipped} omitidos.`);
+        console.log(`[NEXO-NICKS] Completado: ${progress.scanned} revisados, ${progress.updated} nicks actualizados, ${progress.rolesAssigned} roles Usuario asignados, ${progress.skipped} omitidos.`);
     } finally {
         setBulkActive(false);
     }
