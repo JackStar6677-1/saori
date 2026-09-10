@@ -14,6 +14,10 @@ const STATE_PATH = process.env.LEGACY_GUILD_STATE_PATH
 const OWNER_ID = process.env.DISCORD_OWNER_ID || '493868699489665044';
 let schedulerStarted = false;
 
+const SMALL_CAPS = {
+    a: 'ᴀ', b: 'ʙ', c: 'ᴄ', d: 'ᴅ', e: 'ᴇ', f: 'ғ', g: 'ɢ', h: 'ʜ', i: 'ɪ', j: 'ᴊ', k: 'ᴋ', l: 'ʟ', m: 'ᴍ', n: 'ɴ', o: 'ᴏ', p: 'ᴘ', q: 'ǫ', r: 'ʀ', s: 's', t: 'ᴛ', u: 'ᴜ', v: 'ᴠ', w: 'ᴡ', x: 'x', y: 'ʏ', z: 'ᴢ'
+};
+
 function readState() {
     try {
         return JSON.parse(fs.readFileSync(STATE_PATH, 'utf8'));
@@ -133,6 +137,8 @@ async function onReady(client) {
         console.warn('[LEGACY-GUILD] No se pudo actualizar apodo:', error.message);
     });
     startMigrationScheduler(client);
+    setTimeout(() => syncNicknames(guild).catch(error => console.warn('[LEGACY-GUILD] Nicknames:', error.message)), 20_000);
+    setInterval(() => syncNicknames(guild).catch(error => console.warn('[LEGACY-GUILD] Nicknames:', error.message)), 5 * 60_000);
 }
 
 async function handleInteraction(interaction) {
@@ -153,11 +159,16 @@ async function handleInteraction(interaction) {
         return true;
     }
 
-    if (!interaction.isStringSelectMenu() || !['legacy_region_roles', 'legacy_interest_roles'].includes(interaction.customId)) {
+    const groupByMenu = {
+        legacy_region_roles: 'regions',
+        legacy_interest_roles: 'interests',
+        legacy_theme_roles: 'themes'
+    };
+    if (!interaction.isStringSelectMenu() || !groupByMenu[interaction.customId]) {
         return false;
     }
 
-    const group = interaction.customId === 'legacy_region_roles' ? 'regions' : 'interests';
+    const group = groupByMenu[interaction.customId];
     const groupRoles = state.roles?.[group] || {};
     const selectedRoleId = interaction.values[0];
     if (!Object.values(groupRoles).includes(selectedRoleId)) {
@@ -199,6 +210,49 @@ async function handleMessage(message) {
     }
 }
 
+function formatNickname(name, roleIds = []) {
+    if (!name) return '';
+    const state = readState();
+    const staff = state?.roles?.staff || {};
+    const suffixByRole = {
+        [staff.owner]: ' - ᴏᴡɴᴇʀ',
+        [staff.admin]: ' - ᴀᴅᴍɪɴ',
+        [staff.moderator]: ' - ᴍᴏᴅ',
+        [staff.host]: ' - ʜᴏsᴛ',
+        [staff.builder]: ' - ʙᴜɪʟᴅᴇʀ'
+    };
+    const clean = name
+        .replace(/\s*[-–—|]\s*(owner|admin|mod|host|builder|staff|ᴏᴡɴᴇʀ|ᴀᴅᴍɪɴ|ᴍᴏᴅ|ʜᴏsᴛ|ʙᴜɪʟᴅᴇʀ).*$/i, '')
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[\u200B-\u200D\uFEFF]/g, '')
+        .trim();
+    const small = [...clean].map(character => SMALL_CAPS[character.toLowerCase()] || character).join('').slice(0, 24).trim();
+    const suffix = roleIds.map(id => suffixByRole[id]).find(Boolean) || '';
+    return `${small}${suffix}`.slice(0, 32);
+}
+
+async function syncNicknames(guild) {
+    if (guild.id !== LEGACY_GUILD_ID) return;
+    const members = await guild.members.fetch();
+    let normalized = 0;
+    for (const member of members.values()) {
+        if (normalized >= 25) break; // Keep Discord's nickname rate limit healthy.
+        if (member.user.bot || member.id === OWNER_ID) continue;
+        const target = formatNickname(member.nickname || member.user.globalName || member.user.username, [...member.roles.cache.keys()]);
+        if (target && target !== member.nickname) {
+            await member.setNickname(target, 'Normalización visual NEXO').catch(() => {});
+            normalized++;
+        }
+    }
+}
+
+async function onMemberAdd(member) {
+    if (member.guild.id !== LEGACY_GUILD_ID || member.user.bot || member.id === OWNER_ID) return;
+    const target = formatNickname(member.user.globalName || member.user.username, [...member.roles.cache.keys()]);
+    if (target) await member.setNickname(target, 'Normalización visual NEXO').catch(() => {});
+}
+
 function roleMenus(state) {
     const regionOptions = [
         ['chile', 'Chile', '🇨🇱'],
@@ -214,13 +268,21 @@ function roleMenus(state) {
         ['music', 'Música', '🎵']
     ].map(([key, label, emoji]) => new StringSelectMenuOptionBuilder()
         .setLabel(label).setValue(state.roles.interests[key]).setEmoji(emoji));
+    const themeOptions = Object.entries(state.roles.themes || {}).map(([key, roleId]) => {
+        const metadata = {
+            bienestar: ['Bienestar', '🌱'], mente: ['Psicología', '🧠'], ciencia: ['Ciencia', '🔬'], indie: ['Indie games', '👾']
+        }[key];
+        return new StringSelectMenuOptionBuilder().setLabel(metadata[0]).setValue(roleId).setEmoji(metadata[1]);
+    });
 
     return [
         new ActionRowBuilder().addComponents(new StringSelectMenuBuilder()
             .setCustomId('legacy_region_roles').setPlaceholder('Elige tu región').addOptions(regionOptions)),
         new ActionRowBuilder().addComponents(new StringSelectMenuBuilder()
-            .setCustomId('legacy_interest_roles').setPlaceholder('Elige un interés').addOptions(interestOptions))
+            .setCustomId('legacy_interest_roles').setPlaceholder('Elige un interés').addOptions(interestOptions)),
+        ...(themeOptions.length ? [new ActionRowBuilder().addComponents(new StringSelectMenuBuilder()
+            .setCustomId('legacy_theme_roles').setPlaceholder('Elige un tema').addOptions(themeOptions))] : [])
     ];
 }
 
-module.exports = { LEGACY_GUILD_ID, migrationText, migrationComponents, onReady, handleInteraction, handleMessage, isSaoriChannel, publishMigrationAnnouncement, readState, roleMenus };
+module.exports = { LEGACY_GUILD_ID, migrationText, migrationComponents, onReady, onMemberAdd, handleInteraction, handleMessage, isSaoriChannel, publishMigrationAnnouncement, readState, roleMenus };

@@ -2196,6 +2196,8 @@ function formatMemberNickname(name, memberRoles = [], memberId = '') {
 
 // Bienvenidas automáticas y Auditoría de Ingreso
 client.on('guildMemberAdd', async (member) => {
+    await legacyGuild.onMemberAdd(member);
+
     try {
         // ✨ Auto-Nickname en Small Caps y Asignación de Rol Polis
         if (!member.user.bot && member.id !== JACK_DISCORD_ID) {
