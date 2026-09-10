@@ -234,6 +234,7 @@ function formatNickname(name, roleIds = []) {
 
 async function syncNicknames(guild) {
     if (guild.id !== LEGACY_GUILD_ID) return;
+    if (readState()?.nicknameBulkSyncActive) return;
     // Do not issue a full gateway member request for a large legacy guild every cycle.
     const members = guild.members.cache;
     let normalized = 0;
@@ -286,4 +287,4 @@ function roleMenus(state) {
     ];
 }
 
-module.exports = { LEGACY_GUILD_ID, migrationText, migrationComponents, onReady, onMemberAdd, handleInteraction, handleMessage, isSaoriChannel, publishMigrationAnnouncement, readState, roleMenus };
+module.exports = { LEGACY_GUILD_ID, migrationText, migrationComponents, onReady, onMemberAdd, handleInteraction, handleMessage, isSaoriChannel, formatNickname, publishMigrationAnnouncement, readState, roleMenus };
