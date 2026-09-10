@@ -35,21 +35,21 @@ async function main() {
     const byName = new Map(channels.map(channel => [channel.name, channel]));
     const role = name => roles.find(item => item.name === name)?.id;
     const category = name => byName.get(name)?.id;
-    const ensure = async (name, type, parent, topic) => {
+    const ensure = async (name, type, parent) => {
         if (byName.has(name)) return byName.get(name);
-        const channel = await post(`/guilds/${GUILD_ID}/channels`, { name, type, parent_id: parent, topic });
+        const channel = await post(`/guilds/${GUILD_ID}/channels`, { name, type, parent_id: parent });
         byName.set(name, channel);
         return channel;
     };
 
     const voice = category('VOZ');
     const staff = category('STAFF');
-    await ensure('lounge', 2, voice, 'Charla casual.');
-    await ensure('gaming', 2, voice, 'Para jugar en grupo.');
-    await ensure('musica', 2, voice, 'Escucha y comparte música.');
-    await ensure('afk', 2, voice, 'Descanso automático.');
-    await ensure('staff-hq', 0, staff, 'Coordinación privada del equipo.');
-    await ensure('mod-log', 0, staff, 'Registro privado de moderación.');
+    await ensure('lounge', 2, voice);
+    await ensure('gaming', 2, voice);
+    await ensure('musica', 2, voice);
+    await ensure('afk', 2, voice);
+    await ensure('staff-hq', 0, staff);
+    await ensure('mod-log', 0, staff);
 
     const state = {
         guildId: GUILD_ID,
