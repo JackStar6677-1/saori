@@ -33,6 +33,7 @@ const fs = require('fs');
 const os = require('os');
 const { DisTube, PlayableExtractorPlugin, Song } = require('distube');
 const { SpotifyPlugin } = require('@distube/spotify');
+const legacyGuild = require('./legacyGuild');
 
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const AI_DAEMON_URL = process.env.AI_DAEMON_URL || 'http://127.0.0.1:8089/chat';
@@ -2101,6 +2102,7 @@ async function handleDiscordStaffActions(message, primaryCmd, cmdArgs, hierarchy
 client.once(Events.ClientReady, async () => {
     console.log(`✅ [SAORI-DISCORD] ¡Conectada como ${client.user.tag}! Voice, Images (3/h), Purge, Auditoría (#${CHANNELS.AUDITORIA}) & Channel #${CHANNELS.SAORI_CHAT} activos.`);
     client.user.setActivity('DrakesCraft SRE & Auditoría 🛡️', { type: ActivityType.Watching });
+    await legacyGuild.onReady(client);
 
     // Iniciar Servidor API REST Interno (puerto 8095) para el Quinteto de IAs
     startDiscordRestApiServer(client);
@@ -3904,6 +3906,8 @@ async function handleSlashCommand(interaction) {
 
 client.on(Events.InteractionCreate, async (interaction) => {
     try {
+        if (await legacyGuild.handleInteraction(interaction)) return;
+
         // -1. MANEJO DE COMANDOS SLASH NATIVOS (/)
         if (interaction.isChatInputCommand()) {
             return await handleSlashCommand(interaction);
