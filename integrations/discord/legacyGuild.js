@@ -234,7 +234,8 @@ function formatNickname(name, roleIds = []) {
 
 async function syncNicknames(guild) {
     if (guild.id !== LEGACY_GUILD_ID) return;
-    const members = await guild.members.fetch();
+    // Do not issue a full gateway member request for a large legacy guild every cycle.
+    const members = guild.members.cache;
     let normalized = 0;
     for (const member of members.values()) {
         if (normalized >= 25) break; // Keep Discord's nickname rate limit healthy.

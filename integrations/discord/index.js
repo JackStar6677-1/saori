@@ -50,6 +50,7 @@ process.on('uncaughtException', (err) => {
 
 
 const JACK_DISCORD_ID = process.env.DISCORD_OWNER_ID || '493868699489665044';
+const DRAKES_OFFICIAL_GUILD_ID = '1305395719300972585';
 const CHANNELS = {
     BIENVENIDAS: '1540356407705079879',       // 👋・ʙɪᴇɴᴠᴇɴɪᴅᴀꜱ
     TICKETS_SOPORTE: '1539636904482578482',   // 🎫・ᴛɪᴄᴋᴇᴛs-sᴏᴘᴏʀᴛᴇ
@@ -597,7 +598,7 @@ function startDiscordRestApiServer(client) {
 
             // Estado detallado del bot y de la guild
             if (req.method === 'GET' && pathname === '/api/status') {
-                const guild = client.guilds.cache.first();
+                const guild = client.guilds.cache.get(DRAKES_OFFICIAL_GUILD_ID);
                 return sendJson(200, {
                     ok: true,
                     bot: client.user ? client.user.tag : 'connecting',
@@ -613,7 +614,7 @@ function startDiscordRestApiServer(client) {
 
             // Overview de comunidad
             if (req.method === 'GET' && pathname === '/api/community/overview') {
-                const guild = client.guilds.cache.first();
+                const guild = client.guilds.cache.get(DRAKES_OFFICIAL_GUILD_ID);
                 if (!guild) return sendJson(503, { ok: false, error: 'Guild no disponible' });
 
                 const textChannels = guild.channels.cache.filter(c => c.isTextBased()).size;
@@ -634,7 +635,7 @@ function startDiscordRestApiServer(client) {
 
             // Roles y Auditoría de Permisos
             if (req.method === 'GET' && pathname === '/api/guild/roles') {
-                const guild = client.guilds.cache.first();
+                const guild = client.guilds.cache.get(DRAKES_OFFICIAL_GUILD_ID);
                 if (!guild) return sendJson(503, { ok: false, error: 'Guild no disponible' });
 
                 const roles = guild.roles.cache.map(r => ({
@@ -2109,7 +2110,7 @@ client.once(Events.ClientReady, async () => {
 
     // Pre-cachear mensajes recientes de todos los canales para auditoría perfecta
     try {
-        const guild = client.guilds.cache.first();
+        const guild = client.guilds.cache.get(DRAKES_OFFICIAL_GUILD_ID);
         if (guild) {
             const textChannels = guild.channels.cache.filter(c => c.isTextBased() && !c.isVoiceBased());
             for (const [id, ch] of textChannels) {
@@ -4540,7 +4541,29 @@ const MC_STAFF_TRIGGERS = [
 ];
 
 // Gestión de Mensajes y Tickets
+async function handleNexoSaoriChat(message) {
+    if (message.author.bot) return;
+    const prompt = RateLimitShield.sanitizeInput(message.content || '', 4000);
+    if (!prompt) return;
+
+    try {
+        await message.channel.sendTyping().catch(() => {});
+        const reply = sanitizePublicText(await askSaoriBrain(
+            prompt,
+            cleanUserName(message.member?.displayName || message.author.username, false, false),
+            'Estás en NEXO, una comunidad social, gaming, creatividad, ciencia y bienestar. Responde de forma cálida, breve y útil. Puedes hablar de cualquier tema seguro. No afirmes ser terapeuta, no diagnostiques y ante riesgos inmediatos anima a contactar emergencias locales, una línea de crisis o una persona de confianza.'
+        ));
+        await message.reply({ content: reply || 'No pude formular una respuesta útil ahora mismo. Inténtalo de nuevo en un momento.', allowedMentions: { repliedUser: false } });
+    } catch (error) {
+        console.error('[NEXO-AI] Error respondiendo:', error.message);
+        await message.reply({ content: 'Tu mensaje llegó, pero mi núcleo está ocupado. Prueba nuevamente en unos segundos.', allowedMentions: { repliedUser: false } }).catch(() => {});
+    }
+}
+
 client.on('messageCreate', async (message) => {
+    if (legacyGuild.isSaoriChannel(message.channel.id)) {
+        return await handleNexoSaoriChat(message);
+    }
     await legacyGuild.handleMessage(message);
 
     // 1. Detección y respuesta en Minecraft Chat (DiscordSRV Webhook / Bridge)
