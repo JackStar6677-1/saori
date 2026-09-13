@@ -504,6 +504,68 @@ let discordRestServer = null;
 const pendingIrpApprovalRequests = new Map();
 const IRP_PLAYER_REGEX = /^\.?[a-zA-Z0-9_]{2,16}$/;
 const IRP_BACKUP_ID_REGEX = /^(latest|\d+|[0-9]{4}-[0-9]{2}-[0-9]{2}(?:_[0-9]{2}-[0-9]{2}-[0-9]{2})?|\d+m)$/;
+const IRP_CASE_ID_REGEX = /^[A-Za-z0-9_.:#-]{1,64}$/;
+
+// ── Solicitudes 1-click de restauracion IRP (#350, QA #361) ──────────────────
+// Cada solicitud es un vale de un solo uso, con caducidad explicita y ligada a
+// caso/modalidad/evidencia. Se persiste en disco porque el registro en memoria
+// se perdia en cada reinicio del bot: un boton PENDIENTE quedaba inservible y,
+// por la rama de compatibilidad, un customId con formato `jugador:backup` podia
+// despachar `irp restore --force` tantas veces como se pulsara. La entropia del
+// nonce sale de crypto, no de Math.random.
+const IRP_APPROVAL_STATE_FILE = process.env.SAORI_IRP_APPROVAL_STATE || `${__dirname}/irp-approval-requests.json`;
+const IRP_APPROVAL_TTL_MS = parseInt(process.env.SAORI_IRP_APPROVAL_TTL_MS || String(6 * 3600 * 1000), 10);
+const IRP_APPROVAL_RETENTION_MS = parseInt(process.env.SAORI_IRP_APPROVAL_RETENTION_MS || String(30 * 24 * 3600 * 1000), 10);
+
+function irpNewApprovalNonce() {
+    return crypto.randomBytes(24).toString('hex');
+}
+
+function loadIrpApprovalRequests() {
+    try {
+        if (!fs.existsSync(IRP_APPROVAL_STATE_FILE)) return;
+        const raw = JSON.parse(fs.readFileSync(IRP_APPROVAL_STATE_FILE, 'utf8'));
+        const entries = Array.isArray(raw?.requests) ? raw.requests : [];
+        for (const entry of entries) {
+            if (entry && typeof entry.nonce === 'string') {
+                pendingIrpApprovalRequests.set(entry.nonce, entry);
+            }
+        }
+        console.log(`[SAORI-IRP] ${pendingIrpApprovalRequests.size} solicitudes de restauracion recuperadas de disco.`);
+    } catch (err) {
+        console.error('[SAORI-IRP] No se pudo leer el estado de solicitudes IRP:', err.message);
+    }
+}
+
+function saveIrpApprovalRequests() {
+    try {
+        const payload = { updatedAt: Date.now(), requests: Array.from(pendingIrpApprovalRequests.values()) };
+        const tempFile = `${IRP_APPROVAL_STATE_FILE}.tmp`;
+        fs.writeFileSync(tempFile, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
+        fs.renameSync(tempFile, IRP_APPROVAL_STATE_FILE);
+    } catch (err) {
+        console.error('[SAORI-IRP] No se pudo guardar el estado de solicitudes IRP:', err.message);
+    }
+}
+
+// Solo se descartan los vales ya resueltos y antiguos. Un PENDING caducado se
+// conserva para que el boton responda "caducada" en vez de "no existe", que es
+// el mensaje que deja a Jack sin saber si llego a despacharse.
+function purgeIrpApprovalRequests() {
+    const now = Date.now();
+    let changed = false;
+    for (const [key, value] of pendingIrpApprovalRequests.entries()) {
+        const decided = value?.status && value.status !== 'PENDING';
+        const anchor = value?.decidedAt || value?.createdAt || 0;
+        if (decided && now - anchor > IRP_APPROVAL_RETENTION_MS) {
+            pendingIrpApprovalRequests.delete(key);
+            changed = true;
+        }
+    }
+    return changed;
+}
+
+loadIrpApprovalRequests();
 
 // ── Blindaje de la API REST interna (Ticket #366) ────────────────────────────
 // Esta API publica rutas mutantes (anuncios, mensajes, alertas IRP) y permite
@@ -859,6 +921,8 @@ function startDiscordRestApiServer(client) {
                         const reportedAt = data.reported_at || data.hora || new Date().toISOString();
                         const deltaSummary = data.delta_summary || data.delta || 'No especificado';
                         const modality = (data.modality || data.modalidad || 'clasico').trim();
+                        const caseId = String(data.case_id || data.caso_id || data.caso || '').trim();
+                        const evidence = String(data.evidence || data.evidencia || '').trim() || 'No adjuntada';
                         const channelId = data.channel_id || CHANNELS.DIRECCION_GENERAL || CHANNELS.AUDITORIA;
 
                         if (!player || !IRP_PLAYER_REGEX.test(player)) {
@@ -867,22 +931,24 @@ function startDiscordRestApiServer(client) {
                         if (!backupId || !IRP_BACKUP_ID_REGEX.test(backupId)) {
                             return sendJson(400, { ok: false, error: 'Parámetro "backup_id" inválido' });
                         }
+                        // El vale queda ligado a un caso: sin caso no hay a que atribuir la
+                        // decision ni con que detectar una segunda solicitud del mismo hecho.
+                        if (!caseId || !IRP_CASE_ID_REGEX.test(caseId)) {
+                            return sendJson(400, { ok: false, error: 'Parámetro "case_id" obligatorio (identificador del caso/ticket que respalda la restauración)' });
+                        }
 
                         const targetChannel = client.channels.cache.get(channelId);
                         if (!targetChannel || !targetChannel.isTextBased()) {
                             return sendJson(404, { ok: false, error: `Canal ${channelId} no encontrado` });
                         }
 
-                        // Generar token nonce único para evitar manipulación en customId y permitir un solo uso
-                        const reqNonce = Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 8);
+                        // Token de un solo uso con entropia criptografica: el customId viaja
+                        // por Discord y no debe ser adivinable ni reconstruible.
+                        const reqNonce = irpNewApprovalNonce();
                         const now = Date.now();
+                        const expiresAt = now + IRP_APPROVAL_TTL_MS;
 
-                        // Limpiar solicitudes con más de 24h
-                        for (const [k, v] of pendingIrpApprovalRequests.entries()) {
-                            if (now - v.createdAt > 24 * 3600 * 1000) {
-                                pendingIrpApprovalRequests.delete(k);
-                            }
-                        }
+                        purgeIrpApprovalRequests();
 
                         pendingIrpApprovalRequests.set(reqNonce, {
                             nonce: reqNonce,
@@ -891,9 +957,15 @@ function startDiscordRestApiServer(client) {
                             modality,
                             reason,
                             deltaSummary,
+                            caseId,
+                            evidence,
+                            reportedAt,
+                            channelId,
                             createdAt: now,
+                            expiresAt,
                             status: 'PENDING'
                         });
+                        saveIrpApprovalRequests();
 
                         const embed = new EmbedBuilder()
                             .setTitle('⚠️ Alerta Anti-Duplicación: Solicitud de Restauración IRP')
@@ -907,7 +979,8 @@ function startDiscordRestApiServer(client) {
                                 { name: '🔍 Delta de Inventario', value: `${deltaSummary}`, inline: false },
                                 { name: '🛡️ Estado de Reinicio Técnico', value: '❌ **NO detectado en los últimos 15 min**. Riesgo de duplicación.', inline: false },
                                 { name: '💡 Motivo / Causa declarada', value: `${reason}`, inline: false },
-                                { name: '🔑 Token de Solicitud', value: `\`${reqNonce}\``, inline: true }
+                                { name: '🧾 Caso / Evidencia', value: `\`${caseId}\` · ${evidence}`, inline: false },
+                                { name: '⏳ Caduca', value: `<t:${Math.floor(expiresAt / 1000)}:R>`, inline: true }
                             )
                             .setFooter({ text: 'SAORI Anti-Dupe Protection · Ticket #350 · Requiere 1-click de Jack' })
                             .setTimestamp();
@@ -943,6 +1016,8 @@ function startDiscordRestApiServer(client) {
                             channelId,
                             player,
                             backupId,
+                            caseId,
+                            expiresAt,
                             nonce: reqNonce
                         });
                     } catch (err) {
@@ -4181,10 +4256,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
             // 🛡️ TICKET #350: APROBACIÓN 1-CLICK DE RESTAURACIONES IRP (JACK / OWNER)
             if (id.startsWith('btn_irp_approve_') || id.startsWith('btn_irp_reject_')) {
                 const isApprove = id.startsWith('btn_irp_approve_');
-                // Solo Jack (o Staff nivel OWNER) puede aprobar
-                const isOwner = (interaction.user.id === JACK_DISCORD_ID);
-                const hierarchy = getStaffMemberHierarchy(interaction.member, interaction.user.id);
-                if (!isOwner && (!hierarchy.isStaff || hierarchy.level < STAFF_LEVELS.OWNER)) {
+                // Restaurar inventario mueve objetos reales: la decision es de Jack y de
+                // nadie mas. El nivel OWNER de la jerarquia es un rango de Discord que
+                // puede concederse a terceros, asi que no vale como equivalente.
+                if (interaction.user.id !== JACK_DISCORD_ID) {
                     return await interaction.reply({
                         content: '❌ Solo Jack (Dueño) tiene autoridad para aprobar o rechazar restauraciones de inventario.',
                         ephemeral: true
@@ -4192,35 +4267,37 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 }
 
                 const tokenOrPayload = id.replace(isApprove ? 'btn_irp_approve_' : 'btn_irp_reject_', '');
-                let player = null;
-                let backupId = 'latest';
-                let modality = 'clasico';
 
+                // Sin rama de compatibilidad: un customId con formato `jugador:backup`
+                // no esta ligado a ningun vale, no caduca y no es de un solo uso, asi
+                // que se podia repulsar para despachar otro `irp restore --force`.
                 const requestData = pendingIrpApprovalRequests.get(tokenOrPayload);
-                if (requestData) {
-                    if (requestData.status !== 'PENDING') {
-                        return await interaction.reply({
-                            content: `⚠️ Esta solicitud ya fue resuelta previamente con estado: **${requestData.status}**.`,
-                            ephemeral: true
-                        });
-                    }
-                    player = requestData.player;
-                    backupId = requestData.backupId;
-                    modality = requestData.modality || 'clasico';
-                    requestData.status = isApprove ? 'APPROVED' : 'REJECTED';
-                    requestData.decidedAt = Date.now();
-                    requestData.decidedBy = interaction.user.id;
-                } else if (tokenOrPayload.includes(':')) {
-                    // Soporte de compatibilidad hacia atrás
-                    const parts = tokenOrPayload.split(':');
-                    player = parts[0];
-                    backupId = parts[1] || 'latest';
-                } else {
+                if (!requestData) {
                     return await interaction.reply({
-                        content: '⚠️ La solicitud de restauración ha expirado o no es válida.',
+                        content: '⚠️ Esta solicitud de restauración no consta en el registro (botón antiguo o descartado). Pide una alerta nueva antes de decidir.',
                         ephemeral: true
                     });
                 }
+                if (requestData.status !== 'PENDING') {
+                    return await interaction.reply({
+                        content: `⚠️ Esta solicitud ya fue resuelta previamente con estado: **${requestData.status}**.`,
+                        ephemeral: true
+                    });
+                }
+                if (requestData.expiresAt && Date.now() > requestData.expiresAt) {
+                    requestData.status = 'EXPIRED';
+                    requestData.decidedAt = Date.now();
+                    saveIrpApprovalRequests();
+                    return await interaction.reply({
+                        content: '⚠️ La solicitud de restauración caducó. Vuelve a generarla para revisar el caso con evidencia fresca.',
+                        ephemeral: true
+                    });
+                }
+
+                const player = requestData.player;
+                const backupId = requestData.backupId;
+                const modality = requestData.modality || 'clasico';
+                const caseId = requestData.caseId || 'sin-caso';
 
                 // Validación estricta anti-inyección de comandos en consola de Minecraft
                 if (!player || !IRP_PLAYER_REGEX.test(player) || !backupId || !IRP_BACKUP_ID_REGEX.test(backupId)) {
@@ -4234,7 +4311,37 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
                 if (isApprove) {
                     const cmd = `irp restore ${player} ${backupId} --force`;
+                    // El vale se marca DISPATCHING antes de salir a Pterodactyl y solo
+                    // pasa a APPROVED si el despacho se confirma. Antes se daba por
+                    // aprobado sin mirar el resultado: un fallo dejaba el caso cerrado
+                    // en falso y sin via de reintento.
+                    requestData.status = 'DISPATCHING';
+                    requestData.decidedAt = Date.now();
+                    requestData.decidedBy = interaction.user.id;
+                    saveIrpApprovalRequests();
+
                     const ok = await sendMinecraftConsoleCommand(cmd);
+
+                    requestData.status = ok ? 'APPROVED' : 'PENDING';
+                    requestData.dispatchOk = ok;
+                    requestData.lastDispatchAt = Date.now();
+                    if (!ok) requestData.dispatchFailures = (requestData.dispatchFailures || 0) + 1;
+                    saveIrpApprovalRequests();
+
+                    if (!ok) {
+                        await interaction.followUp({
+                            content: `❌ No se pudo despachar \`/${cmd}\` a la consola de Minecraft. La solicitud sigue **PENDIENTE**: los botones continúan activos para reintentar.`,
+                            ephemeral: true
+                        }).catch(() => {});
+                        await sendAuditLog(new EmbedBuilder()
+                            .setTitle('🛡️ [IRP] Despacho de restauración FALLIDO')
+                            .setColor(0xE67E22)
+                            .setDescription(`La aprobación de **${player}** (caso \`${caseId}\`) no llegó a la consola. Solicitud devuelta a PENDING para reintento.`)
+                            .setTimestamp()
+                        );
+                        return;
+                    }
+
                     const originalEmbed = interaction.message.embeds[0];
                     const embed = EmbedBuilder.from(originalEmbed)
                         .setColor(0x2ECC71)
@@ -4251,11 +4358,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
                     await sendAuditLog(new EmbedBuilder()
                         .setTitle('🛡️ [IRP] Restauración Aprobada en 1-Click')
                         .setColor(0x2ECC71)
-                        .setDescription(`**Jack** aprobó la restauración de inventario para el jugador **${player}** (Backup: \`${backupId}\`).`)
+                        .setDescription(`**Jack** aprobó la restauración de inventario para el jugador **${player}** (Backup: \`${backupId}\`, modalidad \`${modality}\`, caso \`${caseId}\`).`)
                         .addFields({ name: 'Comando', value: `\`/${cmd}\`` })
                         .setTimestamp()
                     );
                 } else {
+                    requestData.status = 'REJECTED';
+                    requestData.decidedAt = Date.now();
+                    requestData.decidedBy = interaction.user.id;
+                    saveIrpApprovalRequests();
+
                     const originalEmbed = interaction.message.embeds[0];
                     const embed = EmbedBuilder.from(originalEmbed)
                         .setColor(0xE74C3C)
@@ -4271,7 +4383,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                     await sendAuditLog(new EmbedBuilder()
                         .setTitle('🛡️ [IRP] Restauración Rechazada')
                         .setColor(0xE74C3C)
-                        .setDescription(`**Jack** rechazó la restauración para **${player}** (Posible intento de duplicación o reporte sin soporte técnico).`)
+                        .setDescription(`**Jack** rechazó la restauración para **${player}** (caso \`${caseId}\`, modalidad \`${modality}\`). Posible intento de duplicación o reporte sin soporte técnico.`)
                         .setTimestamp()
                     );
                 }
