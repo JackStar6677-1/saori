@@ -34,6 +34,8 @@ const os = require('os');
 const { DisTube, PlayableExtractorPlugin, Song } = require('distube');
 const { SpotifyPlugin } = require('@distube/spotify');
 const legacyGuild = require('./legacyGuild');
+const { multiacctAnalyzer } = require('./multiacct-analyzer.js');
+const birthdays = require('./birthdays');
 
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const AI_DAEMON_URL = process.env.AI_DAEMON_URL || 'http://127.0.0.1:8089/chat';
@@ -49,32 +51,42 @@ process.on('uncaughtException', (err) => {
 });
 
 
-const JACK_DISCORD_ID = process.env.DISCORD_OWNER_ID || '493868699489665044';
-const DRAKES_OFFICIAL_GUILD_ID = '1305395719300972585';
+const JACK_DISCORD_ID = process.env.DISCORD_OWNER_ID || process.env.OWNER_DISCORD_ID || '493868699489665044';
+const DRAKES_OFFICIAL_GUILD_ID = process.env.GUILD_ID || '1305395719300972585';
+// Pass2 2026-09-16: IDs configurables por .env con fallback al valor vigente (ver README).
+const envList = (name, fallback) => {
+    const raw = (process.env[name] || '').split(',').map(s => s.trim()).filter(Boolean);
+    return raw.length ? raw : fallback;
+};
+const TICKET_BLACKLIST_USER_IDS = envList('TICKET_BLACKLIST_USER_IDS', ['1267922444329418853']); // Vetados de tickets (Sección 4)
+const NEXO_AI_CHANNEL_KEYS = envList('NEXO_AI_CHANNEL_KEYS', ['help', 'generalEs', 'saori']); // claves de legacy-guild-state.json
+const NEXO_AI_USER_COOLDOWN_MS = parseInt(process.env.NEXO_AI_USER_COOLDOWN_MS || '15000', 10);
+const AI_FAQ_URL = process.env.AI_FAQ_URL || AI_DAEMON_URL.replace(/\/chat\/?$/, '/faq');
 const CHANNELS = {
-    BIENVENIDAS: '1540356407705079879',       // 👋・ʙɪᴇɴᴠᴇɴɪᴅᴀꜱ
-    TICKETS_SOPORTE: '1539636904482578482',   // 🎫・ᴛɪᴄᴋᴇᴛs-sᴏᴘᴏʀᴛᴇ
-    CATEGORIA_TICKETS: '1539764389530312815', // ᴛɪᴄᴋᴇᴛꜱ
-    GENERAL_ES: '1539636493725864037',        // 💬・ɢᴇɴᴇʀᴀʟ-ᴇsᴘᴀñᴏʟ
+    BIENVENIDAS: process.env.CHANNEL_BIENVENIDAS || '1540356407705079879',       // 👋・ʙɪᴇɴᴠᴇɴɪᴅᴀꜱ
+    TICKETS_SOPORTE: process.env.CHANNEL_TICKETS_SOPORTE || '1539636904482578482',   // 🎫・ᴛɪᴄᴋᴇᴛs-sᴏᴘᴏʀᴛᴇ
+    CATEGORIA_TICKETS: process.env.CHANNEL_CATEGORIA_TICKETS || '1539764389530312815', // ᴛɪᴄᴋᴇᴛꜱ
+    GENERAL_ES: process.env.CHANNEL_GENERAL_ES || '1539636493725864037',        // 💬・ɢᴇɴᴇʀᴀʟ-ᴇsᴘᴀñᴏʟ
     SUGERENCIAS: process.env.CHANNEL_SUGERENCIAS || '1539636565188542554', // 💡・sᴜɢᴇʀᴇɴᴄɪᴀs
-    STAFF_CHAT: '1539637349284061185',        // 💬・sᴛᴀғғ-ᴄʜᴀᴛ
-    TAREAS_PENDIENTES: '1539637422692769802', // 📋・ᴛᴀʀᴇᴀs-ᴘᴇɴᴅɪᴇɴᴛᴇs
-    REGLAS: '1539635930577641543',            // 📜・ʀᴇɢʟᴀs-ʏ-ɴᴏʀᴍᴀs
-    AUTO_ROLES: '1539636390751502376',        // 🎭・ᴀᴜᴛᴏ-ʀᴏʟᴇs
-    SAORI_CHAT: '1544811720571355196',        // 💬・habla-con-saori (Canal exclusivo)
-    MINECRAFT_CHAT: '1539636691151888454',    // 🟢・ᴍɪɴᴇᴄʀᴀғᴛ-ᴄʜᴀᴛ
-    AUDITORIA: '1539768514322235402',         // 🛡️・ᴀᴜᴅɪᴛᴏʀíᴀ
-    ANUNCIOS_DISCORD: '1539636299395502211',  // 📢・ᴀɴᴜɴᴄɪᴏs-ᴅɪsᴄᴏʀᴅ
-    ANUNCIOS_MC: '1539636335307137145',       // ⛏️・ᴀɴᴜɴᴄɪᴏs-ᴍɪɴᴇᴄʀᴀғᴛ
-    SORTEOS_EVENTOS: '1539636414495326338',   // 🎁・sᴏʀᴛᴇᴏs-ʏ-ᴇᴠᴇɴᴛᴏs
-    CHANGELOG: '1539636837168185456',         // 🚀・sᴇʀᴠᴇʀ-ᴄʜᴀɴɢᴇʟᴏɢ
-    BOOSTERS: '1546039773397917769',          // 💎・ʙᴏᴏsᴛᴇʀs
-    DIRECTOS: '1546039775373295707',          // 📺・ᴅɪʀᴇᴄᴛᴏs
-    INTERACCIONES_COMERCIO: '1546051029920125089', // 🏪・ɪɴᴛᴇʀᴀᴄᴄɪᴏɴᴇs-ʏ-ᴄᴏᴍᴇʀᴄɪᴏ
-    DIRECCION_GENERAL: '1545668317606584341',  // 👑・ᴅɪʀᴇᴄᴄɪóɴ-ɢᴇɴᴇʀᴀʟ
-    GESTION_FINANZAS: '1545668319103680626',   // 💼・ɢᴇsᴛɪóɴ-ʏ-ғɪɴᴀɴᴢᴀs
-    POSTULACIONES_STAFF: '1545668320789798993',// 📋・ᴘᴏsᴛᴜʟᴀᴄɪᴏɴᴇs-sᴛᴀғғ
-    VOZ_DIRECCION: '1545668372753027144'       // 🔊・ᴠᴏᴢ-ᴅɪʀᴇᴄᴄɪóɴ
+    STAFF_CHAT: process.env.CHANNEL_STAFF_CHAT || '1539637349284061185',        // 💬・sᴛᴀғғ-ᴄʜᴀᴛ
+    TAREAS_PENDIENTES: process.env.CHANNEL_TAREAS_PENDIENTES || '1539637422692769802', // 📋・ᴛᴀʀᴇᴀs-ᴘᴇɴᴅɪᴇɴᴛᴇs
+    REGLAS: process.env.CHANNEL_REGLAS || '1539635930577641543',            // 📜・ʀᴇɢʟᴀs-ʏ-ɴᴏʀᴍᴀs
+    AUTO_ROLES: process.env.CHANNEL_AUTO_ROLES || '1539636390751502376',        // 🎭・ᴀᴜᴛᴏ-ʀᴏʟᴇs
+    SAORI_CHAT: process.env.CHANNEL_SAORI_CHAT || '1544811720571355196',        // 💬・habla-con-saori (Canal exclusivo)
+    MINECRAFT_CHAT: process.env.CHANNEL_MINECRAFT_CHAT || '1539636691151888454',    // 🟢・ᴍɪɴᴇᴄʀᴀғᴛ-ᴄʜᴀᴛ
+    AUDITORIA: process.env.CHANNEL_AUDITORIA || '1539768514322235402',         // 🛡️・ᴀᴜᴅɪᴛᴏʀíᴀ
+    ANUNCIOS_DISCORD: process.env.CHANNEL_ANUNCIOS_DISCORD || '1539636299395502211',  // 📢・ᴀɴᴜɴᴄɪᴏs-ᴅɪsᴄᴏʀᴅ
+    ANUNCIOS_MC: process.env.CHANNEL_ANUNCIOS_MC || '1539636335307137145',       // ⛏️・ᴀɴᴜɴᴄɪᴏs-ᴍɪɴᴇᴄʀᴀғᴛ
+    SORTEOS_EVENTOS: process.env.CHANNEL_SORTEOS_EVENTOS || '1539636414495326338',   // 🎁・sᴏʀᴛᴇᴏs-ʏ-ᴇᴠᴇɴᴛᴏs
+    CHANGELOG: process.env.CHANNEL_CHANGELOG || '1539636837168185456',         // 🚀・sᴇʀᴠᴇʀ-ᴄʜᴀɴɢᴇʟᴏɢ
+    BOOSTERS: process.env.CHANNEL_BOOSTERS || '1546039773397917769',          // 💎・ʙᴏᴏsᴛᴇʀs
+    DIRECTOS: process.env.CHANNEL_DIRECTOS || '1546039775373295707',          // 📺・ᴅɪʀᴇᴄᴛᴏs
+    INTERACCIONES_COMERCIO: process.env.CHANNEL_INTERACCIONES_COMERCIO || '1546051029920125089', // 🏪・ɪɴᴛᴇʀᴀᴄᴄɪᴏɴᴇs-ʏ-ᴄᴏᴍᴇʀᴄɪᴏ
+    DIRECCION_GENERAL: process.env.CHANNEL_DIRECCION_GENERAL || '1545668317606584341',  // 👑・ᴅɪʀᴇᴄᴄɪóɴ-ɢᴇɴᴇʀᴀʟ
+    GESTION_FINANZAS: process.env.CHANNEL_GESTION_FINANZAS || '1545668319103680626',   // 💼・ɢᴇsᴛɪóɴ-ʏ-ғɪɴᴀɴᴢᴀs
+    POSTULACIONES_STAFF: process.env.CHANNEL_POSTULACIONES_STAFF || '1545668320789798993',// 📋・ᴘᴏsᴛᴜʟᴀᴄɪᴏɴᴇs-sᴛᴀғғ
+    VOZ_DIRECCION: process.env.CHANNEL_VOZ_DIRECCION || '1545668372753027144',
+    CUMPLEANOS: process.env.CHANNEL_CUMPLEANOS || '1549938599967989832' // 🎂・ᴄᴜᴍᴘʟᴇᴀñᴏs       // 🔊・ᴠᴏᴢ-ᴅɪʀᴇᴄᴄɪóɴ
 };
 
 function buildInteractionThreadName(message) {
@@ -448,6 +460,8 @@ const client = new Client({
     ]
 });
 
+const birthdayManager = new birthdays.BirthdayManager(client, CHANNELS.CUMPLEANOS, JACK_DISCORD_ID);
+
 // Micro-servidor interno de streaming de audio (Proxy resiliente anti-403 para YouTube / Spotify)
 const LOCAL_STREAM_PORT = 8099;
 let audioStreamServer = null;
@@ -782,6 +796,61 @@ function startDiscordRestApiServer(client) {
                 }
             }
 
+            // POST /api/suggestions/:id/verdict - Emitir veredicto de sugerencia por API interna (SRE / CLI)
+            if (req.method === 'POST' && pathname.startsWith('/api/suggestions/') && pathname.endsWith('/verdict')) {
+                let body = '';
+                req.on('data', chunk => { body += chunk.toString(); });
+                req.on('end', async () => {
+                    try {
+                        const parts = pathname.split('/');
+                        const sugIdArg = parts[3];
+                        const data = JSON.parse(body || '{}');
+                        const action = data.action || data.status || 'integrado';
+                        const reason = data.reason || data.motivo || 'Actualizado vía SRE / Dirección';
+                        const staffName = data.staff || data.moderador || 'Jack (Dirección General)';
+
+                        const sugChannel = client.channels.cache.get(CHANNELS.SUGERENCIAS) || await client.channels.fetch(CHANNELS.SUGERENCIAS).catch(() => null);
+                        if (!sugChannel) return sendJson(404, { ok: false, error: 'Canal de sugerencias no encontrado' });
+
+                        let targetMsg = null;
+                        if (/^\d{17,20}$/.test(sugIdArg)) {
+                            targetMsg = await sugChannel.messages.fetch(sugIdArg).catch(() => null);
+                        }
+                        if (!targetMsg) {
+                            const searchNum = sugIdArg.replace('#', '').trim();
+                            const recent = await sugChannel.messages.fetch({ limit: 100 }).catch(() => null);
+                            if (recent) {
+                                for (const [, m] of recent) {
+                                    const title = m.embeds?.[0]?.title || '';
+                                    if (title.includes('#' + searchNum) || title.endsWith(' #' + searchNum)) {
+                                        targetMsg = m;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+
+                        if (!targetMsg || !targetMsg.embeds?.[0]) {
+                            return sendJson(404, { ok: false, error: 'Sugerencia ' + sugIdArg + ' no encontrada' });
+                        }
+
+                        const dummyUser = { id: JACK_DISCORD_ID, tag: staffName, username: staffName };
+                        const result = await applySuggestionVerdict({
+                            targetMsg,
+                            action,
+                            reason,
+                            user: dummyUser,
+                            member: null
+                        });
+
+                        return sendJson(200, { ok: true, messageId: targetMsg.id, result });
+                    } catch (e) {
+                        return sendJson(500, { ok: false, error: e.message });
+                    }
+                });
+                return;
+            }
+
             // Mensajes recientes de un canal para auditoría de contexto
             if (req.method === 'GET' && pathname.startsWith('/api/channel/') && pathname.endsWith('/messages')) {
                 try {
@@ -834,8 +903,10 @@ function startDiscordRestApiServer(client) {
                         const targetRoleId = data.role_id || NOTIFICATION_CHANNELS_MAP[channelId];
                         const shouldTag = data.tag_role !== false; // por defecto siempre etiqueta
 
-                        const title = data.title || data.titulo || (type === 'minecraft' ? '⛏️ Actualización de Servidor · Minecraft' : '📢 Comunicado Oficial · Discord');
-                        const content = data.content || data.mensaje || data.descripcion || '';
+                        const normalizeDiscordText = (t) => (typeof t === "string" ? t.replaceAll("\\r\\n", "\n").replaceAll("\\n", "\n") : t);
+
+                        const title = normalizeDiscordText(data.title || data.titulo || (type === 'minecraft' ? '⛏️ Actualización de Servidor · Minecraft' : '📢 Comunicado Oficial · Discord'));
+                        const content = normalizeDiscordText(data.content || data.mensaje || data.descripcion || '');
                         const agent = data.agent || data.agente || 'SAORI SRE Fleet';
                         const color = data.color || (type === 'minecraft' || channelId === CHANNELS.ANUNCIOS_MC ? 0x2ECC71 : (type === 'discord' || channelId === CHANNELS.ANUNCIOS_DISCORD ? 0x5865F2 : 0xE67E22));
 
@@ -884,8 +955,9 @@ function startDiscordRestApiServer(client) {
                 req.on('end', async () => {
                     try {
                         const data = JSON.parse(body || '{}');
-                        const channelId = data.channel_id;
-                        const targetChannel = client.channels.cache.get(channelId);
+                        const channelId = data.channel_id || data.channel || data.channel_name;
+                        const targetChannel = client.channels.cache.get(channelId) || 
+                            client.channels.cache.find(c => c.name === channelId || (data.channel_name && c.name === data.channel_name) || (c.name && channelId && c.name.toLowerCase() === String(channelId).toLowerCase()));
                         if (!targetChannel || !targetChannel.isTextBased()) {
                             return sendJson(404, { ok: false, error: `Canal ${channelId} no encontrado` });
                         }
@@ -1176,13 +1248,139 @@ function getNextSuggestionNumber() {
     return counter;
 }
 
+async function applySuggestionVerdict({ targetMsg, action, reason, user, member }) {
+    if (!targetMsg || !targetMsg.embeds?.[0]) {
+        return { ok: false, error: 'Mensaje de sugerencia no encontrado o sin formato de ficha.' };
+    }
+
+    const normAction = (action || '').toLowerCase().trim().replace(/[!.,]/g, '');
+    let statusKey = 'consideracion';
+    let statusText = '💡 **En Consideración del Staff**';
+    let statusTitle = 'EN CONSIDERACIÓN';
+    let verdictColor = 0xF1C40F; // Gold
+    let footerText = 'DrakesCraft Network · Estado: En Consideración del Staff 💡';
+    let shouldCloseReactions = false;
+
+    if (normAction.startsWith('integra') || normAction.startsWith('implem') || normAction === 'hecho' || normAction === 'listo') {
+        statusKey = 'integrado';
+        statusText = '🚀 **Integrada & Implementada en Producción**';
+        statusTitle = 'INTEGRADA & IMPLEMENTADA';
+        verdictColor = 0x9B59B6; // Purple
+        footerText = 'DrakesCraft Network · ¡Propuesta Integrada en el Servidor! 🚀';
+        shouldCloseReactions = true;
+    } else if (normAction.startsWith('acep') || normAction.startsWith('aprob')) {
+        statusKey = 'aceptar';
+        statusText = '✅ **Aceptada por Staff**';
+        statusTitle = 'ACEPTADA POR STAFF';
+        verdictColor = 0x2ECC71; // Green
+        footerText = 'DrakesCraft Network · Propuesta Aceptada por Staff ✅';
+        shouldCloseReactions = true;
+    } else if (normAction.startsWith('rechaz') || normAction.startsWith('deneg') || normAction.startsWith('desestim')) {
+        statusKey = 'rechazar';
+        statusText = '❌ **Rechazada por Staff**';
+        statusTitle = 'RECHAZADA POR STAFF';
+        verdictColor = 0xE74C3C; // Red
+        footerText = 'DrakesCraft Network · Propuesta Desestimada ❌';
+        shouldCloseReactions = true;
+    } else if (normAction.startsWith('revis') || normAction.startsWith('evalu') || normAction.startsWith('analiz')) {
+        statusKey = 'revisando';
+        statusText = '⚙️ **En Revisión Técnica / Evaluación**';
+        statusTitle = 'EN REVISIÓN TÉCNICA';
+        verdictColor = 0x00D2D3; // Cyan
+        footerText = 'DrakesCraft Network · En Revisión Técnica ⚙️';
+        shouldCloseReactions = false;
+    } else if (normAction.startsWith('consid')) {
+        statusKey = 'consideracion';
+        statusText = '💡 **En Consideración del Staff**';
+        statusTitle = 'EN CONSIDERACIÓN';
+        verdictColor = 0xF1C40F; // Gold
+        footerText = 'DrakesCraft Network · En Consideración del Equipo 💡';
+        shouldCloseReactions = false;
+    } else if (normAction.startsWith('cerr') || normAction === 'lock' || normAction.startsWith('finaliz')) {
+        statusKey = 'cerrar';
+        statusText = '🔒 **Votación Finalizada**';
+        statusTitle = 'VOTACIÓN FINALIZADA';
+        verdictColor = 0x7F8C8D; // Gray
+        footerText = 'DrakesCraft Network · Votación Cerrada 🔒';
+        shouldCloseReactions = true;
+    }
+
+    const oldEmbed = targetMsg.embeds[0];
+    const newEmbed = EmbedBuilder.from(oldEmbed);
+    newEmbed.setColor(verdictColor);
+
+    const fields = (oldEmbed.fields || []).map(f => {
+        if (f.name === '📊 Estado') return { name: '📊 Estado', value: statusText, inline: true };
+        return f;
+    });
+
+    const staffTag = user ? `${user.tag || user.username}` : 'Staff Oficial';
+    const verdictValue = reason && reason.trim() ? reason.trim().slice(0, 1000) : 'Sin observaciones adicionales del Staff';
+    const existingVerdictIdx = fields.findIndex(f => f.name.startsWith('🛡️ Veredicto'));
+    const verdictField = { name: `🛡️ Veredicto de ${staffTag}`, value: verdictValue, inline: false };
+
+    if (existingVerdictIdx !== -1) {
+        fields[existingVerdictIdx] = verdictField;
+    } else {
+        fields.push(verdictField);
+    }
+    newEmbed.setFields(fields);
+    newEmbed.setFooter({ text: footerText, iconURL: client.user.displayAvatarURL() });
+
+    // Botones interactivos en la propuesta (Enlace al debate + botón veredicto Staff)
+    const actionComponents = [];
+    if (targetMsg.thread) {
+        actionComponents.push(
+            new ButtonBuilder()
+                .setLabel('💬 Ir al Hilo de Debate')
+                .setStyle(ButtonStyle.Link)
+                .setURL(targetMsg.thread.url)
+        );
+    }
+    actionComponents.push(
+        new ButtonBuilder()
+            .setCustomId(`btn_sug_manage_${targetMsg.id}`)
+            .setLabel('⚖️ Veredicto Staff')
+            .setStyle(ButtonStyle.Secondary)
+    );
+    const updatedRow = new ActionRowBuilder().addComponents(actionComponents);
+
+    await targetMsg.edit({ embeds: [newEmbed], components: [updatedRow] });
+
+    // Cerrar reacciones cuando el veredicto lo requiere (integrado, aceptada, rechazada, cerrar)
+    if (shouldCloseReactions) {
+        await targetMsg.reactions.removeAll().catch(err => {
+            console.warn(`[SUGGESTIONS] Error removiendo reacciones en ${targetMsg.id}:`, err.message);
+        });
+    }
+
+    // Notificación en el hilo de debate
+    if (targetMsg.thread) {
+        const staffMention = user ? `<@${user.id}>` : 'Staff';
+        const notifEmbed = new EmbedBuilder()
+            .setTitle(`📢 Veredicto Oficial: Sugerencia ${statusTitle}`)
+            .setColor(verdictColor)
+            .setDescription(
+                `**Estado Oficial:** ${statusText}\n` +
+                `**Moderador/a:** ${staffMention}\n` +
+                `**Motivo / Observaciones:**\n>>> ${verdictValue}\n\n` +
+                (shouldCloseReactions ? '🔒 *Las reacciones de votación han sido cerradas para esta propuesta.*' : '🗳️ *La propuesta continúa abierta a comentarios de la comunidad.*')
+            )
+            .setTimestamp();
+        await targetMsg.thread.send({ embeds: [notifEmbed] }).catch(() => {});
+    }
+
+    return { ok: true, statusKey, statusText, shouldCloseReactions };
+}
+
+
 async function handleSuggestion(message, rawText, isDirectCmd = false) {
     const cleanText = (rawText || '').trim();
     if (cleanText.length < 10) {
         if (message.channel.id === CHANNELS.SUGERENCIAS) {
             await message.delete().catch(() => {});
-            const warnMsg = await message.channel.send(`⚠️ ${message.author}, tu sugerencia debe tener al menos 10 caracteres para abrir una votación.`);
-            setTimeout(() => warnMsg.delete().catch(() => {}), 7000);
+            const warnMsg = await message.channel.send(`⚠️ ${message.author}, tu propuesta debe tener al menos **15 caracteres** explicando tu idea para abrir una votación comunitaria.\n*Ejemplo:* \`Añadir sistema de subastas entre jugadores para dinamizar la economía\``);
+            setTimeout(() => warnMsg.delete().catch(() => {}), 9000);
             return;
         }
         if (isDirectCmd) {
@@ -1230,15 +1428,29 @@ async function handleSuggestion(message, rawText, isDirectCmd = false) {
         }).catch(err => console.warn('[SUGGESTIONS] No se pudo crear hilo:', err.message));
 
         if (debateThread) {
+            await debateThread.members.add(message.author.id).catch(() => {});
+
             const debateGuide = new EmbedBuilder()
                 .setTitle(`💬 Hilo Oficial de Debate · Propuesta #${counter}`)
                 .setColor(0x00E5FF)
-                .setDescription('¡Bienvenido/a al espacio de discusión comunitaria!\n\n' +
-                                '• Expresa tus argumentos a favor o en contra de forma constructiva.\n' +
-                                '• Recuerda votar arriba con 👍 o 👎 en la propuesta original.\n' +
-                                '• El Staff de **DrakesCraft** revisará periódicamente las opiniones para emitir su veredicto.')
-                .setFooter({ text: 'DrakesCraft Governance · Staff deliberará sobre esta propuesta' });
+                .setDescription(`¡Bienvenido/a al espacio de discusión comunitaria, ${message.author}!\n\n` +
+                                '• **Debate constructivo:** Expresa tus argumentos a favor o en contra respetando las normas.\n' +
+                                '• **Votación oficial:** Recuerda que los votos se cuentan con 👍 o 👎 en la propuesta arriba.\n' +
+                                '• **Resolución:** El Staff y los Desarrolladores evaluarán este hilo para decidir aprobación o implementación.')
+                .setFooter({ text: 'DrakesCraft Governance · Hilo de discusión abierto a toda la comunidad' });
             await debateThread.send({ embeds: [debateGuide] }).catch(() => {});
+
+            const debateRow = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setLabel('💬 Ir al Hilo de Debate')
+                    .setStyle(ButtonStyle.Link)
+                    .setURL(debateThread.url),
+                new ButtonBuilder()
+                    .setCustomId(`btn_sug_manage_${sent.id}`)
+                    .setLabel('⚖️ Veredicto Staff')
+                    .setStyle(ButtonStyle.Secondary)
+            );
+            await sent.edit({ components: [debateRow] }).catch(() => {});
         }
 
         if (isDirectCmd && message.channel.id !== CHANNELS.SUGERENCIAS) {
@@ -1257,14 +1469,16 @@ async function handleSuggestion(message, rawText, isDirectCmd = false) {
     }
 }
 
-async function askSaoriBrain(prompt, sender, context = '') {
+async function askSaoriBrain(prompt, sender, context = '', isHighStaff = false, options = {}) {
     try {
         const fullPrompt = context ? `[Contexto Canal/Ticket: ${context}]
 ${prompt}` : prompt;
+        const body = { prompt: fullPrompt, sender, is_high_staff: isHighStaff };
+        if (options.scope) body.scope = options.scope; // 'nexo' → el daemon acota el canon (pass2 2026-09-16)
         const res = await fetch(AI_DAEMON_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt: fullPrompt, sender }),
+            body: JSON.stringify(body),
             timeout: 45000
         });
         if (res.ok) {
@@ -1277,6 +1491,49 @@ ${prompt}` : prompt;
         console.error('[SAORI-DISCORD] Error contactando Saori Brain:', e.message);
     }
     return `Hola ${sender}, mis núcleos cognitivos externos se están recalibrando en este momento, pero todos los controles y funciones del servidor (\`shelp\`, música, auto-roles, tickets) siguen activos y a tu disposición. 🌸`;
+}
+
+// Pass2 2026-09-16: respuesta determinista desde el catálogo curado (sin IA) para preguntas cortas.
+// El daemon expone /faq (retrocompatible: si no existe, devuelve null y se sigue con la IA).
+async function askSaoriFaq(prompt) {
+    try {
+        const res = await fetch(AI_FAQ_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt }),
+            timeout: 6000
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        if (data && data.hit && data.answer && data.url) {
+            return { answer: String(data.answer).trim(), url: String(data.url).trim(), id: data.id || '' };
+        }
+    } catch (e) {
+        console.error('[SAORI-FAQ] Error consultando /faq:', e.message);
+    }
+    return null;
+}
+
+// Pass2 2026-09-16: garantiza que la línea "📖 Guia: <url>" del executor llegue entera y al final,
+// como link clicable (sin puntuación pegada ni <>), y sin duplicados.
+function normalizeGuideLine(text) {
+    if (!text || !/📖/u.test(text)) return text;
+    const lineRgx = /^[ \t]*📖\s*Gu[ií]a\s*:?\s*<?(https?:\/\/[^\s<>]+)>?[ \t]*$/gimu;
+    const urls = [];
+    let m;
+    while ((m = lineRgx.exec(text)) !== null) urls.push(m[1].replace(/[.,;:!?)\]]+$/, ''));
+    if (!urls.length) return text;
+    const body = text.replace(lineRgx, '').replace(/\n{3,}/g, '\n\n').trim();
+    return `${body}\n\n📖 Guía: ${urls[0]}`;
+}
+
+// Pass2 2026-09-16: filtro humano-a-humano compartido (canal dedicado DrakesCraft y Nexo):
+// el mensaje responde a otro usuario o menciona a otros humanos sin llamar a Saori.
+function isHumanToHumanMessage(message) {
+    const repliedUser = message.mentions.repliedUser;
+    const repliesToHuman = !!(message.reference && repliedUser && repliedUser.id !== client.user.id);
+    const mentionsOtherHumans = message.mentions.users.some(u => u.id !== client.user.id && !u.bot);
+    return repliesToHuman || mentionsOtherHumans;
 }
 
 async function generateImageViaDaemon(prompt) {
@@ -1440,7 +1697,9 @@ async function handleDiscordManagement(message, cleanPrompt, isJack) {
     return null;
 }
 
-const PTERODACTYL_API_URL = 'https://panel.thegamehosting.com/api/client/servers/38528a4e/command';
+const PTERODACTYL_PANEL_URL = (process.env.PTERODACTYL_PANEL_URL || 'https://panel.thegamehosting.com').replace(/\/+$/, '');
+const PTERODACTYL_SERVER_ID = process.env.PTERODACTYL_SERVER_ID || '38528a4e';
+const PTERODACTYL_API_URL = `${PTERODACTYL_PANEL_URL}/api/client/servers/${PTERODACTYL_SERVER_ID}/command`;
 const PTERODACTYL_API_KEY = process.env.PTERODACTYL_API_KEY || '';
 
 async function sendMinecraftConsoleCommand(command) {
@@ -1485,7 +1744,7 @@ async function sendAuditLog(embed, guild = null) {
         console.error('[AUDIT-LOG] Error al despachar log a auditoría:', e.message);
     }
 }
-const CHANNELS_MOD_LOGS = '1539637396856111165'; // #🚨・ᴍᴏᴅ-ʟᴏɢs
+const CHANNELS_MOD_LOGS = process.env.CHANNEL_MOD_LOGS || '1539637396856111165'; // #🚨・ᴍᴏᴅ-ʟᴏɢs
 
 async function sendModLog(embed) {
     try {
@@ -1535,8 +1794,11 @@ function buildShelpStaffEmbed(category = 'all') {
                            '• `smchealth` · Comprobación de salud y latencia del servidor.'
                 },
                 {
-                    name: '⚔️ 4. Moderadores (Derem, Pepe & Tomi)',
-                    value: '• `smute @usuario <minutos> [motivo]` · Silencio temporal (timeout).\n' +
+                    name: '⚔️ 4. Moderadores (Derem, Pepe & Tomi) & Auditoría',
+                    value: '• `salts <jugador|ip>` · Historial de multicuentas, IPs vinculadas y VPN.\n' +
+                           '• `svpn <ip|jugador>` · Auditoría profunda de VPN, Proxy, Datacenter y ASN.\n' +
+                           '• `smulticuentas` · Ranking de IPs con mayor cantidad de cuentas asociadas.\n' +
+                           '• `smute @usuario <minutos> [motivo]` · Silencio temporal (timeout).\n' +
                            '• `sunmute @usuario` · Retirar silencio.\n' +
                            '• `skick @usuario [motivo]` · Expulsión de Discord.\n' +
                            '• `swarn @usuario <motivo>` · Advertencia formal al usuario.\n' +
@@ -1579,7 +1841,7 @@ function buildShelpStaffEmbed(category = 'all') {
             .setColor(0x3498DB)
             .setDescription('Herramientas técnicas y de telemetría para **Developers** y diagnóstico:')
             .addFields(
-                { name: '⚡ Telemetría del Servidor (stps)', value: '• `stps` (o `tps`) en cualquier canal.\n• Muestra en tiempo real: RAM usada (GB), CPU%, Uptime, Disco, Jugadores conectados (`online/max`), versión del motor (`Purpur 1.21.1`) y TPS 20.0.' },
+                { name: '⚡ Telemetría del Servidor (stps)', value: '• `stps` (o `tps`) en cualquier canal.\n• Muestra en tiempo real: RAM usada (GB), CPU%, Uptime, Disco, Jugadores conectados (`online/max`), versión del motor (`Purpur 1.21.11`) y TPS 20.0.' },
                 { name: '📜 Visor de Logs en Vivo (slogs)', value: '• `slogs [filtro]` · Consulta la consola en tiempo real.\n• Botones interactivos:\n  - `◀️ Ver Más Atrás`: Navega páginas anteriores del log.\n  - `🔄 Actualizar`: Re-consulta los últimos eventos.\n  - `▶️ Más Recientes`: Avanza hacia el presente.\n  - `⏮️ Al Inicio`: Vuelve a la primera página.' },
                 { name: '🩺 Salud del Servidor', value: '• `smchealth` · Solicita informe de TPS y salud a Paper/Purpur.\n• `scomando spark health` · Diagnóstico de rendimiento del motor.' }
             );
@@ -1619,50 +1881,96 @@ const STAFF_LEVELS = {
     USER: 0
 };
 
-const KIKA_DISCORD_ID = '684457729003356180';
-const STAFF_ROLE_ID = '1539768983287496855';
+const KIKA_DISCORD_ID = process.env.KIKA_DISCORD_ID || '684457729003356180';
+const STAFF_ROLES = {
+    STAFF: process.env.ROLE_STAFF_ID || '1539768983287496855',
+    OWNER: process.env.ROLE_OWNER_ID || '1539641774392348754',
+    HIGH_STAFF: process.env.ROLE_HIGH_STAFF_ID || '1545668300367994980',
+    ADMIN: process.env.ROLE_ADMIN_ID || '1539642179822161940',
+    PERMISOS_PLUS: process.env.ROLE_PERMISOS_PLUS_ID || '1545668302700023928',
+    DEV: process.env.ROLE_DEV_ID || '1539642260621369454',
+    MOD: process.env.ROLE_MOD_ID || '1539642370356940861',
+    HELPER: process.env.ROLE_HELPER_ID || '1539642446861041694'
+};
+const STAFF_ROLE_ID = STAFF_ROLES.STAFF;
+const HIGH_STAFF_ROLE_IDS = new Set([
+    STAFF_ROLES.OWNER,
+    STAFF_ROLES.HIGH_STAFF,
+    STAFF_ROLES.ADMIN,
+    STAFF_ROLES.PERMISOS_PLUS,
+    STAFF_ROLES.DEV,
+]);
+
+// ── GESTIÓN SEGURA DE ENERGÍA DE LA INFRAESTRUCTURA (HIGH STAFF & JACK) ──
+async function triggerSafePowerAction(action, seconds, reason, sender) {
+    const POWER_URL = 'http://127.0.0.1:8089/power';
+    try {
+        const res = await fetch(POWER_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action, seconds, reason, sender, is_high_staff: true }),
+            timeout: 15000
+        });
+        return await res.json();
+    } catch (err) {
+        console.error('[SAORI-POWER] Error llamando a /power:', err.message);
+        return { ok: false, error: err.message };
+    }
+}
+
 
 function getStaffMemberHierarchy(member, authorId) {
     if (authorId === JACK_DISCORD_ID || authorId === '493868699489665044' || authorId === KIKA_DISCORD_ID) {
-        return { level: STAFF_LEVELS.OWNER, roleName: 'Dueño / Dirección General', isStaff: true, canDCBan: true, canMCBan: true };
+        return { level: STAFF_LEVELS.OWNER, roleName: 'Dueño / Dirección General', isStaff: true, isHighStaff: true, canDCBan: true, canMCBan: true };
     }
-    if (!member) return { level: STAFF_LEVELS.USER, roleName: 'Usuario', isStaff: false, canDCBan: false, canMCBan: false };
+    if (authorId === '722946819419668510') {
+        return { level: STAFF_LEVELS.ADMIN, roleName: 'Administrador / Dev (Chagui)', isStaff: true, isHighStaff: true, canDCBan: true, canMCBan: true };
+    }
+    if (authorId === '1258215533250084865') {
+        return { level: STAFF_LEVELS.ADMIN, roleName: 'Administrador (Jessiel)', isStaff: true, isHighStaff: true, canDCBan: true, canMCBan: true };
+    }
+    if (!member) return { level: STAFF_LEVELS.USER, roleName: 'Usuario', isStaff: false, isHighStaff: false, canDCBan: false, canMCBan: false };
 
     const hasStaffRole = member.roles.cache.has(STAFF_ROLE_ID);
+    const hasHighStaffRole = member.roles && member.roles.cache && member.roles.cache.some(r => HIGH_STAFF_ROLE_IDS.has(r.id));
     const roleNames = member.roles.cache.map(r => r.name.toLowerCase());
     const nick = (member.nickname || member.displayName || '').toLowerCase();
 
     const matchesKeyword = (kw) => roleNames.some(rn => rn.includes(kw)) || nick.includes(kw);
+    const isHighStaff = hasHighStaffRole || matchesKeyword('high') || matchesKeyword('high staff') || matchesKeyword('owner') || matchesKeyword('dueño') || matchesKeyword('admin') || matchesKeyword('administrador');
 
     if (matchesKeyword('owner') || matchesKeyword('dueño') || matchesKeyword('dueña')) {
-        return { level: STAFF_LEVELS.OWNER, roleName: 'Dueño', isStaff: true, canDCBan: true, canMCBan: true };
+        return { level: STAFF_LEVELS.OWNER, roleName: 'Dueño', isStaff: true, isHighStaff: true, canDCBan: true, canMCBan: true };
+    }
+    if (hasHighStaffRole || matchesKeyword('high') || matchesKeyword('high staff')) {
+        return { level: STAFF_LEVELS.ADMIN, roleName: 'High Staff', isStaff: true, isHighStaff: true, canDCBan: true, canMCBan: true };
     }
     if (matchesKeyword('admin') || matchesKeyword('administrador')) {
-        return { level: STAFF_LEVELS.ADMIN, roleName: 'Administrador', isStaff: true, canDCBan: true, canMCBan: true };
+        return { level: STAFF_LEVELS.ADMIN, roleName: 'Administrador', isStaff: true, isHighStaff: true, canDCBan: true, canMCBan: true };
     }
     if (matchesKeyword('dev') || matchesKeyword('developer') || matchesKeyword('desarrollador')) {
-        return { level: STAFF_LEVELS.DEV, roleName: 'Developer', isStaff: true, canDCBan: false, canMCBan: false };
+        return { level: STAFF_LEVELS.DEV, roleName: 'Developer', isStaff: true, isHighStaff: true, canDCBan: false, canMCBan: false };
     }
     if (matchesKeyword('mod') || matchesKeyword('moderador')) {
-        return { level: STAFF_LEVELS.MOD, roleName: 'Moderador', isStaff: true, canDCBan: false, canMCBan: true };
+        return { level: STAFF_LEVELS.MOD, roleName: 'Moderador', isStaff: true, isHighStaff: false, canDCBan: false, canMCBan: true };
     }
     if (matchesKeyword('helper') || matchesKeyword('ayudante')) {
-        return { level: STAFF_LEVELS.HELPER, roleName: 'Helper', isStaff: true, canDCBan: false, canMCBan: false };
+        return { level: STAFF_LEVELS.HELPER, roleName: 'Helper', isStaff: true, isHighStaff: false, canDCBan: false, canMCBan: false };
     }
     if (matchesKeyword('builder') || matchesKeyword('constructor')) {
-        return { level: STAFF_LEVELS.BUILDER, roleName: 'Builder', isStaff: true, canDCBan: false, canMCBan: false };
+        return { level: STAFF_LEVELS.BUILDER, roleName: 'Builder', isStaff: true, isHighStaff: false, canDCBan: false, canMCBan: false };
     }
     if (hasStaffRole) {
-        return { level: STAFF_LEVELS.HELPER, roleName: 'Staff General', isStaff: true, canDCBan: false, canMCBan: false };
+        return { level: STAFF_LEVELS.HELPER, roleName: 'Staff General', isStaff: true, isHighStaff: isHighStaff, canDCBan: false, canMCBan: false };
     }
-    return { level: STAFF_LEVELS.USER, roleName: 'Usuario', isStaff: false, canDCBan: false, canMCBan: false };
+    return { level: STAFF_LEVELS.USER, roleName: 'Usuario', isStaff: false, isHighStaff: false, canDCBan: false, canMCBan: false };
 }
 
 // =========================================================================
 // 📜 MOTOR DE VISOR DE LOGS DE MINECRAFT EN VIVO (PTERODACTYL REST API)
 // =========================================================================
 
-const PTERODACTYL_LOGS_URL = 'https://panel.thegamehosting.com/api/client/servers/38528a4e/files/contents?file=logs%2Flatest.log';
+const PTERODACTYL_LOGS_URL = `${PTERODACTYL_PANEL_URL}/api/client/servers/${PTERODACTYL_SERVER_ID}/files/contents?file=logs%2Flatest.log`;
 const logViewerSessions = new Map(); // messageId -> session data
 const MINECRAFT_PRIVATE_CHAT_AUDIT_ENABLED = process.env.MINECRAFT_PRIVATE_CHAT_AUDIT_ENABLED === 'true';
 const MINECRAFT_PRIVATE_CHAT_AUDIT_NOTICE_ACKNOWLEDGED = process.env.MINECRAFT_PRIVATE_CHAT_AUDIT_NOTICE_ACKNOWLEDGED === 'true';
@@ -1928,7 +2236,7 @@ function formatTelemetryEmbed(telemetry) {
 
     const onlinePlayers = mc?.players?.online ?? 0;
     const maxPlayers = mc?.players?.max ?? 100;
-    const version = mc?.version || 'Purpur 1.21.1';
+    const version = mc?.version || 'Purpur 1.21.11';
     const motd = mc?.motd?.clean?.[0] || '⚡ DrakesCraft Network ⚡';
 
     const embed = new EmbedBuilder()
@@ -1936,7 +2244,7 @@ function formatTelemetryEmbed(telemetry) {
         .setColor(isOnline ? 0x2ECC71 : 0xE74C3C)
         .setDescription(`**Estado General:** ${isOnline ? '🟢 **En Línea (Salud Óptima)**' : '🔴 **Desconectado o Reiniciando**'}\n*${motd}*`)
         .addFields(
-            { name: '⏱️ Rendimiento & TPS', value: '• **TPS:** `20.0 / 20.0` (Impecable)\n• **MSPT:** `~14.2 ms` (Margen excelente)\n• **CPU:** ' + cpuStr, inline: true },
+            { name: '⏱️ Rendimiento & Hardware', value: '• **CPU Proceso:** ' + cpuStr + '\n• **Estado:** `' + (isOnline ? 'Operativo' : 'Desconectado') + '`\n• *TPS exacto in-game vía /tps o !tps*', inline: true },
             { name: '💾 Memoria & Almacenamiento', value: '• **RAM:** ' + ramStr + '\n• **Disco:** ' + diskStr + '\n• **Uptime:** ' + uptimeStr, inline: true },
             { name: '🎮 Jugadores & Red', value: '• **Jugadores:** `' + onlinePlayers + '/' + maxPlayers + '`\n• **Motor:** `' + version + '`\n• **IP:** `mc.drakescraft.cl`', inline: true }
         )
@@ -1957,7 +2265,7 @@ function buildMainMenuHub() {
         .setDescription('**¡Bienvenido a la central de servicios interactivos de DrakesCraft!** 🐉\n' +
                         'Selecciona una categoría en el menú desplegable inferior para explorar guías, reglamentos, economía, modalidades y herramientas comunitarias.')
         .addFields(
-            { name: '🌐 Conexión al Servidor', value: '• **IP:** `mc.drakescraft.cl` (Puerto 25565)\n• **Versión:** `Java 1.21.1 - 1.21.4` (Bedrock compatible)\n• **Web:** [drakescraft.cl](https://drakescraft.cl)', inline: true },
+            { name: '🌐 Conexión al Servidor', value: '• **IP:** `mc.drakescraft.cl` (Puerto 25565)\n• **Versión:** `Java 1.20.5+ (ViaVersion; texturas 1.21.5+)` · Bedrock vía Geyser\n• **Web:** [drakescraft.cl](https://drakescraft.cl)', inline: true },
             { name: '⚔️ Modalidades Activas', value: '• **Survival Custom** (Slimefun 4, Economía)\n• **BSkyBlock & OneBlock**\n• **Dungeons & Eventos Semanales**', inline: true }
         )
         .setFooter({ text: 'S.A.O.R.I. Unified Engine · Selecciona una opción abajo' });
@@ -2012,7 +2320,7 @@ function buildMainMenuHub() {
         new ButtonBuilder().setCustomId('btn_user_profile').setLabel('👤 Mi Perfil').setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId('btn_user_claim').setLabel('🛡️ Guía Claims').setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId('btn_user_vote').setLabel('🎁 Votar').setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setLabel('🛒 Tienda VIP').setStyle(ButtonStyle.Link).setURL('https://tienda.drakescraft.cl')
+        new ButtonBuilder().setLabel('🛒 Tienda VIP').setStyle(ButtonStyle.Link).setURL('https://web.drakescraft.cl')
     );
 
     return { embed, selectRow: new ActionRowBuilder().addComponents(selectMenu), buttonRow };
@@ -2050,12 +2358,12 @@ function getSmenuCategoryEmbed(category) {
             return new EmbedBuilder()
                 .setTitle('👑 DrakesCraft · Rangos VIP Dioses del Olimpo')
                 .setColor(0xF1C40F)
-                .setDescription('Apoya el mantenimiento de la red y adquiere beneficios exclusivos, cosméticos y comandos premium en [tienda.drakescraft.cl](https://tienda.drakescraft.cl):')
+                .setDescription('Apoya el mantenimiento de la red y adquiere beneficios exclusivos, cosméticos y comandos premium en [web.drakescraft.cl](https://web.drakescraft.cl):')
                 .addFields(
                     { name: '⚡ Rango Titán & Zeus', value: 'Beneficios máximos: Acceso a `/fly`, múltiples hogares ilimitados, prefijos dorados, kits divinos semanales y acceso prioritario en colas.', inline: false },
                     { name: '🌊 Poseidón, Thor & Anubis', value: 'Kits intermedios de combate, aceleradores de regeneración en claims, bóvedas virtuales ampliadas y sombreros cosméticos.', inline: false },
                     { name: '✨ Afrodita, Artemisa, Hefesto, Hércules, Hestia & Hermes', value: 'Rangos accesibles con acceso a efectos de partículas, comandos de utilidad (`/feed`, `/workbench`) y cajas de recompensas.', inline: false },
-                    { name: '🛒 ¿Dónde obtenerlos?', value: 'Visita nuestra tienda oficial: [https://tienda.drakescraft.cl](https://tienda.drakescraft.cl). ¡Tu rango se entrega automáticamente en menos de 60 segundos!', inline: false }
+                    { name: '🛒 ¿Dónde obtenerlos?', value: 'Visita nuestra tienda oficial: [https://web.drakescraft.cl](https://web.drakescraft.cl). ¡Tu rango se entrega automáticamente en menos de 60 segundos!', inline: false }
                 )
                 .setFooter({ text: 'DrakesCraft Tebex Store · Entregas automatizadas' });
 
@@ -2353,6 +2661,7 @@ async function handleDiscordStaffActions(message, primaryCmd, cmdArgs, hierarchy
 
 
 client.once(Events.ClientReady, async () => {
+    birthdayManager.startScheduler();
     console.log(`✅ [SAORI-DISCORD] ¡Conectada como ${client.user.tag}! Voice, Images (3/h), Purge, Auditoría (#${CHANNELS.AUDITORIA}) & Channel #${CHANNELS.SAORI_CHAT} activos.`);
     client.user.setActivity('DrakesCraft SRE & Auditoría 🛡️', { type: ActivityType.Watching });
     await legacyGuild.onReady(client);
@@ -2372,6 +2681,13 @@ client.once(Events.ClientReady, async () => {
 
     // Iniciar Servidor API REST Interno (puerto 8095) para el Quinteto de IAs
     startDiscordRestApiServer(client);
+
+    // Iniciar Watcher y Analizador de Multicuentas e Inteligencia IP
+    try {
+        multiacctAnalyzer.init(client, CHANNELS.AUDITORIA);
+    } catch (e) {
+        console.error('[MULTIACCT] Error iniciando analizador:', e.message);
+    }
 
     // Pre-cachear mensajes recientes de todos los canales para auditoría perfecta
     try {
@@ -2746,11 +3062,8 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
                 if (boostersCh) {
                     await boostersCh.send({ content: `🎉 ¡Demos una bienvenida de honor a nuestro booster ${newMember}! 💎✨`, embeds: [boostEmbed] }).catch(() => {});
                 }
-                const bienvCh = newMember.guild.channels.cache.get(CHANNELS.BIENVENIDAS);
-                if (bienvCh) {
-                    await bienvCh.send({ content: `💎✨ ¡${newMember} acaba de elevar el nivel de **DrakesCraft** con un Nitro Boost!`, embeds: [boostEmbed] }).catch(() => {});
-                }
-                console.log(`[BOOSTER] 🎉 ¡${newMember.user.tag} ha potenciado el servidor! Anuncios enviados con éxito.`);
+                // En #bienvenidas Discord ya publica nativamente el boost; omitimos el embed duplicado.
+                console.log(`[BOOSTER] Celebracion publicada exclusivamente en #💎・boosters.`);
             } catch (boostErr) {
                 console.error('[BOOSTER] Error al procesar evento de Server Booster:', boostErr);
             }
@@ -3398,7 +3711,7 @@ function getShelpCategoryEmbed(category) {
                 .addFields(
                     { 
                         name: '• stps (o tps)', 
-                        value: 'Telemetría completa en vivo: RAM asignada/usada (GB), CPU%, Uptime, Jugadores conectados (`online/100`), versión del motor (`Purpur 1.21.1`) y TPS 20.0.' 
+                        value: 'Telemetría completa en vivo: RAM asignada/usada (GB), CPU%, Uptime, Jugadores conectados (`online/100`), versión del motor (`Purpur 1.21.11`) y TPS 20.0.' 
                     },
                     { 
                         name: '• sonline (o sjugadores)', 
@@ -3433,7 +3746,7 @@ function getShelpCategoryEmbed(category) {
                     { name: '• svotar (o votar)', value: 'Enlaces de votación para ganar recompensas diarias y llaves in-game.' },
                     { name: '• sredes (o redes)', value: 'Nuestras redes sociales oficiales (TikTok, Instagram, YouTube, Discord).' },
                     { name: '• sip', value: 'IP oficial de conexión: Java & Bedrock (`mc.drakescraft.cl:25565`).' },
-                    { name: '• sweb / stienda', value: 'Portal oficial: https://web.drakescraft.cl · Tienda: https://tienda.drakescraft.cl' },
+                    { name: '• sweb / stienda', value: 'Portal oficial: https://web.drakescraft.cl · Tienda: https://web.drakescraft.cl' },
                     { name: '• sguia / sreglas', value: 'Enciclopedia de modalidades (Slimefun, Claims, Economía) y normativa comunitaria.' },
                     { name: '• sreencarnar <código>', value: 'Confirmación de seguridad para renacer con Prestigio tras solicitarlo in-game con `/reencarnar`.' }
                 )
@@ -3504,7 +3817,7 @@ function getShelpCategoryEmbed(category) {
                     { 
                         name: '👑 3. Tienda, VIPs & Recompensas', 
                         value: '• `svip` · Catálogo de los 11 rangos Dioses del Olimpo y beneficios de rango.\n' +
-                               '• `stienda` · Enlace a la tienda oficial (https://tienda.drakescraft.cl).\n' +
+                               '• `stienda` · Enlace a la tienda oficial (https://web.drakescraft.cl).\n' +
                                '• `svotar` · Votar por el servidor y reclamar premios diarios in-game.\n' +
                                '• `sredes` · Redes sociales oficiales (TikTok, Instagram, YouTube, Discord).' 
                     },
@@ -3558,6 +3871,7 @@ async function registerApplicationSlashCommands(botClient) {
         const clientId = botClient.user.id;
 
         const commands = [
+            ...birthdays.getSlashCommandBuilders(),
             new SlashCommandBuilder().setName("smenu").setDescription("Despliega el menú principal interactivo de DrakesCraft"),
             new SlashCommandBuilder().setName("menu").setDescription("Despliega el menú principal interactivo de DrakesCraft"),
             new SlashCommandBuilder().setName("sperfil").setDescription("Consulta el perfil, rango y estadísticas de un usuario")
@@ -3670,6 +3984,11 @@ async function handleSlashCommand(interaction) {
         const rawCmd = interaction.commandName.toLowerCase();
         const cmd = rawCmd.startsWith('s') && rawCmd.length > 2 ? rawCmd.slice(1) : rawCmd;
 
+        // /scumple o /cumple
+        if (cmd === 'cumple') {
+            return await birthdays.handleBirthdaySlashCommand(interaction, birthdayManager);
+        }
+
         // /smenu o /menu
         if (cmd === 'menu') {
             const { embed, selectRow, buttonRow } = buildMainMenuHub();
@@ -3687,7 +4006,7 @@ async function handleSlashCommand(interaction) {
         // /sip o /ip
         if (cmd === 'ip') {
             return await interaction.reply({
-                content: '⛏️ **IP de Conexión DrakesCraft:**\n• **Java & Bedrock:** `mc.drakescraft.cl:25565` (1.20 - 1.21.x / Bedrock Puerto: `25565`)'
+                content: '⛏️ **IP de Conexión DrakesCraft:**\n• **Java & Bedrock:** `mc.drakescraft.cl:25565` (Java 1.20.5 - 1.21.x vía ViaVersion / Bedrock Puerto: `25565`)\n• **Texturas (opcional):** `stexturas`'
             });
         }
 
@@ -3750,7 +4069,7 @@ async function handleSlashCommand(interaction) {
                 .setDescription('Conéctate con toda nuestra comunidad a través de nuestras plataformas oficiales:')
                 .addFields(
                     { name: '🌐 Sitio Web Principal', value: '[https://drakescraft.cl](https://drakescraft.cl)', inline: false },
-                    { name: '🛒 Tienda Oficial Tebex', value: '[https://tienda.drakescraft.cl](https://tienda.drakescraft.cl)', inline: false },
+                    { name: '🛒 Tienda Oficial Tebex', value: '[https://web.drakescraft.cl](https://web.drakescraft.cl)', inline: false },
                     { name: '🎮 IP del Servidor de Minecraft', value: '`mc.drakescraft.cl:25565` (Java & Bedrock)', inline: false }
                 )
                 .setFooter({ text: 'DrakesCraft Network Social Hub' });
@@ -3764,7 +4083,7 @@ async function handleSlashCommand(interaction) {
 
         // /stienda o /tienda
         if (cmd === 'tienda') {
-            return await interaction.reply({ content: '🛒 **Tienda Oficial:** https://tienda.drakescraft.cl' });
+            return await interaction.reply({ content: '🛒 **Tienda Oficial:** https://web.drakescraft.cl' });
         }
 
         // /sguia o /guia
@@ -3837,9 +4156,28 @@ async function handleSlashCommand(interaction) {
                 const threadTitle = `💬 Debate #${counter}: ${propuesta.trim().slice(0, 45).replace(/[\r\n]+/g, ' ')}`;
                 const debateThread = await sent.startThread({ name: threadTitle.slice(0, 95), autoArchiveDuration: 1440 });
                 if (debateThread) {
+                    await debateThread.members.add(interaction.user.id).catch(() => {});
                     await debateThread.send({
-                        embeds: [new EmbedBuilder().setTitle(`💬 Hilo Oficial de Debate · Propuesta #${counter}`).setColor(0x00E5FF).setDescription('¡Espacio de debate abierto para la comunidad! Comenta y argumenta tu postura respetando las normas.')]
+                        embeds: [new EmbedBuilder()
+                            .setTitle(`💬 Hilo Oficial de Debate · Propuesta #${counter}`)
+                            .setColor(0x00E5FF)
+                            .setDescription(`¡Bienvenido/a al espacio de discusión comunitaria, ${interaction.user}!\n\n` +
+                                            '• **Debate constructivo:** Expresa tus argumentos a favor o en contra respetando las normas.\n' +
+                                            '• **Votación oficial:** Recuerda que los votos se cuentan con 👍 o 👎 en la propuesta arriba.\n' +
+                                            '• **Resolución:** El Staff y los Desarrolladores evaluarán este hilo para decidir aprobación o implementación.')
+                            .setFooter({ text: 'DrakesCraft Governance · Hilo de discusión abierto a toda la comunidad' })]
                     });
+                    const debateRow = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder()
+                            .setLabel('💬 Ir al Hilo de Debate')
+                            .setStyle(ButtonStyle.Link)
+                            .setURL(debateThread.url),
+                        new ButtonBuilder()
+                            .setCustomId(`btn_sug_manage_${sent.id}`)
+                            .setLabel('⚖️ Veredicto Staff')
+                            .setStyle(ButtonStyle.Secondary)
+                    );
+                    await sent.edit({ components: [debateRow] }).catch(() => {});
                 }
             } catch (_) {}
             return await interaction.reply({ content: `✅ ¡Tu sugerencia **#${counter}** ha sido publicada exitosamente en <#${CHANNELS.SUGERENCIAS}>!\n🔗 Enlace: ${sent.url}`, ephemeral: true });
@@ -4241,6 +4579,30 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         // 0. MANEJO DE SELECT MENUS (MENÚ INTERACTIVO DE USUARIO)
         if (interaction.isStringSelectMenu()) {
+            if (interaction.customId.startsWith('sug_verdict_select_')) {
+                const hierarchy = getStaffMemberHierarchy(interaction.member, interaction.user.id);
+                if (!hierarchy.isStaff) {
+                    return await interaction.reply({ content: '❌ Solo los miembros del Staff de DrakesCraft pueden emitir veredictos.', ephemeral: true });
+                }
+                const msgId = interaction.customId.replace('sug_verdict_select_', '');
+                const chosen = interaction.values[0];
+
+                const modal = new ModalBuilder()
+                    .setCustomId(`sug_verdict_modal_${msgId}_${chosen}`)
+                    .setTitle(`Veredicto: ${chosen.toUpperCase()}`);
+
+                const reasonInput = new TextInputBuilder()
+                    .setCustomId('verdict_reason')
+                    .setLabel('Motivo / Observaciones del Staff')
+                    .setStyle(TextInputStyle.Paragraph)
+                    .setPlaceholder('Escribe una nota o motivo para la comunidad (opcional)...')
+                    .setRequired(false)
+                    .setMaxLength(1000);
+
+                modal.addComponents(new ActionRowBuilder().addComponents(reasonInput));
+                return await interaction.showModal(modal);
+            }
+
             if (interaction.customId === 'select_smenu_category') {
                 const selected = interaction.values[0];
                 const catEmbed = getSmenuCategoryEmbed(selected);
@@ -4252,6 +4614,68 @@ client.on(Events.InteractionCreate, async (interaction) => {
         // 1. MANEJO DE BOTONES (DESPLIEGUE DE FORMULARIOS / MODALES O ACCIONES)
         if (interaction.isButton()) {
             const id = interaction.customId;
+
+            if (id.startsWith('btn_sug_manage_')) {
+                const hierarchy = getStaffMemberHierarchy(interaction.member, interaction.user.id);
+                if (!hierarchy.isStaff) {
+                    return await interaction.reply({
+                        content: '❌ **Acceso denegado:** Solo los miembros del Staff oficial de DrakesCraft pueden emitir veredictos o gestionar sugerencias.',
+                        ephemeral: true
+                    });
+                }
+                const msgId = id.replace('btn_sug_manage_', '');
+                const selectMenu = new StringSelectMenuBuilder()
+                    .setCustomId(`sug_verdict_select_${msgId}`)
+                    .setPlaceholder('Selecciona el nuevo estado de la sugerencia...')
+                    .addOptions([
+                        {
+                            label: '🚀 Integrada / Implementada',
+                            description: 'Ya disponible en producción (Cierra votación y reacciones)',
+                            value: 'integrado',
+                            emoji: '🚀'
+                        },
+                        {
+                            label: '✅ Aceptada',
+                            description: 'Aprobada por el Staff para desarrollo (Cierra reacciones)',
+                            value: 'aceptar',
+                            emoji: '✅'
+                        },
+                        {
+                            label: '💡 En Consideración',
+                            description: 'Bajo evaluación del equipo de administración',
+                            value: 'consideracion',
+                            emoji: '💡'
+                        },
+                        {
+                            label: '⚙️ Revisándolo / En Revisión',
+                            description: 'En revisión técnica por desarrolladores',
+                            value: 'revisando',
+                            emoji: '⚙️'
+                        },
+                        {
+                            label: '❌ Rechazada',
+                            description: 'Desestimada o no viable (Cierra reacciones)',
+                            value: 'rechazar',
+                            emoji: '❌'
+                        },
+                        {
+                            label: '🔒 Cerrar Votación',
+                            description: 'Concluir periodo de votación y cerrar reacciones',
+                            value: 'cerrar',
+                            emoji: '🔒'
+                        }
+                    ]);
+                const row = new ActionRowBuilder().addComponents(selectMenu);
+                return await interaction.reply({
+                    content: `🛡️ **Gestión de Sugerencia #${msgId}**\nStaff: **${interaction.member?.displayName || interaction.user.username}** (\`${hierarchy.roleName}\`)\nElige el nuevo estado para la propuesta:`,
+                    components: [row],
+                    ephemeral: true
+                });
+            }
+
+            if (id.startsWith('btn_cumple_')) {
+                return await birthdays.handleBirthdayButton(interaction, birthdayManager);
+            }
 
             // 🛡️ TICKET #350: APROBACIÓN 1-CLICK DE RESTAURACIONES IRP (JACK / OWNER)
             if (id.startsWith('btn_irp_approve_') || id.startsWith('btn_irp_reject_')) {
@@ -4465,6 +4889,18 @@ client.on(Events.InteractionCreate, async (interaction) => {
             }
 
 
+            // ── LISTA NEGRA DE TICKETS (REVOCACIÓN POR ABUSO / SECCIÓN 4) ──
+            const TICKET_BLACKLIST = TICKET_BLACKLIST_USER_IDS; // .env TICKET_BLACKLIST_USER_IDS (Angelic / angelic_vryt por defecto)
+
+            if (id.startsWith('btn_ticket_')) {
+                if (TICKET_BLACKLIST.includes(interaction.user.id)) {
+                    return await interaction.reply({
+                        content: '🚫 **Acceso Revocado:** Tu cuenta tiene restringida la apertura de tickets de soporte por incumplimiento de la **Sección 4 de la Normativa Oficial** (abuso del sistema con consultas irrelevantes o desconocimiento de mecánicas normales del juego).',
+                        ephemeral: true
+                    });
+                }
+            }
+
             if (id === 'btn_ticket_bug') {
                 const modal = new ModalBuilder().setCustomId('modal_ticket_bug').setTitle('🐛 Reporte de Bug o Error');
                 modal.addComponents(
@@ -4638,11 +5074,61 @@ client.on(Events.InteractionCreate, async (interaction) => {
 // 2. MANEJO DE ENVÍO DE FORMULARIOS (MODAL SUBMISSION)
         if (interaction.isModalSubmit()) {
             const customId = interaction.customId;
+
+            if (customId.startsWith('sug_verdict_modal_')) {
+                const hierarchy = getStaffMemberHierarchy(interaction.member, interaction.user.id);
+                if (!hierarchy.isStaff) {
+                    return await interaction.reply({ content: '❌ Solo los miembros del Staff de DrakesCraft pueden emitir veredictos.', ephemeral: true });
+                }
+                const rest = customId.replace('sug_verdict_modal_', '');
+                const [msgId, action] = rest.split('_');
+                const reason = interaction.fields.getTextInputValue('verdict_reason')?.trim() || 'Sin observaciones adicionales del Staff';
+
+                const sugChannel = client.channels.cache.get(CHANNELS.SUGERENCIAS) || await client.channels.fetch(CHANNELS.SUGERENCIAS).catch(() => null);
+                if (!sugChannel) {
+                    return await interaction.reply({ content: '❌ Canal de sugerencias no disponible.', ephemeral: true });
+                }
+                const targetMsg = await sugChannel.messages.fetch(msgId).catch(() => null);
+                if (!targetMsg) {
+                    return await interaction.reply({ content: `❌ No se encontró la sugerencia con ID \`${msgId}\`.`, ephemeral: true });
+                }
+
+                const result = await applySuggestionVerdict({
+                    targetMsg,
+                    action,
+                    reason,
+                    user: interaction.user,
+                    member: interaction.member
+                });
+
+                if (result.ok) {
+                    return await interaction.reply({
+                        content: `✅ Sugerencia actualizada a **${result.statusText}** exitosamente.${result.shouldCloseReactions ? ' 🔒 *(Reacciones de votación cerradas)*' : ''}\n🔗 Enlace: ${targetMsg.url}`,
+                        ephemeral: true
+                    });
+                } else {
+                    return await interaction.reply({ content: `❌ Error aplicando veredicto: ${result.error}`, ephemeral: true });
+                }
+            }
+
+            if (customId === 'modal_cumple_register') {
+                return await birthdays.handleBirthdayModalSubmit(interaction, birthdayManager);
+            }
             const guild = interaction.guild;
             const user = interaction.user;
 
             if (!guild) {
                 return await interaction.reply({ content: '❌ Los tickets solo pueden crearse dentro del servidor de Discord.', ephemeral: true });
+            }
+
+            if (typeof customId === 'string' && customId.startsWith('modal_ticket_')) {
+                const TICKET_BLACKLIST_MODAL = TICKET_BLACKLIST_USER_IDS;
+                if (TICKET_BLACKLIST_MODAL.includes(interaction.user.id)) {
+                    return await interaction.reply({
+                        content: '🚫 **Acceso Revocado:** Tu cuenta tiene restringida la apertura de tickets de soporte por incumplimiento de la **Sección 4 de la Normativa Oficial**.',
+                        ephemeral: true
+                    });
+                }
             }
 
             let tipo = 'soporte';
@@ -4786,16 +5272,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 // Denuncias confidenciales: Solo Jack y Alta Administración
                 overwrites.push(
                     { id: JACK_DISCORD_ID, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ReadMessageHistory] },
-                    { id: '1539641774392348754', allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ReadMessageHistory] }, // DUEÑO
-                    { id: '1539642179822161940', allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ReadMessageHistory] }  // ADMIN
+                    { id: STAFF_ROLES.OWNER, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ReadMessageHistory] }, // DUEÑO
+                    { id: STAFF_ROLES.ADMIN, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ReadMessageHistory] }  // ADMIN
                 );
             } else {
                 // Tickets normales: Todo el Staff
                 overwrites.push(
-                    { id: '1539768983287496855', allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ReadMessageHistory] }, // STAFF
-                    { id: '1539641774392348754', allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ReadMessageHistory] }, // DUEÑO
-                    { id: '1539642179822161940', allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ReadMessageHistory] }, // ADMIN
-                    { id: '1539642370356940861', allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ReadMessageHistory] }  // MOD
+                    { id: STAFF_ROLES.STAFF, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ReadMessageHistory] }, // STAFF
+                    { id: STAFF_ROLES.OWNER, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ReadMessageHistory] }, // DUEÑO
+                    { id: STAFF_ROLES.ADMIN, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ReadMessageHistory] }, // ADMIN
+                    { id: STAFF_ROLES.MOD, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ReadMessageHistory] }  // MOD
                 );
             }
 
@@ -4821,7 +5307,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 new ButtonBuilder().setCustomId('btn_close_ticket').setLabel('Cerrar Ticket').setEmoji('🔒').setStyle(ButtonStyle.Danger)
             );
 
-            const staffPing = tipo === 'denuncia' ? `<@${JACK_DISCORD_ID}>` : '<@&1539768983287496855>';
+            const staffPing = tipo === 'denuncia' ? `<@${JACK_DISCORD_ID}>` : `<@&${STAFF_ROLES.STAFF}>`;
             await ticketChannel.send({ content: `${user} | ${staffPing}`, embeds: [ticketEmbed], components: [actionRow] });
 
             await interaction.reply({
@@ -4899,33 +5385,152 @@ const MC_STAFF_TRIGGERS = [
     /\bsupport\s*\?/i
 ];
 
-// Gestión de Mensajes y Tickets
-async function handleNexoSaoriChat(message) {
-    if (message.author.bot) return;
-    const prompt = RateLimitShield.sanitizeInput(message.content || '', 4000);
-    if (!prompt) return;
+// =========================================================================
+// NEXO · IA ACOTADA (pass2 2026-09-16)
+// Responde SOLO si mencionan al bot o escriben "saori" en los canales de ayuda/general
+// (claves NEXO_AI_CHANNEL_KEYS de legacy-guild-state.json). Reutiliza el daemon 8089 con
+// scope 'nexo': comunidad, no el servidor Minecraft; solo enlaza mc.drakescraft.cl y web.drakescraft.cl.
+// =========================================================================
+const nexoAiLastReply = new Map();
+async function handleNexoAiMessage(message) {
+    if (!message.guild || message.author.bot || message.author.id === client.user.id) return;
+    const state = legacyGuild.readState();
+    const channels = state?.channels || {};
+    const allowedChannels = NEXO_AI_CHANNEL_KEYS.map(k => channels[k]).filter(Boolean);
+    const baseChannelId = message.channel.isThread?.() ? message.channel.parentId : message.channel.id;
+    if (!allowedChannels.includes(baseChannelId)) return;
 
+    const botMentioned = message.mentions.users.has(client.user.id);
+    const content = RateLimitShield.sanitizeInput(message.content.trim());
+    const saysSaori = /\bsaori\b/i.test(content);
+    if (!botMentioned && !saysSaori) return;
+    if ((message.mentions.everyone || content.includes('@everyone') || content.includes('@here')) && !botMentioned) return;
+    // Filtro humano-a-humano: si solo dijo "saori" pero habla con otra persona, no entrometerse.
+    if (!botMentioned && isHumanToHumanMessage(message)) return;
+
+    const isJack = message.author.id === JACK_DISCORD_ID;
+    if (!isJack && !RateLimitShield.checkMessageFlood(message.author.id, isJack)) return;
+
+    let cleanPrompt = content.replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '').trim();
+    cleanPrompt = cleanPrompt.replace(/^saori[\s,:!]*/i, '').trim();
+    if (!cleanPrompt || cleanPrompt.length <= 2) cleanPrompt = 'Hola Saori';
+    if (!isJack && isNonsenseOrSpam(cleanPrompt)) return;
+
+    const last = nexoAiLastReply.get(message.author.id) || 0;
+    if (!isJack && (Date.now() - last) < NEXO_AI_USER_COOLDOWN_MS) return;
+    nexoAiLastReply.set(message.author.id, Date.now());
+
+    const senderName = cleanUserName(message.member?.displayName || message.author.username, isJack, false);
+    const lang = detectLanguage(cleanPrompt);
+    const langInstruction = lang === 'en'
+        ? 'IMPORTANT: The user is writing in English. You MUST reply in English only.'
+        : 'El usuario escribe en español. Responde siempre en español.';
+    const nexoContext = `Servidor de Discord NEXO (comunidad legado de DrakesCraft; NO es el servidor de Minecraft ni su Discord oficial). ${langInstruction}`;
+
+    let typingInterval;
     try {
         await message.channel.sendTyping().catch(() => {});
-        const reply = sanitizePublicText(await askSaoriBrain(
-            prompt,
-            cleanUserName(message.member?.displayName || message.author.username, false, false),
-            'Estás en NEXO, una comunidad social, gaming, creatividad, ciencia y bienestar. Responde de forma cálida, breve y útil. Puedes hablar de cualquier tema seguro. No afirmes ser terapeuta, no diagnostiques y ante riesgos inmediatos anima a contactar emergencias locales, una línea de crisis o una persona de confianza.'
-        ));
-        await message.reply({ content: reply || 'No pude formular una respuesta útil ahora mismo. Inténtalo de nuevo en un momento.', allowedMentions: { repliedUser: false } });
-    } catch (error) {
-        console.error('[NEXO-AI] Error respondiendo:', error.message);
-        await message.reply({ content: 'Tu mensaje llegó, pero mi núcleo está ocupado. Prueba nuevamente en unos segundos.', allowedMentions: { repliedUser: false } }).catch(() => {});
+        typingInterval = setInterval(() => { message.channel.sendTyping().catch(() => {}); }, 8000);
+        let reply = await askSaoriBrain(cleanPrompt, senderName, nexoContext, false, { scope: 'nexo' });
+        reply = normalizeGuideLine(sanitizePublicText(reply));
+        if (reply.length > 2000) reply = reply.slice(0, 1990) + '…';
+        await message.reply({ content: reply, allowedMentions: { repliedUser: false } });
+        console.log(`[NEXO-AI] 📤 Respuesta enviada a ${senderName} en #${message.channel.name}.`);
+    } catch (e) {
+        console.error('[NEXO-AI] Error respondiendo:', e.message);
+    } finally {
+        if (typingInterval) clearInterval(typingInterval);
+    }
+}
+
+// Gestión de Mensajes y Tickets
+// 🎥 Previsualizador automático de Reels de Instagram, TikTok y videos sociales
+async function handleSocialMediaVideoPreview(message) {
+    if (message.author.bot) return;
+
+    const igRegex = /https?:\/\/(?:www\.)?instagram\.com\/(?:reel|p)\/([a-zA-Z0-9_-]+)[^\s]*/i;
+    const ttRegex = /https?:\/\/(?:www\.)?(?:tiktok\.com\/@[^\s\/]+\/video\/\d+|vm\.tiktok\.com\/[a-zA-Z0-9_-]+)[^\s]*/i;
+    
+    const match = message.content.match(igRegex) || message.content.match(ttRegex);
+    if (!match) return;
+
+    const rawUrl = match[0];
+    const isInstagram = rawUrl.includes('instagram.com');
+    const mediaId = match[1] || crypto.randomBytes(4).toString('hex');
+    const tempOut = `/tmp/saori_vid_${Date.now()}_${mediaId}.mp4`;
+
+    try {
+        await message.react('🎬').catch(() => {});
+
+        await new Promise((resolve, reject) => {
+            execFile('yt-dlp', [
+                '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+                '--max-filesize', '24M',
+                '--no-playlist',
+                rawUrl,
+                '-o', tempOut
+            ], { timeout: 35000 }, (err) => {
+                if (err) return reject(err);
+                resolve();
+            });
+        });
+
+        if (fs.existsSync(tempOut)) {
+            const stats = fs.statSync(tempOut);
+            if (stats.size > 0 && stats.size <= 24 * 1024 * 1024) {
+                await message.reply({
+                    content: `🎬 **Video ${isInstagram ? 'Reel de Instagram' : 'TikTok'}:**`,
+                    files: [new AttachmentBuilder(tempOut, { name: `video_${mediaId}.mp4` })],
+                    allowedMentions: { repliedUser: false }
+                });
+            }
+        }
+    } catch (err) {
+        console.error(`[SAORI-VIDEO] Error procesando video ${rawUrl}:`, err.message);
+    } finally {
+        if (fs.existsSync(tempOut)) {
+            try { fs.unlinkSync(tempOut); } catch (ignored) {}
+        }
     }
 }
 
 client.on('messageCreate', async (message) => {
+    if (message.author.bot) return;
+
+    // 🎥 Auto-previsualizador de videos (Reels de Instagram / TikTok)
+    handleSocialMediaVideoPreview(message).catch(e => console.error('[SAORI-VIDEO-PREVIEW] Error:', e.message));
+
     if (message.guildId === legacyGuild.LEGACY_GUILD_ID) {
-        // NEXO uses deterministic bot functions only; it never forwards member messages to the AI pipeline.
+        // NEXO: funciones deterministas (hilos de ayuda/ideas) y, desde pass2 2026-09-16, IA acotada
+        // SOLO cuando mencionan al bot o dicen "saori" en canales de ayuda/general (ver handleNexoAiMessage).
         await legacyGuild.handleMessage(message);
+        await handleNexoAiMessage(message).catch(e => console.error('[NEXO-AI] Error:', e.message));
         return;
     }
-    await legacyGuild.handleMessage(message);
+
+    // 0. Moderación estricta de #media-y-capturas (exclusivo multimedia y reacciones)
+    const mediaChannelId = process.env.CHANNEL_MEDIA || '1539636544099450931';
+    if (message.channel.id === mediaChannelId && !message.author.bot) {
+        const hasAttachment = message.attachments.size > 0;
+        const hasMediaLink = /(https?:\/\/[^\s]+(?:\.(?:png|jpg|jpeg|gif|webp|mp4|mov|webm)|tenor\.com|giphy\.com|imgur\.com|discordapp\.net|discord\.com|instagram\.com|tiktok\.com|twitter\.com|x\.com|youtube\.com|youtu\.be))/i.test(message.content);
+        if (!hasAttachment && !hasMediaLink) {
+            try {
+                await message.delete();
+                const warn = await message.channel.send({
+                    content: `⚠️ ${message.author}, este canal es exclusivo para **fotos, vídeos y capturas**. Para charlar por favor usa <#1539636493725864037>.`
+                });
+                setTimeout(() => warn.delete().catch(() => null), 6000);
+            } catch (e) {
+                console.error('[SAORI-MEDIA] Error moderando media:', e.message);
+            }
+            return;
+        } else {
+            try {
+                await message.react('❤️');
+                await message.react('🔥');
+            } catch (ignored) {}
+        }
+    }
 
     // 1. Detección y respuesta en Minecraft Chat (DiscordSRV Webhook / Bridge)
     if (message.channel.id === CHANNELS.MINECRAFT_CHAT) {
@@ -5041,6 +5646,7 @@ client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
 
     // 🕒 RESPUESTA AUTOMÁTICA SI MENCIONAN A JACK EN HORARIO LABORAL
+    let workHoursNoticeSent = false;
     if (message.guild && 
         !message.webhookId && 
         message.author.id !== JACK_DISCORD_ID &&
@@ -5063,6 +5669,7 @@ client.on('messageCreate', async (message) => {
                         content: `🕒 Hola <@${message.author.id}>, Jack se encuentra actualmente en su jornada laboral y no puede atender Discord ni ingresar al juego en este momento. Revisará los mensajes al volver en su horario habitual de la tarde/noche. Si necesitas asistencia técnica o reportar algo del servidor, por favor abre un ticket en <#${CHANNELS.TICKETS_SOPORTE}>. ✨`,
                         allowedMentions: { repliedUser: true }
                     });
+                    workHoursNoticeSent = true;
                     console.log(`[WORK-AUTO-REPLY] 🕒 Notificado a ${message.author.tag} sobre horario laboral de Jack en #${message.channel.name}`);
                 } catch (err) {
                     console.error("[WORK-AUTO-REPLY] Error enviando respuesta laboral:", err.message);
@@ -5081,10 +5688,13 @@ client.on('messageCreate', async (message) => {
     // BUZÓN OFICIAL DE SUGERENCIAS (#💡・sugerencias)
     // =========================================================================
     if (message.channel.id === CHANNELS.SUGERENCIAS) {
-        let sugText = message.content.trim();
-        sugText = sugText.replace(/^([/!]?s?sugerencia[\s:]*)/i, '').trim();
-        await handleSuggestion(message, sugText, false);
-        return;
+        const trimmed = message.content.trim();
+        const isStaffCommand = /^[!/]?(sugerencia|ssugerencia)\s+(aceptar|aprobar|rechazar|implementar|integrar|integrado|consideracion|consideración|revisando|revisándolo|revision|revisión|cerrar)/i.test(trimmed);
+        if (!isStaffCommand) {
+            let sugText = trimmed.replace(/^([/!]?s?sugerencia[\s:]*)/i, '').trim();
+            await handleSuggestion(message, sugText, false);
+            return;
+        }
     }
 
     // =========================================================================
@@ -5295,7 +5905,7 @@ client.on('messageCreate', async (message) => {
         'sticket', 'sstats', 'sip', 'sping', 'sweb', 'stienda', 'sguia',
         'sroles', 'srole', 'snick', 'sautoroles', 'sclear', '!purge', '!ticket', '!imagen', '!image', 
         'skick', 'sban', 'smute', 'stimeout', 'sunmute', 'swarn', 'slowmode', 'slock', 'sunlock', 
-        'sonline', 'sjugadores', 'smisroles', 'sreglas',
+        'sonline', 'sjugadores', 'smisroles', 'sreglas', 'stexturas', 'spack', 'sversion',
         'ssugerencia', 'sugerencia', '!sugerencia', 'sreencarnar', 'reencarnar', '!reencarnar',
         'shelpstaff', 'staffhelp', 'sstaffhelp', 'stps', 'tps', 'slogs', 'logs', 'smenu', 'menu', 'sperfil', 'perfil', 'smiperfil',
         'sstaff', 'staff', 'sinfo', 'sserverinfo', 'svip', 'vip', 'sclaim', 'claim', 'claims',
@@ -5303,7 +5913,8 @@ client.on('messageCreate', async (message) => {
         'scomando', 'sconsola', 'smc', 'smckick', 'smcban', 'smcunban', 'smcpardon', 'smcmute',
         'smcwarn', 'smcmsg', 'smcbroadcast', 'smcannounce', 'smcwhitelist', 'smcsave', 'smchealth',
         'schan', 'srol', 'sanuncio', 'ssay',
-        'sinactivos', 'inactivos'
+        'sinactivos', 'inactivos',
+        'salts', 'saltslist', 'smulticuentas', 'svpn', 'scheckip', 'ssyncaccounts'
     ];
     const isDirectCommand = directCmdKeywords.some(cmd => 
         contentLower === cmd || 
@@ -5315,6 +5926,17 @@ client.on('messageCreate', async (message) => {
     );
 
     const callsSaoriDirectly = botMentioned || contentLower.startsWith('saori') || contentLower.includes('@saori');
+
+    // Auditoría 2026-09-15: si ya se envió el aviso de jornada laboral, no responder
+    // una segunda vez al mismo mensaje con la IA (salvo comando directo).
+    if (workHoursNoticeSent && !isDirectCommand) return;
+
+    // Auditoría 2026-09-15: en el canal dedicado, si el mensaje es una conversación
+    // entre humanos (responde a otro usuario o menciona a otros sin llamar a Saori),
+    // Saori no se entromete. Evita que conteste mensajes que Jack/otros se dirigen entre sí.
+    if (isSaoriDedicatedChannel && !isDM && !isDirectCommand && !callsSaoriDirectly) {
+        if (isHumanToHumanMessage(message)) return;
+    }
 
     // POLÍTICA DE SILENCIO Y TURN-TAKING EN TICKETS DE SOPORTE
     if (isTicketChannel && !isDirectCommand) {
@@ -5391,7 +6013,17 @@ client.on('messageCreate', async (message) => {
 
     // Comandos directos y accesos rápidos
     if (contentLower === 'sip' || contentLower === '/sip' || contentLower === '!sip') {
-        return message.reply({ content: '⛏️ **IP de Conexión DrakesCraft:**\n• **Java & Bedrock:** `mc.drakescraft.cl:25565` (1.20 - 1.21.x / Bedrock Puerto: `25565`)', allowedMentions: { repliedUser: false } });
+        return message.reply({ content: '⛏️ **IP de Conexión DrakesCraft:**\n• **Java & Bedrock:** `mc.drakescraft.cl:25565` (Java 1.20.5 - 1.21.x vía ViaVersion / Bedrock Puerto: `25565`)\n• **Texturas (opcional):** `stexturas`', allowedMentions: { repliedUser: false } });
+    }
+    if (['stexturas', 'spack', 'sversion'].includes(contentLower.replace(/^[\/!]/, ''))) {
+        return message.reply({
+            content: '🎨 **Pack de texturas oficial (opcional):** https://pack.drakescraft.cl/latest.zip\n' +
+                     '• Slimefun 1.21.5+ v2.4, formato de pack 64 → requiere **Java 1.21.5 o superior** (no funciona en 1.20.x).\n' +
+                     '• Por ahora el servidor **no lo envía automáticamente** al entrar; instálalo manual en `Opciones > Paquetes de recursos`. Tras el próximo reinicio, Odysseia lo ofrecerá al conectar (siempre opcional).\n' +
+                     '• Jugadores **Bedrock** no reciben estas texturas.\n' +
+                     '• Versiones para entrar: Java 1.20.5+ (vía ViaVersion) · Servidor Purpur 1.21.11 · IP `mc.drakescraft.cl`.',
+            allowedMentions: { repliedUser: false }
+        });
     }
     if (contentLower === 'sweb' || contentLower === '/sweb' || contentLower === '!sweb') {
         return message.reply({ content: '🌐 **Web Oficial:** https://web.drakescraft.cl', allowedMentions: { repliedUser: false } });
@@ -5480,14 +6112,21 @@ client.on('messageCreate', async (message) => {
     if (primaryCmd === 'splay') {
         const voiceChannel = message.member?.voice?.channel;
         if (!voiceChannel) {
-            return message.reply({ content: '❌ Debes unirte a un canal de voz para que pueda reproducir música.', allowedMentions: { repliedUser: false } });
+            return message.reply({ content: '❌ Debes unirte a un canal de voz para que pueda reproducir música.\n💡 *Tip:* También puedes usar los bots dedicados: **Jockie Music** con `m!play <canción>` o **Chip** con `/play <canción>`.', allowedMentions: { repliedUser: false } });
+        }
+        if (!voiceChannel.joinable) {
+            return message.reply({ content: '❌ No tengo permisos para unirme a tu canal de voz (`Connect`).\n💡 *Tip:* Prueba en otro canal de voz o usa los bots de música dedicados:\n• **Jockie Music:** `m!play <canción>`\n• **Chip:** `/play <canción>`', allowedMentions: { repliedUser: false } });
+        }
+        const botVoicePerms = voiceChannel.permissionsFor(client.user);
+        if (botVoicePerms && !botVoicePerms.has(PermissionsBitField.Flags.Speak)) {
+            return message.reply({ content: '❌ No tengo permiso para hablar/reproducir audio en tu canal de voz (`Speak`).\n💡 *Tip:* Usa **Jockie Music** con `m!play <canción>` o **Chip** con `/play <canción>`.', allowedMentions: { repliedUser: false } });
         }
         let query = cmdArgs.join(' ').trim();
         if (!query) {
-            return message.reply({ content: '🎵 Por favor indica el nombre de una canción o enlace de Spotify/YouTube.\n*Ejemplo:* `splay https://open.spotify.com/track/...` o `splay lofi hip hop`', allowedMentions: { repliedUser: false } });
+            return message.reply({ content: '🎵 Por favor indica el nombre de una canción o enlace de Spotify/YouTube.\n*Ejemplo:* `splay https://open.spotify.com/track/...` o `splay lofi hip hop`\n💡 *O usa:* `m!play <canción>` con Jockie Music o `/play` con Chip.', allowedMentions: { repliedUser: false } });
         }
         if (!distube) {
-            return message.reply({ content: '❌ El motor de música no está disponible en este momento.', allowedMentions: { repliedUser: false } });
+            return message.reply({ content: '❌ El motor de música interno no está disponible en este momento.\n💡 *Alternativa:* Usa **Jockie Music** con `m!play ' + (query || 'canción') + '` o **Chip** con `/play`.', allowedMentions: { repliedUser: false } });
         }
 
         // Si no es URL directa, buscar en YouTube via yt-dlp con cliente mweb
@@ -5538,7 +6177,7 @@ client.on('messageCreate', async (message) => {
             return message.react('🎶').catch(() => {});
         } catch (e) {
             const errDetail = e?.message || String(e || 'Error desconocido');
-            return message.reply({ content: `❌ Error al reproducir música: ${errDetail.slice(0, 200)}`, allowedMentions: { repliedUser: false } });
+            return message.reply({ content: `❌ Error al reproducir música: ${errDetail.slice(0, 200)}\n💡 *Alternativa recomendada:* Puedes usar los bots de música dedicados del servidor:\n• **Jockie Music:** \`m!play ${query.slice(0, 50)}\`\n• **Chip:** \`/play\` (slash command).`, allowedMentions: { repliedUser: false } });
         }
     }
 
@@ -5662,14 +6301,30 @@ client.on('messageCreate', async (message) => {
     // =========================================================================
     if (primaryCmd === 'ssugerencia' || primaryCmd === 'sugerencia') {
 
-        const sub = cmdArgs[0]?.toLowerCase();
-        if (['aceptar', 'rechazar', 'implementar', 'aprobar'].includes(sub)) {
+        const sub = (cmdArgs[0] || '').toLowerCase().replace(/[!.,]/g, '');
+        const staffActions = [
+            'aceptar', 'aceptada', 'aprobar', 'aprobada',
+            'rechazar', 'rechazada', 'denegar',
+            'implementar', 'implementada', 'integrar', 'integrado', 'integrada',
+            'consideracion', 'consideración', 'considerar',
+            'revisando', 'revisandolo', 'revisándolo', 'revision', 'revisión', 'evaluar', 'evaluando',
+            'cerrar', 'cerrar-votos', 'lock'
+        ];
+
+        const isAction = staffActions.some(act => sub.startsWith(act.slice(0, 5)));
+
+        if (isAction) {
             if (!isStaffMember) {
-                return message.reply({ content: '❌ Solo el Staff puede emitir veredictos sobre sugerencias.', allowedMentions: { repliedUser: false } });
+                return message.reply({ content: '❌ Solo los miembros del Staff de DrakesCraft pueden emitir veredictos o cambiar el estado de las sugerencias.', allowedMentions: { repliedUser: false } });
             }
             const sugIdArg = cmdArgs[1];
             if (!sugIdArg) {
-                return message.reply({ content: '📌 Uso: `ssugerencia aceptar/rechazar/implementar <#número o ID_mensaje> [motivo]`\n*Ejemplo:* `ssugerencia aceptar 42 Excelente propuesta, añadiremos la subasta.`' });
+                return message.reply({
+                    content: '📌 **Uso correcto:** `ssugerencia <accion> <#número o ID_mensaje> [motivo]`\n' +
+                             '• **Acciones:** `integrado` (o `implementar`), `aceptar` (o `aprobar`), `consideracion`, `revisando`, `rechazar`, `cerrar`\n' +
+                             '• *Ejemplo 1:* `ssugerencia integrado #2 Sistema Rankup con 50 rangos añadido exitosamente.`\n' +
+                             '• *Ejemplo 2:* `ssugerencia consideracion #1 Se evaluará en la reunión de Staff.`'
+                });
             }
             const reason = cmdArgs.slice(2).join(' ').trim() || 'Sin observaciones adicionales del Staff';
 
@@ -5681,8 +6336,8 @@ client.on('messageCreate', async (message) => {
                 targetMsg = await sugChannel.messages.fetch(sugIdArg).catch(() => null);
             }
             if (!targetMsg) {
-                const searchNum = sugIdArg.replace('#', '');
-                const recent = await sugChannel.messages.fetch({ limit: 50 }).catch(() => null);
+                const searchNum = sugIdArg.replace('#', '').trim();
+                const recent = await sugChannel.messages.fetch({ limit: 100 }).catch(() => null);
                 if (recent) {
                     for (const [, m] of recent) {
                         const title = m.embeds?.[0]?.title || '';
@@ -5698,48 +6353,22 @@ client.on('messageCreate', async (message) => {
                 return message.reply({ content: `❌ No se encontró la sugerencia **${sugIdArg}** en <#${CHANNELS.SUGERENCIAS}>.` });
             }
 
-            const oldEmbed = targetMsg.embeds[0];
-            const newEmbed = EmbedBuilder.from(oldEmbed);
-
-            let statusText = '';
-            let verdictColor = 0xFFB300;
-            if (sub === 'aceptar' || sub === 'aprobar') {
-                statusText = '✅ **Aceptada por Staff**';
-                verdictColor = 0x2ECC71;
-            } else if (sub === 'rechazar') {
-                statusText = '❌ **Rechazada por Staff**';
-                verdictColor = 0xE74C3C;
-            } else if (sub === 'implementar') {
-                statusText = '🚀 **Implementada en Producción**';
-                verdictColor = 0x9B59B6;
-            }
-
-            newEmbed.setColor(verdictColor);
-            const fields = (oldEmbed.fields || []).map(f => {
-                if (f.name === '📊 Estado') return { name: '📊 Estado', value: statusText, inline: true };
-                return f;
+            const result = await applySuggestionVerdict({
+                targetMsg,
+                action: sub,
+                reason,
+                user: message.author,
+                member: message.member
             });
-            const existingVerdictIdx = fields.findIndex(f => f.name.startsWith('🛡️ Veredicto'));
-            const verdictField = { name: `🛡️ Veredicto de ${message.author.tag}`, value: reason.slice(0, 1000), inline: false };
-            if (existingVerdictIdx !== -1) {
-                fields[existingVerdictIdx] = verdictField;
+
+            if (result.ok) {
+                return message.reply({
+                    content: `✅ La sugerencia **${sugIdArg}** ha sido actualizada a **${result.statusText}** exitosamente.${result.shouldCloseReactions ? ' 🔒 *(Reacciones de votación cerradas)*' : ''}\n🔗 Enlace: ${targetMsg.url}`,
+                    allowedMentions: { repliedUser: false }
+                });
             } else {
-                fields.push(verdictField);
+                return message.reply({ content: `❌ Error al actualizar sugerencia: ${result.error}` });
             }
-            newEmbed.setFields(fields);
-
-            await targetMsg.edit({ embeds: [newEmbed] });
-
-            if (targetMsg.thread) {
-                const notifEmbed = new EmbedBuilder()
-                    .setTitle(`📢 Veredicto Oficial: Sugerencia ${sub.toUpperCase()}`)
-                    .setColor(verdictColor)
-                    .setDescription(`**Estado:** ${statusText}\n**Moderador:** ${message.author}\n**Motivo / Observación:**\n>>> ${reason}`)
-                    .setTimestamp();
-                await targetMsg.thread.send({ embeds: [notifEmbed] }).catch(() => {});
-            }
-
-            return message.reply({ content: `✅ La sugerencia ha sido actualizada a **${statusText}** exitosamente.\n🔗 Enlace: ${targetMsg.url}` });
         }
 
         const sugText = cmdArgs.join(' ').trim();
@@ -6121,6 +6750,196 @@ client.on('messageCreate', async (message) => {
     }
 
     // =========================================================================
+    // 🕵️ AUDITORÍA DE MULTICUENTAS E HISTORIAL DE IP (SALTS)
+    // =========================================================================
+    if (primaryCmd === 'salts' || primaryCmd === '!alts') {
+        if (!isStaffMember) {
+            return message.reply({ content: '🚫 **Acceso denegado:** Este comando de investigación está reservado exclusivamente para el Staff oficial.', allowedMentions: { repliedUser: false } });
+        }
+        const target = cmdArgs[0]?.trim();
+        if (!target) {
+            return message.reply({ content: '📌 **Uso correcto:** `salts <jugador|ip>` (Ejemplos: `salts LUISITO`, `salts 190.161.50.42`)' });
+        }
+
+        const waitMsg = await message.reply({ content: `🔍 *Consultando registros históricos e inteligencia de red para \`${target}\`...*` });
+        try {
+            const res = await multiacctAnalyzer.lookupTarget(target);
+            if (!res.found) {
+                return waitMsg.edit({ content: `⚠️ ${res.message || `No se encontraron registros de \`${target}\`.`}` });
+            }
+
+            const intel = res.intel || {};
+            const flag = multiacctAnalyzer.countryFlag(intel.countryCode);
+            const isVpn = res.isVpn;
+            const isMulti = res.isMulti;
+
+            const embedColor = isVpn ? 0xE74C3C : (isMulti ? 0xE67E22 : 0x2ECC71);
+            const embed = new EmbedBuilder()
+                .setTitle(`🕵️ Auditoría de Cuentas · ${res.type === 'player' ? res.player : res.ip}`)
+                .setColor(embedColor)
+                .setDescription(`Reporte consolidado de vinculación de cuentas y telemetría de red.\n**Consulta:** \`${target}\``)
+                .setFooter({ text: 'DrakesCraft Security & SRE · Base de Datos nLogin & Logs' })
+                .setTimestamp();
+
+            if (res.type === 'player') {
+                embed.addFields(
+                    { name: '👤 Jugador', value: `\`${res.player}\``, inline: true },
+                    { name: '🌐 Última IP Vista', value: res.lastIp ? `\`${res.lastIp}\`` : '*No registrada*', inline: true },
+                    { name: '🕒 Última Conexión', value: res.lastSeen ? `<t:${Math.floor(res.lastSeen / 1000)}:R>` : '*Desconocida*', inline: true }
+                );
+            } else {
+                embed.addFields(
+                    { name: '🌐 Dirección IP', value: `\`${res.ip}\``, inline: true },
+                    { name: '👥 Total Cuentas', value: `\`${res.associatedAccounts.length}\``, inline: true }
+                );
+            }
+
+            const geoStr = `${flag} ${intel.country || 'Desconocido'}${intel.city ? ` · ${intel.city}` : ''}`;
+            const ispStr = intel.isp ? `${intel.isp} (${intel.as || 'N/A'})` : 'No disponible';
+            const vpnStatusStr = isVpn
+                ? `🔴 **VPN / PROXY DETECTADO** (Hosting: ${intel.hosting ? 'Sí' : 'No'} · Proxy: ${intel.proxy ? 'Sí' : 'No'})`
+                : `🟢 **Conexión Residencial Limpia**`;
+
+            embed.addFields(
+                { name: '📍 Geolocalización', value: geoStr, inline: true },
+                { name: '🏢 Proveedor (ISP)', value: ispStr, inline: true },
+                { name: '🛡️ Estado de Red', value: vpnStatusStr, inline: false }
+            );
+
+            if (res.associatedAccounts && res.associatedAccounts.length > 0) {
+                const accList = res.associatedAccounts.map(a => {
+                    const isTarget = res.type === 'player' && a.toLowerCase() === res.player.toLowerCase();
+                    return isTarget ? `• **${a}** *(cuenta consultada)*` : `• \`${a}\``;
+                }).join('\n');
+
+                embed.addFields({
+                    name: `👥 Cuentas Vinculadas a esta IP (${res.associatedAccounts.length})`,
+                    value: accList.slice(0, 1024),
+                    inline: false
+                });
+            }
+
+            if (res.otherIps && res.otherIps.length > 0) {
+                embed.addFields({
+                    name: `🌐 Otras IPs Registradas (${res.otherIps.length})`,
+                    value: res.otherIps.map(ip => `\`${ip}\``).join(', ').slice(0, 1024),
+                    inline: false
+                });
+            }
+
+            return waitMsg.edit({ content: '', embeds: [embed] });
+        } catch (e) {
+            return waitMsg.edit({ content: `❌ Error al realizar la auditoría: ${e.message}` });
+        }
+    }
+
+    // =========================================================================
+    // 🛡️ ANÁLISIS TÉCNICO DE IP / VPN / PROXY (SVPN)
+    // =========================================================================
+    if (primaryCmd === 'svpn' || primaryCmd === 'scheckip') {
+        if (!isStaffMember) {
+            return message.reply({ content: '🚫 **Acceso denegado:** Comando reservado para el Staff oficial.', allowedMentions: { repliedUser: false } });
+        }
+        const target = cmdArgs[0]?.trim();
+        if (!target) {
+            return message.reply({ content: '📌 **Uso correcto:** `svpn <ip|jugador>` (Ejemplo: `svpn 15.235.145.238` o `svpn Lex080`)' });
+        }
+
+        const waitMsg = await message.reply({ content: `🛡️ *Analizando inteligencia de red y anonimato para \`${target}\`...*` });
+        try {
+            const res = await multiacctAnalyzer.lookupTarget(target);
+            const ip = res.type === 'player' ? res.lastIp : res.ip;
+
+            if (!ip) {
+                return waitMsg.edit({ content: `⚠️ No se encontró ninguna dirección IP registrada para \`${target}\`.` });
+            }
+
+            const intel = await multiacctAnalyzer.lookupIpIntelligence(ip);
+            const flag = multiacctAnalyzer.countryFlag(intel.countryCode);
+            const isVpn = intel.vpnRisk === 'HIGH';
+
+            const embed = new EmbedBuilder()
+                .setTitle(`🛡️ Diagnóstico de Seguridad IP · ${ip}`)
+                .setColor(isVpn ? 0xE74C3C : 0x2ECC71)
+                .setDescription(`Auditoría técnica de enrutamiento, centros de datos y anonimato.\n${res.type === 'player' ? `**Jugador Asignado:** \`${res.player}\`\n` : ''}**IP Evaluada:** \`${ip}\``)
+                .addFields(
+                    { name: '📍 País & Ciudad', value: `${flag} ${intel.country || 'N/A'}${intel.city ? ` · ${intel.city}` : ''}`, inline: true },
+                    { name: '🏢 Proveedor (ISP)', value: intel.isp || 'N/A', inline: true },
+                    { name: '📡 ASN / Red', value: intel.as || 'N/A', inline: true },
+                    { name: '🔒 Proxy Público', value: intel.proxy ? '🔴 SÍ' : '🟢 NO', inline: true },
+                    { name: '🖥️ Datacenter / Hosting', value: intel.hosting ? '🔴 SÍ' : '🟢 NO', inline: true },
+                    { name: '📱 Red Móvil (4G/5G)', value: intel.mobile ? '🔵 SÍ' : '⚪ NO', inline: true },
+                    {
+                        name: '⚖️ Veredicto de Riesgo',
+                        value: isVpn
+                            ? '🔴 **ALTO RIESGO · VPN / PROXY ACTIVO:** Esta conexión proviene de un servidor cloud o servicio de anonimato. Alta probabilidad de evasión de sanciones.'
+                            : '🟢 **RIESGO BAJO · CONEXIÓN RESIDENCIAL:** Tráfico de hogar o ISP local regular.',
+                        inline: false
+                    }
+                )
+                .setFooter({ text: 'DrakesCraft IP Intelligence Suite' })
+                .setTimestamp();
+
+            return waitMsg.edit({ content: '', embeds: [embed] });
+        } catch (e) {
+            return waitMsg.edit({ content: `❌ Error al diagnosticar la IP: ${e.message}` });
+        }
+    }
+
+    // =========================================================================
+    // 👥 RANKING DE MULTICUENTAS (SMULTICUENTAS)
+    // =========================================================================
+    if (primaryCmd === 'smulticuentas' || primaryCmd === 'saltslist') {
+        if (!isStaffMember) {
+            return message.reply({ content: '🚫 **Acceso denegado:** Comando reservado para el Staff oficial.', allowedMentions: { repliedUser: false } });
+        }
+
+        const top = multiacctAnalyzer.getTopMultiAccounts(10);
+        if (!top || top.length === 0) {
+            return message.reply({ content: 'ℹ️ No se detectaron multicuentas en la base de datos local en este momento.' });
+        }
+
+        const embed = new EmbedBuilder()
+            .setTitle('👥 Redes de Multicuentas Detectadas · Top IPs')
+            .setColor(0xE67E22)
+            .setDescription(`Lista de las direcciones IP con mayor cantidad de cuentas registradas en el servidor.\n*Total de cuentas indexadas: ${multiacctAnalyzer.playerMap.size}*`)
+            .setFooter({ text: 'DrakesCraft SRE · Base de Datos nLogin & Logs' })
+            .setTimestamp();
+
+        top.forEach((item, index) => {
+            const flag = item.intel ? multiacctAnalyzer.countryFlag(item.intel.countryCode) : '🌐';
+            const country = item.intel?.country ? ` (${flag} ${item.intel.country})` : '';
+            const accStr = item.accounts.map(a => `\`${a}\``).join(', ');
+            embed.addFields({
+                name: `#${index + 1} · IP: \`${item.ip}\`${country} — ${item.count} cuentas`,
+                value: accStr.slice(0, 1024),
+                inline: false
+            });
+        });
+
+        return message.reply({ embeds: [embed], allowedMentions: { repliedUser: false } });
+    }
+
+    // =========================================================================
+    // 🔄 RE-SINCRONIZACIÓN MANUAL DE BASE DE DATOS DE CUENTAS (SSYNCACCOUNTS)
+    // =========================================================================
+    if (primaryCmd === 'ssyncaccounts') {
+        if (!hierarchy.isHighStaff && !isJack) {
+            return message.reply({ content: '🚫 **Acceso denegado:** La sincronización de base de datos está reservada exclusivamente para High Staff y Jack.' });
+        }
+
+        const waitMsg = await message.reply({ content: '⏳ *Descargando `nlogin.db` desde Dallas y re-indexando historial de cuentas...*' });
+        try {
+            await multiacctAnalyzer.syncNloginDatabase();
+            return waitMsg.edit({
+                content: `✅ **Sincronización completada con éxito:**\n• **${multiacctAnalyzer.playerMap.size}** cuentas totales indexadas.\n• **${multiacctAnalyzer.ipMap.size}** direcciones IP únicas mapeadas.`
+            });
+        } catch (e) {
+            return waitMsg.edit({ content: `❌ Error durante la sincronización: ${e.message}` });
+        }
+    }
+
+    // =========================================================================
     // 🗂️ MENÚ INTERACTIVO Y HUB COMUNITARIO (SMENU)
     // =========================================================================
     if (primaryCmd === 'smenu' || primaryCmd === 'menu') {
@@ -6259,7 +7078,7 @@ client.on('messageCreate', async (message) => {
             .setDescription('Conéctate con toda nuestra comunidad a través de nuestras plataformas oficiales:')
             .addFields(
                 { name: '🌐 Sitio Web Principal', value: '[https://drakescraft.cl](https://drakescraft.cl)', inline: false },
-                { name: '🛒 Tienda Oficial Tebex', value: '[https://tienda.drakescraft.cl](https://tienda.drakescraft.cl)', inline: false },
+                { name: '🛒 Tienda Oficial Tebex', value: '[https://web.drakescraft.cl](https://web.drakescraft.cl)', inline: false },
                 { name: '🎮 IP del Servidor de Minecraft', value: '`mc.drakescraft.cl` (Java & Bedrock Puerto 25565)', inline: false }
             )
             .setFooter({ text: 'DrakesCraft Network Social Hub' });
@@ -6435,6 +7254,75 @@ client.on('messageCreate', async (message) => {
     // =========================================================================
     // 🖥️ EJECUCIÓN DIRECTA EN CONSOLA Y DISPARADORES EN LENGUAJE NATURAL (SIN IA)
     // =========================================================================
+        // =========================================================================
+    // ⚡ GESTIÓN DE ENERGÍA DE LA INFRAESTRUCTURA (HIGH STAFF & JACK)
+    // =========================================================================
+    if (primaryCmd === 'sreinicio' || primaryCmd === 'srestart') {
+        if (!hierarchy.isHighStaff && !isJack) {
+            return message.reply({ content: '🚫 **Acceso denegado:** Las operaciones de reinicio están reservadas exclusivamente para **Jack** y **High Staff** (Administración y Dirección).' });
+        }
+        const waitSecs = parseInt(cmdArgs[0], 10) || 120;
+        const reason = cmdArgs.slice(1).join(' ') || `Reinicio ordenado por ${message.author.username}`;
+        await triggerSafePowerAction('restart', waitSecs, reason, message.author.username);
+
+        const embed = new EmbedBuilder()
+            .setTitle('🔄 Protocolo de Reinicio Seguro Iniciado')
+            .setColor(0x3498DB)
+            .setDescription(`**Operador:** ${message.author} (\`${hierarchy.roleName}\`)\n**Aviso In-Game:** ${waitSecs}s progresivo\n**Motivo:** ${reason}`)
+            .addFields(
+                { name: '🛡️ Protecciones Activas', value: '• `save-all` atómico y guardado Slimefun\n• Respaldo de inventarios IRP\n• Cierre forzado de menús y expulsión limpia\n• `save-all flush` en frío' }
+            )
+            .setFooter({ text: 'DrakesCraft SRE Suite · Safe Restart' })
+            .setTimestamp();
+        await message.reply({ embeds: [embed] });
+        await sendAuditLog(embed);
+        return;
+    }
+
+    if (primaryCmd === 'sapagar' || primaryCmd === 'sstop') {
+        if (!hierarchy.isHighStaff && !isJack) {
+            return message.reply({ content: '🚫 **Acceso denegado:** El apagado del servidor está reservado exclusivamente para **Jack** y **High Staff**.' });
+        }
+        const waitSecs = parseInt(cmdArgs[0], 10) || 120;
+        const reason = cmdArgs.slice(1).join(' ') || `Apagado ordenado por ${message.author.username}`;
+        await triggerSafePowerAction('stop', waitSecs, reason, message.author.username);
+
+        const embed = new EmbedBuilder()
+            .setTitle('🛑 Protocolo de Apagado Seguro Iniciado')
+            .setColor(0xE74C3C)
+            .setDescription(`**Operador:** ${message.author} (\`${hierarchy.roleName}\`)\n**Aviso In-Game:** ${waitSecs}s progresivo\n**Motivo:** ${reason}`)
+            .addFields(
+                { name: '🛡️ Protección Anti-Crash', value: '• Guardado completo verificado\n• Expulsión ordenada de jugadores\n• Guardia activa de 20s para neutralizar arranques espurios de Pterodactyl' }
+            )
+            .setFooter({ text: 'DrakesCraft SRE Suite · Safe Stop' })
+            .setTimestamp();
+        await message.reply({ embeds: [embed] });
+        await sendAuditLog(embed);
+        return;
+    }
+
+    if (primaryCmd === 'sencender' || primaryCmd === 'sstart' || primaryCmd === 'sinicio') {
+        if (!hierarchy.isHighStaff && !isJack) {
+            return message.reply({ content: '🚫 **Acceso denegado:** El encendido del servidor está reservado exclusivamente para **Jack** y **High Staff**.' });
+        }
+        const reason = cmdArgs.join(' ') || `Encendido solicitado por ${message.author.username}`;
+        await triggerSafePowerAction('start', 0, reason, message.author.username);
+
+        const embed = new EmbedBuilder()
+            .setTitle('⚡ Protocolo de Encendido Seguro Iniciado')
+            .setColor(0x2ECC71)
+            .setDescription(`**Operador:** ${message.author} (\`${hierarchy.roleName}\`)\n**Motivo:** ${reason}`)
+            .addFields(
+                { name: '🛡️ Verificación', value: '• Chequeo anti-colisión\n• Señal start autorizada\n• Watcher de arranque hasta puerto TCP 25565' }
+            )
+            .setFooter({ text: 'DrakesCraft SRE Suite · Safe Start' })
+            .setTimestamp();
+        await message.reply({ embeds: [embed] });
+        await sendAuditLog(embed);
+        return;
+    }
+
+
     const isConsoleOrNatural = (
         primaryCmd === 'scomando' || 
         primaryCmd === 'sconsola' || 
@@ -7046,12 +7934,35 @@ client.on('messageCreate', async (message) => {
                               contentLower.includes('ejecuta en consola') ||
                               (contentLower.includes('kick') && !isTicketChannel);
 
-    if (isSensitiveAction && !isJack) {
-        await message.reply({
-            content: `Acceso denegado: Solo Jack y el Staff tienen autorización para ejecutar órdenes críticas en la infraestructura.`,
-            allowedMentions: { repliedUser: false }
-        });
-        return;
+    if (isSensitiveAction) {
+        if (!isJack && !isStaffMember) {
+            await message.reply({
+                content: `Acceso denegado: Solo Jack y los miembros autorizados del Staff tienen autorización para coordinar órdenes críticas en la infraestructura.`,
+                allowedMentions: { repliedUser: false }
+            });
+            return;
+        }
+
+        const isRestartRequest = contentLower.includes('reinicia') || contentLower.includes('reinicio') || contentLower.includes('restart');
+        if (isRestartRequest) {
+            if (hierarchy.level >= STAFF_LEVELS.ADMIN || isJack) {
+                await message.reply({
+                    content: `🛡️ **Protocolo de Reinicio Técnico (SRE DrakesCraft):**\n` +
+                             `Hola **${senderName}**. En DrakesCraft los reinicios no se ejecutan directamente por chat para evitar corrupción de chunks o pérdida de inventarios (#348/#362).\n\n` +
+                             `⚙️ **Procedimiento Autorizado:** El reinicio seguro debe ejecutarse desde la consola de Star con el script atómico:\n` +
+                             `\`python3 scripts/reinicio_seguro.py <segundos> "<motivo>" <agente>\`\n` +
+                             `_(Requiere preflight SAORI y guardado sincronizado de inventarios y mundos). Si los tirones persisten, coordínalo con Jack._`,
+                    allowedMentions: { repliedUser: false }
+                });
+                return;
+            } else {
+                await message.reply({
+                    content: `Acceso restringido: Las solicitudes de reinicio requieren nivel de **Administración** o autorización directa de Jack mediante \`reinicio_seguro.py\`.`,
+                    allowedMentions: { repliedUser: false }
+                });
+                return;
+            }
+        }
     }
 
     // =========================================================================
@@ -7102,6 +8013,24 @@ client.on('messageCreate', async (message) => {
         return; // El bot ni pesca, 0 llamadas a la IA, 0 tokens gastados!
     }
 
+    // Pass2 2026-09-16: preguntas cortas de comandos → catálogo curado + link de guía, sin gastar IA.
+    const promptWords = cleanPrompt.split(/\s+/).filter(Boolean).length;
+    if (!isJack && promptWords <= 12) {
+        const faq = await askSaoriFaq(cleanPrompt);
+        if (faq) {
+            const faqReply = normalizeGuideLine(`${faq.answer}\n\n📖 Guía: ${faq.url}`);
+            try {
+                if (message.reference) await message.channel.send({ content: faqReply });
+                else await message.reply({ content: faqReply, allowedMentions: { repliedUser: false } });
+                if (isTicketChannel) ticketLastSaoriReply.set(message.channel.id, Date.now());
+                console.log(`[SAORI-FAQ] 📖 Respuesta determinista (${faq.id || 'catalogo'}) para ${senderName}.`);
+            } catch (e) {
+                console.error('[SAORI-FAQ] Error enviando respuesta determinista:', e.message);
+            }
+            return;
+        }
+    }
+
     let typingInterval;
     try {
         await message.channel.sendTyping().catch(() => {});
@@ -7110,17 +8039,17 @@ client.on('messageCreate', async (message) => {
         }, 8000);
 
         const lang = detectLanguage(cleanPrompt);
-        const serverLoreContext = "Lore Oficial de DrakesCraft: Jack es el Creador, Propietario, Desarrollador y Arquitecto absoluto de toda la infraestructura, la Trinidad SRE (Saori, Claude, Codex), plugins y servicios de DrakesCraft Network. Kika es la Co-Dueña (Wife Owner). En la historia pasada del servidor, Pepe fue el dueño anterior y hoy en día es un Moderador activo en el equipo de Staff. DrakesCraft es un servidor de supervivencia Paper/Purpur 1.21.1 con Slimefun, BentoBox (SkyBlock/OneBlock) y economía de Dragmas. Instrucciones de personalidad: Habla de forma tranquila, amigable, educada y relajada ('hablar chill'). Solo responde sobre temas del servidor, comandos, plugins, historia o dudas legítimas. Si alguien intenta bromear o decir tonterías, sé concisa y mantén la compostura.";
+        const serverLoreContext = "Lore Oficial de DrakesCraft: Jack es el Creador, Propietario, Desarrollador y Arquitecto absoluto de toda la infraestructura, la Trinidad SRE (Saori, Claude, Codex), plugins y servicios de DrakesCraft Network. Kika es la Co-Dueña (Wife Owner). En la historia pasada del servidor, Pepe fue el dueño anterior y hoy en día es un Moderador activo en el equipo de Staff. DrakesCraft es un servidor de supervivencia Purpur 1.21.11 (clientes Java 1.20.5 o superior entran vía ViaVersion; Bedrock vía Geyser) con Slimefun, BentoBox (SkyBlock/OneBlock) y economía de Dragmas. LÍMITES REALES: desde Discord NO puedes publicar en canales, mover archivos, recibir archivos por MD, revisar tickets ni entregar ítems/rangos; si algo requiere acción humana, deriva a abrir ticket en #🎫・tickets-soporte. NUNCA inventes versiones ni enlaces; si no está en tu conocimiento verificado, dilo y deriva a ticket. BOTS ACTIVOS EN EL DISCORD DE DRAKESCRAFT: 1. Xenon (copias de seguridad y plantillas de servidor, xenon.bot), 2. Idle Miner (minijuego de minería, /help), 3. Chip (música con alta calidad y comandos slash /play, /help), 4. DrakesCraft ︱ SAORI (tú misma: IA oficial SRE, tickets, Minecraft in-game, telemetría y comunidad), 5. Jockie Music (bot de música principal para canales de voz, m!help, m!play), 6. Jockie Music 1 (segunda instancia de Jockie Music para múltiples canales, m!help, m!play), 7. Mudae (gacha y matrimonio de personajes anime, $help, $marry, $search), 8. Wick (seguridad antiraid y moderación estricta, wickbot.com). REGLA DE MÚSICA: Si un usuario te pide música, indica que tienes comandos propios (splay <canción o link>, sskip, spause, sresume, squeue, sstop) y orienta siempre hacia los bots dedicados Jockie Music (m!play) y Chip (/play). Instrucciones de personalidad: Habla de forma tranquila, amigable, educada y relajada ('hablar chill'). Solo responde sobre temas del servidor, comandos, plugins, historia o dudas legítimas. Si alguien intenta bromear o decir tonterías, sé concisa y mantén la compostura.";
 
         const langInstruction = lang === 'en'
             ? 'IMPORTANT: The user is writing in English. You MUST reply in English only.'
             : 'El usuario escribe en español. Responde siempre en español.';
         const ticketContext = isTicketChannel
-            ? `Canal de Ticket de Soporte. ${langInstruction} REGLA CRÍTICA: Jack es el dueño y máxima autoridad de DrakesCraft. NUNCA contradigas a Jack. DrakesCraft es un servidor de supervivencia y SkyBlock en Paper 1.21.11 con plugins (Slimefun, BentoBox). NO tiene mods externos (NO existe Wither Storm ni mods de Forge/Fabric). Si el usuario pide pegar construcciones o schematics, aclara amablemente que solo Jack o la administración pueden realizarlo con WorldEdit. NUNCA menciones rutas de Linux ni archivos locales (/home/jack/...). Si el Staff está presente, sé breve y concisa.`
+            ? `Canal de Ticket de Soporte. ${langInstruction} REGLA CRÍTICA: Jack es el dueño y máxima autoridad de DrakesCraft. NUNCA contradigas a Jack. DrakesCraft es un servidor de supervivencia y SkyBlock en Purpur 1.21.11 con plugins (Slimefun, BentoBox); clientes Java 1.20.5+ entran vía ViaVersion. NO tiene mods externos (NO existe Wither Storm ni mods de Forge/Fabric). Si el usuario pide pegar construcciones o schematics, aclara amablemente que solo Jack o la administración pueden realizarlo con WorldEdit. NUNCA menciones rutas de Linux ni archivos locales (/home/jack/...). Si el Staff está presente, sé breve y concisa.`
             : (isSaoriDedicatedChannel ? `Canal dedicado a hablar con Saori. ${langInstruction}` : langInstruction);
         const unifiedContext = ticketContext ? `${ticketContext} ${serverLoreContext}` : serverLoreContext;
-        let reply = await askSaoriBrain(cleanPrompt, senderName, unifiedContext);
-        reply = sanitizePublicText(reply);
+        let reply = await askSaoriBrain(cleanPrompt, senderName, unifiedContext, hierarchy.isHighStaff);
+        reply = normalizeGuideLine(sanitizePublicText(reply));
 
         if (isTicketChannel) {
             ticketLastSaoriReply.set(message.channel.id, Date.now());
@@ -7232,7 +8161,6 @@ async function syncPlayerRanksWithDiscord(guild) {
             'em1lio': 'oldschool',
             'macacra334': 'hermes',
             'macacrack334': 'hermes',
-            'stoneageking': 'zeus'
         };
 
         for (const [id, member] of members) {
