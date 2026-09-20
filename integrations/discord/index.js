@@ -23,7 +23,8 @@ const {
     StringSelectMenuOptionBuilder,
     REST,
     Routes,
-    SlashCommandBuilder
+    SlashCommandBuilder,
+    MessageFlags
 } = require('discord.js');
 const fetch = require('node-fetch');
 const { spawn, execFile } = require('child_process');
@@ -36,8 +37,11 @@ const { SpotifyPlugin } = require('@distube/spotify');
 const legacyGuild = require('./legacyGuild');
 const { multiacctAnalyzer } = require('./multiacct-analyzer.js');
 const birthdays = require('./birthdays');
+const rankSync = require('./rank-sync');
 
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
+const DISABLE_AI_RESPONSES = process.env.SAORI_DISABLE_AI !== "false"; // true by default in failover
+console.log(`[SAORI-CONFIG] 🤖 Respuestas conversacionales de IA: ${DISABLE_AI_RESPONSES ? 'DESACTIVADAS (Modo Operativo Deterministico)' : 'ACTIVADAS'}`);
 const AI_DAEMON_URL = process.env.AI_DAEMON_URL || 'http://127.0.0.1:8089/chat';
 const IMAGE_DAEMON_URL = 'http://127.0.0.1:8089/image';
 const TTS_URL = 'http://127.0.0.1:8089/tts';
@@ -2297,7 +2301,12 @@ function buildMainMenuHub() {
             new StringSelectMenuOptionBuilder()
                 .setValue('voto_recompensas')
                 .setLabel('Votación & Recompensas Diarias')
-                .setDescription('Vota por el server y recibe Dragmas y llaves.')
+                .setDescription('Vota por el server y recibe Dragmas y llaves.'),
+            new StringSelectMenuOptionBuilder()
+                .setValue('rangos_anime')
+                .setLabel('Rangos Anime (DrakesRankup)')
+                .setDescription('50 Rangos de progresión in-game por dinero (Dr. Stone, Naruto, DBZ, OP).')
+                .setEmoji('⛩️')
                 .setEmoji('🎁'),
             new StringSelectMenuOptionBuilder()
                 .setValue('comandos_musica')
@@ -2367,6 +2376,9 @@ function getSmenuCategoryEmbed(category) {
                 )
                 .setFooter({ text: 'DrakesCraft Tebex Store · Entregas automatizadas' });
 
+        case 'rangos_anime':
+            return buildRangosEmbed('all').embed;
+
         case 'claims_terrenos':
             return buildClaimsGuideEmbed();
 
@@ -2435,6 +2447,146 @@ function buildVoteGuideEmbed() {
             { name: '📅 Recompensas Diarias (Streak)', value: 'Escribe `/daily` todos los días para reclamar bonificaciones acumulativas que aumentan cada día consecutivo que inicies sesión.', inline: false }
         )
         .setFooter({ text: 'Sistema de Recompensas · DrakesCraft Network' });
+}
+
+function buildRangosEmbed(division = 'all') {
+    const embed = new EmbedBuilder()
+        .setTitle('⛩️ DRAKESRANKUP · SISTEMA DE 50 RANGOS ANIME')
+        .setColor(0xF39C12)
+        .setDescription(
+            '¡Asciende en el escalafón in-game invirtiendo tus Dragmas ganados en el servidor!\n' +
+            'Cada rango desbloquea ventajas tangibles (`/sethome`, `/pv`, comandos QoL, descuentos en Slimefun y cosméticos).\n\n' +
+            '• **Comandos in-game:** `/rankup` (subir de rango) o `/rangos` (interfaz GUI interactiva).\n' +
+            '• **Compatibilidad VIP:** Los rangos pagados de Dioses (`HERCULES` a `ZEUS`) conservan su prioridad y prefijo intactos. ¡Las ventajas se acumulan!\n' +
+            '• **Información completa:** Selecciona una división abajo para examinar sus 10 rangos.'
+        )
+        .setFooter({ text: 'DrakesCraft Network · Selecciona una división abajo para filtrar' });
+
+    if (division === 'all' || division === 'div_1') {
+        embed.addFields({
+            name: '🧪 División I: El Amanecer de la Ciencia & Nen (1 - 10)',
+            value: (
+                '**1. Primitivo** ($10k) ➔ `+1 Home`, Título de Chat\n' +
+                '**2. Artesano** ($25k) ➔ `/hat`, Kit Semillas\n' +
+                '**3. Científico Novato** ($50k) ➔ `+1 Bóveda (/pv 2)`, Desc. 5% XP Slimefun\n' +
+                '**4. Químico** ($90k) ➔ `/craft` portátil\n' +
+                '**5. Aspirante a Cazador** ($150k) ➔ `+1 Home (3)`, Aura Nen sutil\n' +
+                '**6. Cazador Novato** ($230k) ➔ `/near` (50 bloques)\n' +
+                '**7. Usuario de Ten** ($330k) ➔ `+1 Bóveda (/pv 3)`, Regen I en spawn\n' +
+                '**8. Usuario de Ren** ($460k) ➔ Desc. 10% XP Slimefun, Chat `&7`\n' +
+                '**9. Usuario de Hatsu** ($620k) ➔ `+1 Home (4)`, Trail Nen al caminar\n' +
+                '**10. Cazador 1 Estrella** ($850k) ➔ `+1 Bóveda (/pv 4)`, `/anvil` portátil'
+            ),
+            inline: false
+        });
+    }
+
+    if (division === 'all' || division === 'div_2') {
+        embed.addFields({
+            name: '🍥 División II: El Camino del Shinobi & Hechicería (11 - 20)',
+            value: (
+                '**11. Genin** ($1.2M) ➔ `+1 Home (5)`, Kit Ninja\n' +
+                '**12. Chunin** ($1.7M) ➔ Venta +5% en Mercado\n' +
+                '**13. Chamán Grado 4** ($2.35M) ➔ `+1 Bóveda (/pv 5)`, Resistencia a caída\n' +
+                '**14. Chamán Grado 3** ($3.15M) ➔ `/cartography` portátil\n' +
+                '**15. Jonin Especial** ($4.1M) ➔ `+1 Home (6)`, Desc. 15% XP Slimefun\n' +
+                '**16. Jonin** ($5.25M) ➔ Multiplicador AuraSkills +5%\n' +
+                '**17. Chamán Grado 1** ($6.65M) ➔ `+1 Bóveda (/pv 6)`, Chat `&b` (Aqua)\n' +
+                '**18. ANBU** ($8.35M) ➔ `/smithing` portátil, Humo sombra\n' +
+                '**19. Chamán Especial** ($10.4M) ➔ `+1 Home (7)`, Venta +10%\n' +
+                '**20. Sannin Legendario** ($12.9M) ➔ `+1 Bóveda (/pv 7)`, Kit Sannin'
+            ),
+            inline: false
+        });
+    }
+
+    if (division === 'all' || division === 'div_3') {
+        embed.addFields({
+            name: '🏴‍☠️ División III: La Gran Ruta Pirata & Segadores (21 - 30)',
+            value: (
+                '**21. Grumete East Blue** ($15.9M) ➔ `+1 Home (8)`, Respiración acuática\n' +
+                '**22. Shinigami Raso** ($19.5M) ➔ `/loom` y `/grindstone` portátiles\n' +
+                '**23. Pirata Novato** ($23.8M) ➔ AuraSkills XP +10%\n' +
+                '**24. Oficial Shikai** ($28.9M) ➔ `+1 Bóveda (/pv 8)`, Críticos con chispas\n' +
+                '**25. Supernova** ($35M) ➔ `+1 Home (9)`, Desc. 20% XP Slimefun\n' +
+                '**26. Teniente** ($42.2M) ➔ Chat `&d` (Rosa), `/stonecutter`\n' +
+                '**27. Comandante** ($50.6M) ➔ `+1 Bóveda (/pv 9)`, Venta +15%\n' +
+                '**28. Capitán (Bankai)** ($60.4M) ➔ `+1 Home (10)`, Partículas Bankai\n' +
+                '**29. Haki del Conquistador** ($71.8M) ➔ Onda de choque al conectar\n' +
+                '**30. Emperador (Yonko)** ($85M) ➔ `+1 Bóveda (/pv 10)`, `/condense` rápido'
+            ),
+            inline: false
+        });
+    }
+
+    if (division === 'all' || division === 'div_4') {
+        embed.addFields({
+            name: '💥 División IV: Guerreros Z & Despertar del Monarca (31 - 40)',
+            value: (
+                '**31. Cazador Rango E** ($100.5M) ➔ `+1 Home (11)`, Visión nocturna minera\n' +
+                '**32. Guerrero Z** ($118.5M) ➔ AuraSkills XP +15%\n' +
+                '**33. Cazador Rango C** ($139.5M) ➔ `+1 Bóveda (/pv 11)`, Desc. 25% XP\n' +
+                '**34. Kaioken** ($163.8M) ➔ Aura roja llameante en combate\n' +
+                '**35. Cazador Rango A** ($191.8M) ➔ `+1 Home (12)`, Venta +20%\n' +
+                '**36. Super Saiyan** ($224M) ➔ `+1 Bóveda (/pv 12)`, Aura dorada, Chat `&e`\n' +
+                '**37. Cazador Rango S** ($260.8M) ➔ `/enderchest` portátil\n' +
+                '**38. Super Saiyan 2** ($302.8M) ➔ `+1 Home (13)`, Rayos eléctricos azules\n' +
+                '**39. Nivel Nacional** ($350.5M) ➔ `+1 Bóveda (/pv 13)`, Desc. 30% XP\n' +
+                '**40. Super Saiyan 3** ($404.6M) ➔ Partículas energéticas masivas'
+            ),
+            inline: false
+        });
+    }
+
+    if (division === 'all' || division === 'div_5') {
+        embed.addFields({
+            name: '🌌 División V: Deidades del Combate & Trascendencia (41 - 50)',
+            value: (
+                '**41. Monarca de las Sombras** ($466M) ➔ `+1 Home (14)`, Aura de sombras oscura\n' +
+                '**42. Super Saiyan Dios** ($535.5M) ➔ AuraSkills +20%, Chat `&c` (Rojo)\n' +
+                '**43. Kage Supremo** ($614M) ➔ `+1 Bóveda (/pv 14)`, Venta +25%\n' +
+                '**44. Super Saiyan Blue** ($702.5M) ➔ `+1 Home (15)`, Aura celeste divina\n' +
+                '**45. Guerrero Solar Nika** ($802M) ➔ `+1 Bóveda (/pv 15)`, Salto y tambores\n' +
+                '**46. Sabio 6 Caminos** ($913.5M) ➔ Desc. 40% XP Slimefun, Gudodamas\n' +
+                '**47. Ultra Ego** ($1,038.5M) ➔ `+1 Home (16)`, Aura carmesí destructiva\n' +
+                '**48. Ultra Instinto Señal** ($1,178.5M) ➔ Esquiva plateada, Chat `&f&l`\n' +
+                '**49. Ultra Instinto Dominado** ($1,335M) ➔ `+1 Bóveda (/pv 16)`, Aura plateada\n' +
+                '**50. Rey de los Piratas / Trascendente** ($1,500M) ➔ **Corona Cósmica**, Tag Legendario, +20 Homes, +20 Vaults'
+            ),
+            inline: false
+        });
+    }
+
+    const selectMenu = new StringSelectMenuBuilder()
+        .setCustomId('select_rangos_division')
+        .setPlaceholder('Filtrar por división temática...')
+        .addOptions([
+            new StringSelectMenuOptionBuilder().setValue('all').setLabel('📋 Ver Resumen General (Todas)').setEmoji('📋'),
+            new StringSelectMenuOptionBuilder().setValue('div_1').setLabel('🧪 División I: Ciencia & Nen (1-10)').setEmoji('🧪'),
+            new StringSelectMenuOptionBuilder().setValue('div_2').setLabel('🍥 División II: Shinobi & Hechicería (11-20)').setEmoji('🍥'),
+            new StringSelectMenuOptionBuilder().setValue('div_3').setLabel('🏴‍☠️ División III: Ruta Pirata & Segadores (21-30)').setEmoji('🏴‍☠️'),
+            new StringSelectMenuOptionBuilder().setValue('div_4').setLabel('💥 División IV: Guerreros Z & Monarca (31-40)').setEmoji('💥'),
+            new StringSelectMenuOptionBuilder().setValue('div_5').setLabel('🌌 División V: Deidades & Trascendencia (41-50)').setEmoji('🌌')
+        ]);
+
+    const buttonRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setLabel('📢 Anuncio Oficial')
+            .setStyle(ButtonStyle.Link)
+            .setURL('https://discord.com/channels/1305395719300972585/1539636335307137145'),
+        new ButtonBuilder()
+            .setLabel('🛒 Tienda de Dioses VIP')
+            .setStyle(ButtonStyle.Link)
+            .setURL('https://web.drakescraft.cl')
+    );
+
+    return {
+        embed,
+        components: [
+            new ActionRowBuilder().addComponents(selectMenu),
+            buttonRow
+        ]
+    };
 }
 
 async function buildUserProfileEmbed(member, guild) {
@@ -3872,6 +4024,26 @@ async function registerApplicationSlashCommands(botClient) {
 
         const commands = [
             ...birthdays.getSlashCommandBuilders(),
+            new SlashCommandBuilder().setName("srangos").setDescription("Explora los 50 rangos anime de DrakesRankup, precios y ventajas in-game")
+                .addStringOption(o => o.setName("division").setDescription("División de rangos a consultar").setRequired(false)
+                    .addChoices(
+                        { name: "División I: Ciencia & Nen (1-10)", value: "div_1" },
+                        { name: "División II: Shinobi & Hechicería (11-20)", value: "div_2" },
+                        { name: "División III: Ruta Pirata & Segadores (21-30)", value: "div_3" },
+                        { name: "División IV: Guerreros Z & Monarca (31-40)", value: "div_4" },
+                        { name: "División V: Trascendencia Suprema (41-50)", value: "div_5" }
+                    )),
+            new SlashCommandBuilder().setName("rangos").setDescription("Explora los 50 rangos anime de DrakesRankup, precios y ventajas in-game")
+                .addStringOption(o => o.setName("division").setDescription("División de rangos a consultar").setRequired(false)
+                    .addChoices(
+                        { name: "División I: Ciencia & Nen (1-10)", value: "div_1" },
+                        { name: "División II: Shinobi & Hechicería (11-20)", value: "div_2" },
+                        { name: "División III: Ruta Pirata & Segadores (21-30)", value: "div_3" },
+                        { name: "División IV: Guerreros Z & Monarca (31-40)", value: "div_4" },
+                        { name: "División V: Trascendencia Suprema (41-50)", value: "div_5" }
+                    )),
+            new SlashCommandBuilder().setName("srankup").setDescription("Información y comandos del sistema DrakesRankup"),
+            new SlashCommandBuilder().setName("rankup").setDescription("Información y comandos del sistema DrakesRankup"),
             new SlashCommandBuilder().setName("smenu").setDescription("Despliega el menú principal interactivo de DrakesCraft"),
             new SlashCommandBuilder().setName("menu").setDescription("Despliega el menú principal interactivo de DrakesCraft"),
             new SlashCommandBuilder().setName("sperfil").setDescription("Consulta el perfil, rango y estadísticas de un usuario")
@@ -3987,6 +4159,13 @@ async function handleSlashCommand(interaction) {
         // /scumple o /cumple
         if (cmd === 'cumple') {
             return await birthdays.handleBirthdaySlashCommand(interaction, birthdayManager);
+        }
+
+        // /srangos, /rangos, /srankup, /rankup
+        if (['rangos', 'rankup'].includes(cmd)) {
+            const divOption = interaction.options.getString('division') || 'all';
+            const { embed, components } = buildRangosEmbed(divOption);
+            return await interaction.reply({ embeds: [embed], components });
         }
 
         // /smenu o /menu
@@ -4131,12 +4310,12 @@ async function handleSlashCommand(interaction) {
         if (cmd === 'sugerencia') {
             const propuesta = interaction.options.getString('propuesta');
             if (!propuesta || propuesta.trim().length < 10) {
-                return await interaction.reply({ content: '⚠️ Tu propuesta debe tener al menos 10 caracteres para abrir una votación comunitaria.', ephemeral: true });
+                return await interaction.reply({ content: '⚠️ Tu propuesta debe tener al menos 10 caracteres para abrir una votación comunitaria.', flags: MessageFlags.Ephemeral });
             }
             const counter = getNextSuggestionNumber();
             const sugChannel = client.channels.cache.get(CHANNELS.SUGERENCIAS) || await client.channels.fetch(CHANNELS.SUGERENCIAS).catch(() => null);
             if (!sugChannel) {
-                return await interaction.reply({ content: '❌ Canal de sugerencias no disponible.', ephemeral: true });
+                return await interaction.reply({ content: '❌ Canal de sugerencias no disponible.', flags: MessageFlags.Ephemeral });
             }
             const embed = new EmbedBuilder()
                 .setTitle(`💡 SUGERENCIA #${counter}`)
@@ -4180,7 +4359,7 @@ async function handleSlashCommand(interaction) {
                     await sent.edit({ components: [debateRow] }).catch(() => {});
                 }
             } catch (_) {}
-            return await interaction.reply({ content: `✅ ¡Tu sugerencia **#${counter}** ha sido publicada exitosamente en <#${CHANNELS.SUGERENCIAS}>!\n🔗 Enlace: ${sent.url}`, ephemeral: true });
+            return await interaction.reply({ content: `✅ ¡Tu sugerencia **#${counter}** ha sido publicada exitosamente en <#${CHANNELS.SUGERENCIAS}>!\n🔗 Enlace: ${sent.url}`, flags: MessageFlags.Ephemeral });
         }
 
         // /sping o /ping
@@ -4319,10 +4498,10 @@ async function handleSlashCommand(interaction) {
             if (!issue) {
                 return await interaction.reply({
                     content: `🎫 Para abrir un ticket técnico, puedes usar \`/sticket <problema>\` o dirigirte al canal oficial <#${CHANNELS.TICKETS_SOPORTE}> para utilizar los formularios interactivos guiados con botones.`,
-                    ephemeral: true
+                    flags: MessageFlags.Ephemeral
                 });
             }
-            await interaction.deferReply({ ephemeral: true });
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
             try {
                 const guild = interaction.guild;
                 const category = guild.channels.cache.get(CHANNELS.CATEGORIA_TICKETS);
@@ -4354,13 +4533,13 @@ async function handleSlashCommand(interaction) {
         if (cmd === 'warn') {
             const h = getStaffMemberHierarchy(interaction.member, interaction.user.id);
             if (!h.isStaff && interaction.user.id !== JACK_DISCORD_ID) {
-                return await interaction.reply({ content: '❌ Solo los miembros del Staff tienen autorización para advertir usuarios.', ephemeral: true });
+                return await interaction.reply({ content: '❌ Solo los miembros del Staff tienen autorización para advertir usuarios.', flags: MessageFlags.Ephemeral });
             }
             const targetUser = interaction.options.getUser('usuario');
             const reason = interaction.options.getString('motivo');
             const targetMember = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
             if (targetMember && targetMember.roles.highest.position >= interaction.member.roles.highest.position && interaction.user.id !== JACK_DISCORD_ID) {
-                return await interaction.reply({ content: '❌ No puedes sancionar a un miembro con un rol igual o superior al tuyo.', ephemeral: true });
+                return await interaction.reply({ content: '❌ No puedes sancionar a un miembro con un rol igual o superior al tuyo.', flags: MessageFlags.Ephemeral });
             }
             try {
                 await targetUser.send(`⚠️ Has recibido una **advertencia formal** en **DrakesCraft Network** por parte de **${interaction.user.tag}**.\n**Motivo:** ${reason}`).catch(() => {});
@@ -4385,20 +4564,20 @@ async function handleSlashCommand(interaction) {
         if (cmd === 'mute') {
             const h = getStaffMemberHierarchy(interaction.member, interaction.user.id);
             if (!h.isStaff && interaction.user.id !== JACK_DISCORD_ID) {
-                return await interaction.reply({ content: '❌ Solo los miembros del Staff tienen autorización para silenciar usuarios.', ephemeral: true });
+                return await interaction.reply({ content: '❌ Solo los miembros del Staff tienen autorización para silenciar usuarios.', flags: MessageFlags.Ephemeral });
             }
             const targetUser = interaction.options.getUser('usuario');
             const minutes = interaction.options.getInteger('minutos');
             const reason = interaction.options.getString('motivo') || 'Conducta inapropiada en chat';
             if (minutes < 1 || minutes > 40320) {
-                return await interaction.reply({ content: '⚠️ Especifica una duración entre 1 y 40320 minutos (28 días).', ephemeral: true });
+                return await interaction.reply({ content: '⚠️ Especifica una duración entre 1 y 40320 minutos (28 días).', flags: MessageFlags.Ephemeral });
             }
             const targetMember = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
             if (!targetMember) {
-                return await interaction.reply({ content: '❌ Usuario no encontrado en este servidor.', ephemeral: true });
+                return await interaction.reply({ content: '❌ Usuario no encontrado en este servidor.', flags: MessageFlags.Ephemeral });
             }
             if (targetMember.roles.highest.position >= interaction.member.roles.highest.position && interaction.user.id !== JACK_DISCORD_ID) {
-                return await interaction.reply({ content: '❌ No puedes sancionar a un miembro con un rol igual o superior al tuyo.', ephemeral: true });
+                return await interaction.reply({ content: '❌ No puedes sancionar a un miembro con un rol igual o superior al tuyo.', flags: MessageFlags.Ephemeral });
             }
             const durationMs = minutes * 60 * 1000;
             try {
@@ -4420,7 +4599,7 @@ async function handleSlashCommand(interaction) {
                 await sendModLog(muteEmbed);
                 return;
             } catch (e) {
-                return await interaction.reply({ content: `❌ Error al silenciar al usuario: ${e.message}`, ephemeral: true });
+                return await interaction.reply({ content: `❌ Error al silenciar al usuario: ${e.message}`, flags: MessageFlags.Ephemeral });
             }
         }
 
@@ -4428,17 +4607,17 @@ async function handleSlashCommand(interaction) {
         if (cmd === 'kick') {
             const h = getStaffMemberHierarchy(interaction.member, interaction.user.id);
             if (!h.isStaff && interaction.user.id !== JACK_DISCORD_ID) {
-                return await interaction.reply({ content: '❌ Solo los miembros del Staff tienen autorización para expulsar usuarios.', ephemeral: true });
+                return await interaction.reply({ content: '❌ Solo los miembros del Staff tienen autorización para expulsar usuarios.', flags: MessageFlags.Ephemeral });
             }
             const targetUser = interaction.options.getUser('usuario');
             const reason = interaction.options.getString('motivo') || 'Incumplimiento de normativas de la comunidad';
             const targetMember = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
             if (!targetMember) {
-                return await interaction.reply({ content: '❌ Usuario no encontrado en este servidor.', ephemeral: true });
+                return await interaction.reply({ content: '❌ Usuario no encontrado en este servidor.', flags: MessageFlags.Ephemeral });
             }
-            if (targetMember.id === client.user.id) return await interaction.reply({ content: '❌ No puedes expulsarme a mí, po. 🐺', ephemeral: true });
+            if (targetMember.id === client.user.id) return await interaction.reply({ content: '❌ No puedes expulsarme a mí, po. 🐺', flags: MessageFlags.Ephemeral });
             if (targetMember.roles.highest.position >= interaction.member.roles.highest.position && interaction.user.id !== JACK_DISCORD_ID) {
-                return await interaction.reply({ content: '❌ No puedes sancionar a un miembro con un rol igual o superior al tuyo.', ephemeral: true });
+                return await interaction.reply({ content: '❌ No puedes sancionar a un miembro con un rol igual o superior al tuyo.', flags: MessageFlags.Ephemeral });
             }
             try {
                 await targetMember.send(`⚠️ Has sido expulsado de **DrakesCraft Network** por **${interaction.user.tag}**.\n**Motivo:** ${reason}`).catch(() => {});
@@ -4458,7 +4637,7 @@ async function handleSlashCommand(interaction) {
                 await sendModLog(kickEmbed);
                 return;
             } catch (e) {
-                return await interaction.reply({ content: `❌ Error al expulsar: ${e.message}`, ephemeral: true });
+                return await interaction.reply({ content: `❌ Error al expulsar: ${e.message}`, flags: MessageFlags.Ephemeral });
             }
         }
 
@@ -4466,16 +4645,16 @@ async function handleSlashCommand(interaction) {
         if (cmd === 'ban') {
             const h = getStaffMemberHierarchy(interaction.member, interaction.user.id);
             if (!h.isStaff && interaction.user.id !== JACK_DISCORD_ID) {
-                return await interaction.reply({ content: '❌ Solo los miembros del Staff tienen autorización para banear usuarios.', ephemeral: true });
+                return await interaction.reply({ content: '❌ Solo los miembros del Staff tienen autorización para banear usuarios.', flags: MessageFlags.Ephemeral });
             }
             if (h.level < STAFF_LEVELS.ADMIN && interaction.user.id !== JACK_DISCORD_ID) {
-                return await interaction.reply({ content: '🚫 El baneo definitivo está reservado exclusivamente para Administradores y Dirección.', ephemeral: true });
+                return await interaction.reply({ content: '🚫 El baneo definitivo está reservado exclusivamente para Administradores y Dirección.', flags: MessageFlags.Ephemeral });
             }
             const targetUser = interaction.options.getUser('usuario');
             const reason = interaction.options.getString('motivo') || 'Infracción grave de normativas';
             const targetMember = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
             if (targetMember && targetMember.roles.highest.position >= interaction.member.roles.highest.position && interaction.user.id !== JACK_DISCORD_ID) {
-                return await interaction.reply({ content: '❌ No puedes sancionar a un miembro con un rol igual o superior al tuyo.', ephemeral: true });
+                return await interaction.reply({ content: '❌ No puedes sancionar a un miembro con un rol igual o superior al tuyo.', flags: MessageFlags.Ephemeral });
             }
             try {
                 if (targetMember) {
@@ -4497,7 +4676,7 @@ async function handleSlashCommand(interaction) {
                 await sendModLog(banEmbed);
                 return;
             } catch (e) {
-                return await interaction.reply({ content: `❌ Error al banear: ${e.message}`, ephemeral: true });
+                return await interaction.reply({ content: `❌ Error al banear: ${e.message}`, flags: MessageFlags.Ephemeral });
             }
         }
 
@@ -4505,15 +4684,15 @@ async function handleSlashCommand(interaction) {
         if (cmd === 'clear') {
             const h = getStaffMemberHierarchy(interaction.member, interaction.user.id);
             if (!h.isStaff && interaction.user.id !== JACK_DISCORD_ID) {
-                return await interaction.reply({ content: '❌ Solo los miembros del Staff pueden limpiar mensajes.', ephemeral: true });
+                return await interaction.reply({ content: '❌ Solo los miembros del Staff pueden limpiar mensajes.', flags: MessageFlags.Ephemeral });
             }
             const amount = interaction.options.getInteger('cantidad');
             if (amount < 1 || amount > 100) {
-                return await interaction.reply({ content: '⚠️ Por favor indica un número entre 1 y 100 mensajes.', ephemeral: true });
+                return await interaction.reply({ content: '⚠️ Por favor indica un número entre 1 y 100 mensajes.', flags: MessageFlags.Ephemeral });
             }
             try {
                 const deleted = await interaction.channel.bulkDelete(amount, true);
-                await interaction.reply({ content: `🧹 Se han purgado **${deleted.size} mensajes** en este canal.`, ephemeral: true });
+                await interaction.reply({ content: `🧹 Se han purgado **${deleted.size} mensajes** en este canal.`, flags: MessageFlags.Ephemeral });
                 const clearEmbed = new EmbedBuilder()
                     .setTitle('🧹 Purga de Mensajes')
                     .setColor(0x3498DB)
@@ -4526,7 +4705,7 @@ async function handleSlashCommand(interaction) {
                 await sendAuditLog(clearEmbed);
                 return;
             } catch (e) {
-                return await interaction.reply({ content: `❌ Error al limpiar mensajes: ${e.message}`, ephemeral: true });
+                return await interaction.reply({ content: `❌ Error al limpiar mensajes: ${e.message}`, flags: MessageFlags.Ephemeral });
             }
         }
 
@@ -4534,11 +4713,11 @@ async function handleSlashCommand(interaction) {
         if (cmd === 'slowmode') {
             const h = getStaffMemberHierarchy(interaction.member, interaction.user.id);
             if (!h.isStaff && interaction.user.id !== JACK_DISCORD_ID) {
-                return await interaction.reply({ content: '❌ Solo los miembros del Staff pueden modificar el slowmode.', ephemeral: true });
+                return await interaction.reply({ content: '❌ Solo los miembros del Staff pueden modificar el slowmode.', flags: MessageFlags.Ephemeral });
             }
             const seconds = interaction.options.getInteger('segundos');
             if (seconds < 0 || seconds > 21600) {
-                return await interaction.reply({ content: '⚠️ Los segundos deben estar entre 0 y 21600 (6 horas).', ephemeral: true });
+                return await interaction.reply({ content: '⚠️ Los segundos deben estar entre 0 y 21600 (6 horas).', flags: MessageFlags.Ephemeral });
             }
             try {
                 await interaction.channel.setRateLimitPerUser(seconds, `Ajustado por ${interaction.user.tag}`);
@@ -4546,17 +4725,17 @@ async function handleSlashCommand(interaction) {
                 await interaction.reply({ content: `⏱️ ${text} en ${interaction.channel}.` });
                 return;
             } catch (e) {
-                return await interaction.reply({ content: `❌ Error al ajustar el modo lento: ${e.message}`, ephemeral: true });
+                return await interaction.reply({ content: `❌ Error al ajustar el modo lento: ${e.message}`, flags: MessageFlags.Ephemeral });
             }
         }
 
-        return await interaction.reply({ content: `⚠️ Comando \`/${interaction.commandName}\` recibido pero sin rutina específica.`, ephemeral: true });
+        return await interaction.reply({ content: `⚠️ Comando \`/${interaction.commandName}\` recibido pero sin rutina específica.`, flags: MessageFlags.Ephemeral });
     } catch (err) {
         console.error('[SLASH-HANDLER] Error ejecutando comando:', err);
         if (interaction.deferred || interaction.replied) {
-            await interaction.followUp({ content: `❌ Ocurrió un error al procesar la orden: ${err.message}`, ephemeral: true }).catch(() => {});
+            await interaction.followUp({ content: `❌ Ocurrió un error al procesar la orden: ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
         } else {
-            await interaction.reply({ content: `❌ Ocurrió un error al procesar la orden: ${err.message}`, ephemeral: true }).catch(() => {});
+            await interaction.reply({ content: `❌ Ocurrió un error al procesar la orden: ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
         }
     }
 }
@@ -4566,7 +4745,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (await legacyGuild.handleInteraction(interaction)) return;
         if (interaction.guildId === legacyGuild.LEGACY_GUILD_ID) {
             if (interaction.isChatInputCommand()) {
-                await interaction.reply({ content: 'Este comando pertenece a DrakesCraft y no opera en NEXO.', ephemeral: true });
+                await interaction.reply({ content: 'Este comando pertenece a DrakesCraft y no opera en NEXO.', flags: MessageFlags.Ephemeral });
             }
             return;
         }
@@ -4582,7 +4761,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             if (interaction.customId.startsWith('sug_verdict_select_')) {
                 const hierarchy = getStaffMemberHierarchy(interaction.member, interaction.user.id);
                 if (!hierarchy.isStaff) {
-                    return await interaction.reply({ content: '❌ Solo los miembros del Staff de DrakesCraft pueden emitir veredictos.', ephemeral: true });
+                    return await interaction.reply({ content: '❌ Solo los miembros del Staff de DrakesCraft pueden emitir veredictos.', flags: MessageFlags.Ephemeral });
                 }
                 const msgId = interaction.customId.replace('sug_verdict_select_', '');
                 const chosen = interaction.values[0];
@@ -4620,7 +4799,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 if (!hierarchy.isStaff) {
                     return await interaction.reply({
                         content: '❌ **Acceso denegado:** Solo los miembros del Staff oficial de DrakesCraft pueden emitir veredictos o gestionar sugerencias.',
-                        ephemeral: true
+                        flags: MessageFlags.Ephemeral
                     });
                 }
                 const msgId = id.replace('btn_sug_manage_', '');
@@ -4669,7 +4848,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 return await interaction.reply({
                     content: `🛡️ **Gestión de Sugerencia #${msgId}**\nStaff: **${interaction.member?.displayName || interaction.user.username}** (\`${hierarchy.roleName}\`)\nElige el nuevo estado para la propuesta:`,
                     components: [row],
-                    ephemeral: true
+                    flags: MessageFlags.Ephemeral
                 });
             }
 
@@ -4686,7 +4865,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 if (interaction.user.id !== JACK_DISCORD_ID) {
                     return await interaction.reply({
                         content: '❌ Solo Jack (Dueño) tiene autoridad para aprobar o rechazar restauraciones de inventario.',
-                        ephemeral: true
+                        flags: MessageFlags.Ephemeral
                     });
                 }
 
@@ -4699,13 +4878,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 if (!requestData) {
                     return await interaction.reply({
                         content: '⚠️ Esta solicitud de restauración no consta en el registro (botón antiguo o descartado). Pide una alerta nueva antes de decidir.',
-                        ephemeral: true
+                        flags: MessageFlags.Ephemeral
                     });
                 }
                 if (requestData.status !== 'PENDING') {
                     return await interaction.reply({
                         content: `⚠️ Esta solicitud ya fue resuelta previamente con estado: **${requestData.status}**.`,
-                        ephemeral: true
+                        flags: MessageFlags.Ephemeral
                     });
                 }
                 if (requestData.expiresAt && Date.now() > requestData.expiresAt) {
@@ -4714,7 +4893,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                     saveIrpApprovalRequests();
                     return await interaction.reply({
                         content: '⚠️ La solicitud de restauración caducó. Vuelve a generarla para revisar el caso con evidencia fresca.',
-                        ephemeral: true
+                        flags: MessageFlags.Ephemeral
                     });
                 }
 
@@ -4727,7 +4906,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 if (!player || !IRP_PLAYER_REGEX.test(player) || !backupId || !IRP_BACKUP_ID_REGEX.test(backupId)) {
                     return await interaction.reply({
                         content: '❌ Parámetros de restauración inválidos o sospechosos detectados.',
-                        ephemeral: true
+                        flags: MessageFlags.Ephemeral
                     });
                 }
 
@@ -4755,7 +4934,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                     if (!ok) {
                         await interaction.followUp({
                             content: `❌ No se pudo despachar \`/${cmd}\` a la consola de Minecraft. La solicitud sigue **PENDIENTE**: los botones continúan activos para reintentar.`,
-                            ephemeral: true
+                            flags: MessageFlags.Ephemeral
                         }).catch(() => {});
                         await sendAuditLog(new EmbedBuilder()
                             .setTitle('🛡️ [IRP] Despacho de restauración FALLIDO')
@@ -4819,7 +4998,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 const category = id.replace('btn_shelpstaff_', '');
                 const hierarchy = getStaffMemberHierarchy(interaction.member, interaction.user.id);
                 if (!hierarchy.isStaff) {
-                    return await interaction.reply({ content: '❌ Solo los miembros del Staff autorizados pueden navegar el manual de Staff.', ephemeral: true });
+                    return await interaction.reply({ content: '❌ Solo los miembros del Staff autorizados pueden navegar el manual de Staff.', flags: MessageFlags.Ephemeral });
                 }
                 const { embed, row } = buildShelpStaffEmbed(category);
                 return await interaction.update({ embeds: [embed], components: [row] });
@@ -4832,7 +5011,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 const authorId = parts[parts.length - 1];
                 const hierarchy = getStaffMemberHierarchy(interaction.member, interaction.user.id);
                 if (!hierarchy.isStaff || hierarchy.level < STAFF_LEVELS.MOD) {
-                    return await interaction.reply({ content: '❌ Solo los miembros del Staff autorizados pueden navegar los logs.', ephemeral: true });
+                    return await interaction.reply({ content: '❌ Solo los miembros del Staff autorizados pueden navegar los logs.', flags: MessageFlags.Ephemeral });
                 }
 
                 let targetPage = 0;
@@ -4849,7 +5028,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                     await interaction.deferUpdate().catch(() => {});
                     lines = await fetchMinecraftLatestLogs(filter);
                     if (!lines || lines.length === 0) {
-                        return await interaction.followUp({ content: '⚠️ No se pudieron obtener logs recientes de la consola.', ephemeral: true });
+                        return await interaction.followUp({ content: '⚠️ No se pudieron obtener logs recientes de la consola.', flags: MessageFlags.Ephemeral });
                     }
                 }
 
@@ -4865,15 +5044,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
             // BOTONES RÁPIDOS DE USUARIO DESDE SMENU
             if (id === 'btn_user_profile') {
                 const profileEmbed = await buildUserProfileEmbed(interaction.member, interaction.guild);
-                return await interaction.reply({ embeds: [profileEmbed], ephemeral: true });
+                return await interaction.reply({ embeds: [profileEmbed], flags: MessageFlags.Ephemeral });
             }
             if (id === 'btn_user_claim') {
                 const claimEmbed = buildClaimsGuideEmbed();
-                return await interaction.reply({ embeds: [claimEmbed], ephemeral: true });
+                return await interaction.reply({ embeds: [claimEmbed], flags: MessageFlags.Ephemeral });
             }
             if (id === 'btn_user_vote') {
                 const voteEmbed = buildVoteGuideEmbed();
-                return await interaction.reply({ embeds: [voteEmbed], ephemeral: true });
+                return await interaction.reply({ embeds: [voteEmbed], flags: MessageFlags.Ephemeral });
             }
             if (id === 'btn_smenu_back_home') {
                 const { embed, selectRow, buttonRow } = buildMainMenuHub();
@@ -4896,7 +5075,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 if (TICKET_BLACKLIST.includes(interaction.user.id)) {
                     return await interaction.reply({
                         content: '🚫 **Acceso Revocado:** Tu cuenta tiene restringida la apertura de tickets de soporte por incumplimiento de la **Sección 4 de la Normativa Oficial** (abuso del sistema con consultas irrelevantes o desconocimiento de mecánicas normales del juego).',
-                        ephemeral: true
+                        flags: MessageFlags.Ephemeral
                     });
                 }
             }
@@ -4980,7 +5159,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 return await interaction.reply({
                     content: '⚠️ ¿Estás seguro de que deseas cerrar este ticket? El canal se eliminará definitivamente.',
                     components: [confirmRow],
-                    ephemeral: true
+                    flags: MessageFlags.Ephemeral
                 });
             }
 
@@ -5013,7 +5192,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 const parts = id.split('_');
                 const authorId = parts[4];
                 if (interaction.user.id !== authorId && interaction.user.id !== JACK_DISCORD_ID) {
-                    return await interaction.reply({ content: '❌ Solo la persona que solicitó la confirmación o un Administrador puede cancelar esta acción.', ephemeral: true });
+                    return await interaction.reply({ content: '❌ Solo la persona que solicitó la confirmación o un Administrador puede cancelar esta acción.', flags: MessageFlags.Ephemeral });
                 }
                 return await interaction.update({
                     content: '✅ Protocolo de reencarnación cancelado. Tus pertenencias, terrenos e inventarios están a salvo.',
@@ -5027,7 +5206,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 const code = parts[3];
                 const authorId = parts[4];
                 if (interaction.user.id !== authorId && interaction.user.id !== JACK_DISCORD_ID) {
-                    return await interaction.reply({ content: '❌ Solo la persona que solicitó la confirmación o un Administrador puede autorizar la reencarnación.', ephemeral: true });
+                    return await interaction.reply({ content: '❌ Solo la persona que solicitó la confirmación o un Administrador puede autorizar la reencarnación.', flags: MessageFlags.Ephemeral });
                 }
 
                 await interaction.update({
@@ -5064,7 +5243,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 } else {
                     await interaction.followUp({
                         content: `❌ Hubo un problema al comunicar con la consola del servidor para ejecutar el código \`${code}\`. Verifica si el servidor está en línea o contacta al Staff.`,
-                        ephemeral: true
+                        flags: MessageFlags.Ephemeral
                     }).catch(() => null);
                 }
                 return;
@@ -5078,7 +5257,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             if (customId.startsWith('sug_verdict_modal_')) {
                 const hierarchy = getStaffMemberHierarchy(interaction.member, interaction.user.id);
                 if (!hierarchy.isStaff) {
-                    return await interaction.reply({ content: '❌ Solo los miembros del Staff de DrakesCraft pueden emitir veredictos.', ephemeral: true });
+                    return await interaction.reply({ content: '❌ Solo los miembros del Staff de DrakesCraft pueden emitir veredictos.', flags: MessageFlags.Ephemeral });
                 }
                 const rest = customId.replace('sug_verdict_modal_', '');
                 const [msgId, action] = rest.split('_');
@@ -5086,11 +5265,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
                 const sugChannel = client.channels.cache.get(CHANNELS.SUGERENCIAS) || await client.channels.fetch(CHANNELS.SUGERENCIAS).catch(() => null);
                 if (!sugChannel) {
-                    return await interaction.reply({ content: '❌ Canal de sugerencias no disponible.', ephemeral: true });
+                    return await interaction.reply({ content: '❌ Canal de sugerencias no disponible.', flags: MessageFlags.Ephemeral });
                 }
                 const targetMsg = await sugChannel.messages.fetch(msgId).catch(() => null);
                 if (!targetMsg) {
-                    return await interaction.reply({ content: `❌ No se encontró la sugerencia con ID \`${msgId}\`.`, ephemeral: true });
+                    return await interaction.reply({ content: `❌ No se encontró la sugerencia con ID \`${msgId}\`.`, flags: MessageFlags.Ephemeral });
                 }
 
                 const result = await applySuggestionVerdict({
@@ -5104,10 +5283,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 if (result.ok) {
                     return await interaction.reply({
                         content: `✅ Sugerencia actualizada a **${result.statusText}** exitosamente.${result.shouldCloseReactions ? ' 🔒 *(Reacciones de votación cerradas)*' : ''}\n🔗 Enlace: ${targetMsg.url}`,
-                        ephemeral: true
+                        flags: MessageFlags.Ephemeral
                     });
                 } else {
-                    return await interaction.reply({ content: `❌ Error aplicando veredicto: ${result.error}`, ephemeral: true });
+                    return await interaction.reply({ content: `❌ Error aplicando veredicto: ${result.error}`, flags: MessageFlags.Ephemeral });
                 }
             }
 
@@ -5118,7 +5297,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             const user = interaction.user;
 
             if (!guild) {
-                return await interaction.reply({ content: '❌ Los tickets solo pueden crearse dentro del servidor de Discord.', ephemeral: true });
+                return await interaction.reply({ content: '❌ Los tickets solo pueden crearse dentro del servidor de Discord.', flags: MessageFlags.Ephemeral });
             }
 
             if (typeof customId === 'string' && customId.startsWith('modal_ticket_')) {
@@ -5126,7 +5305,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 if (TICKET_BLACKLIST_MODAL.includes(interaction.user.id)) {
                     return await interaction.reply({
                         content: '🚫 **Acceso Revocado:** Tu cuenta tiene restringida la apertura de tickets de soporte por incumplimiento de la **Sección 4 de la Normativa Oficial**.',
-                        ephemeral: true
+                        flags: MessageFlags.Ephemeral
                     });
                 }
             }
@@ -5312,7 +5491,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
             await interaction.reply({
                 content: `✅ ¡Tu ticket ha sido creado con éxito en <#${ticketChannel.id}>! Haz clic en el canal para continuar.`,
-                ephemeral: true
+                flags: MessageFlags.Ephemeral
             });
 
             // Despachar a la Trinidad SRE en Star si es bug o reporte técnico
@@ -5362,7 +5541,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     } catch (err) {
         console.error('[INTERACTION-ERROR]', err);
         if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ content: '❌ Ocurrió un error al procesar tu solicitud. Por favor intenta nuevamente.', ephemeral: true }).catch(() => {});
+            await interaction.reply({ content: '❌ Ocurrió un error al procesar tu solicitud. Por favor intenta nuevamente.', flags: MessageFlags.Ephemeral }).catch(() => {});
         }
     }
 });
@@ -5393,6 +5572,7 @@ const MC_STAFF_TRIGGERS = [
 // =========================================================================
 const nexoAiLastReply = new Map();
 async function handleNexoAiMessage(message) {
+    if (DISABLE_AI_RESPONSES) return;
     if (!message.guild || message.author.bot || message.author.id === client.user.id) return;
     const state = legacyGuild.readState();
     const channels = state?.channels || {};
@@ -5497,6 +5677,11 @@ async function handleSocialMediaVideoPreview(message) {
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
 
+    // DIRECTIVA JACK: Saori NUNCA responde ni procesa mensajes por DM privado
+    if (!message.guild) {
+        return;
+    }
+
     // 🎥 Auto-previsualizador de videos (Reels de Instagram / TikTok)
     handleSocialMediaVideoPreview(message).catch(e => console.error('[SAORI-VIDEO-PREVIEW] Error:', e.message));
 
@@ -5590,6 +5775,7 @@ client.on('messageCreate', async (message) => {
 
         // Caso B: Consulta directa a Saori in-game (preguntas de slimefun, recados a Jack, etc.)
         if (mentionsSaori) {
+            if (DISABLE_AI_RESPONSES) return;
             const now = Date.now();
             const lastResp = mcStaffLastResponse.get(player) || 0;
             if (now - lastResp > 12000) {
@@ -6012,6 +6198,10 @@ client.on('messageCreate', async (message) => {
     }
 
     // Comandos directos y accesos rápidos
+    if (['srangos', 'rangos', '!rangos', 'srankup', 'rankup', '!rankup'].includes(contentLower)) {
+        const { embed, components } = buildRangosEmbed('all');
+        return message.reply({ embeds: [embed], components, allowedMentions: { repliedUser: false } });
+    }
     if (contentLower === 'sip' || contentLower === '/sip' || contentLower === '!sip') {
         return message.reply({ content: '⛏️ **IP de Conexión DrakesCraft:**\n• **Java & Bedrock:** `mc.drakescraft.cl:25565` (Java 1.20.5 - 1.21.x vía ViaVersion / Bedrock Puerto: `25565`)\n• **Texturas (opcional):** `stexturas`', allowedMentions: { repliedUser: false } });
     }
@@ -7819,6 +8009,7 @@ client.on('messageCreate', async (message) => {
     );
 
     if (wantsAudio) {
+        if (DISABLE_AI_RESPONSES) { await message.reply({ content: '🌸 Las notas de voz y síntesis de audio están en pausa mientras Star está en mantenimiento físico.' }).catch(() => {}); return; }
         let recordingMsg = null;
         try {
             await message.channel.sendTyping();
@@ -7867,6 +8058,7 @@ client.on('messageCreate', async (message) => {
     );
 
     if (isImageRequest) {
+        if (DISABLE_AI_RESPONSES) { await message.reply({ content: '🌸 La generación de imágenes por IA está en pausa mientras Star está en mantenimiento físico.' }).catch(() => {}); return; }
         let promptForImg = cleanPrompt;
         if (primaryCmd === 'imagen' || primaryCmd === 'image' || primaryCmd === 'simagen' || primaryCmd === 'simage') {
             promptForImg = cmdArgs.join(' ').trim();
@@ -8013,6 +8205,13 @@ client.on('messageCreate', async (message) => {
         return; // El bot ni pesca, 0 llamadas a la IA, 0 tokens gastados!
     }
 
+    if (DISABLE_AI_RESPONSES) {
+        if (isSaoriDedicatedChannel) {
+            const fallbackText = "🌸 Estoy activa en modo automático. Para información del servidor usa /help, /ip, /online o /tienda. Si necesitas ayuda personal, abre un ticket de soporte.";
+            await message.reply({ content: fallbackText, allowedMentions: { repliedUser: false } }).catch(() => {});
+        }
+        return;
+    }
     // Pass2 2026-09-16: preguntas cortas de comandos → catálogo curado + link de guía, sin gastar IA.
     const promptWords = cleanPrompt.split(/\s+/).filter(Boolean).length;
     if (!isJack && promptWords <= 12) {
@@ -8150,34 +8349,11 @@ async function syncNicknames(guild) {
 }
 
 async function syncPlayerRanksWithDiscord(guild) {
+    // Antes: mapa fijo de dos jugadores que solo anadia roles (StoneAgeKing lucia Zeus siendo
+    // default en el servidor). Ahora lee LuckPerms via panel y anade/quita segun el grupo real.
     if (!guild) return;
     try {
-        const members = await guild.members.fetch();
-        console.log(`[SAORI-SYNC] 🔄 Sincronizando rangos de Minecraft con Discord (${members.size} miembros)...`);
-        
-        // Mapeo conocido directo (ign/nick/username -> rango)
-        const knownUsers = {
-            'mr_em1lio': 'oldschool',
-            'em1lio': 'oldschool',
-            'macacra334': 'hermes',
-            'macacrack334': 'hermes',
-        };
-
-        for (const [id, member] of members) {
-            if (member.user.bot) continue;
-            const username = member.user.username.toLowerCase();
-            const nick = (member.nickname || '').toLowerCase();
-            
-            for (const [ign, rankKey] of Object.entries(knownUsers)) {
-                if (username.includes(ign) || nick.includes(ign)) {
-                    const roleId = RANK_MAPPINGS[rankKey];
-                    if (roleId && !member.roles.cache.has(roleId)) {
-                        await member.roles.add(roleId).catch(err => console.error(`Error agregando rol ${rankKey} a ${username}:`, err.message));
-                        console.log(`[SAORI-SYNC] ✅ Rol ${rankKey.toUpperCase()} asignado a ${member.user.tag}`);
-                    }
-                }
-            }
-        }
+        await rankSync.syncRanks(guild, RANK_MAPPINGS, { skipMemberIds: new Set([JACK_DISCORD_ID]) });
     } catch (e) {
         console.error('[SAORI-SYNC] Error en sincronización de rangos:', e.message);
     }
