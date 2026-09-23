@@ -743,8 +743,63 @@ def trigger_quota_alert(provider, detail):
     except Exception as e:
         print(f"[SAORI-QUOTA] Error enviando alerta: {e}", file=sys.stderr)
 
+def call_needle_tier0(system_prompt, user_prompt):
+    """
+    Tier 0: Needle (cactus-compute/needle) - 14MB On-Device Foundation Model (45M params).
+    Ultra-low latency (~28MB RAM peak), 100% offline local inference for zero API cost.
+    Checks local microservice (default http://127.0.0.1:5005) or local needle binary.
+    """
+    needle_endpoint = os.getenv("NEEDLE_ENDPOINT", "http://127.0.0.1:5005/v1/chat/completions")
+    needle_bin = os.getenv("NEEDLE_BIN", "/home/jack/.local/bin/needle")
+
+    # 1. Intentar endpoint HTTP de Needle
+    try:
+        payload = json.dumps({
+            "model": "needle-45m",
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            "max_tokens": 160,
+            "temperature": 0.3
+        }).encode('utf-8')
+        req = urllib.request.Request(
+            needle_endpoint,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=1.8) as resp:
+            if resp.status == 200:
+                res_data = json.loads(resp.read().decode('utf-8'))
+                if "choices" in res_data and len(res_data["choices"]) > 0:
+                    text = res_data["choices"][0].get("message", {}).get("content", "").strip()
+                    if text and len(text) > 4:
+                        return text
+    except Exception:
+        pass
+
+    # 2. Intentar CLI local si el binario existe
+    if os.path.exists(needle_bin):
+        try:
+            p = subprocess.run(
+                [needle_bin, "--prompt", f"{system_prompt}\nUser: {user_prompt}\nAssistant:"],
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=2
+            )
+            out = p.stdout.strip()
+            if p.returncode == 0 and out:
+                return out
+        except Exception:
+            pass
+
+    return None
+
 def call_claude_haiku(system_prompt, user_prompt):
     cmd = [
+
         '/home/jack/.local/bin/claude',
         '--system-prompt', system_prompt,
         '--model', 'haiku',
@@ -1071,6 +1126,13 @@ REGLAS CRÍTICAS:
 - Si preguntan por el reinicio del servidor, confirma con certeza que se está aplicando el lote de optimizaciones de la Tríada en Star.
 - NUNCA menciones uptime de Star, GB de disco, ni telemetría técnica si NO te lo preguntaron explícitamente.
 - Sé concisa, graciosa, ejecutiva y rápida."""
+
+    # 0. Tier 0: Needle (14MB Foundation Model en local offline para latencia cero)
+    res_needle = call_needle_tier0(system_prompt, prompt)
+    if res_needle:
+        res_needle = clean_model_output(res_needle)
+        record_interaction(sender_clean, prompt, res_needle)
+        return res_needle
 
     # 1. Tier 1: Claude Haiku (conversación ultrarrápida y liviana para WhatsApp)
     res = call_claude_haiku(system_prompt, prompt)
