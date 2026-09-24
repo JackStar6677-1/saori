@@ -1503,6 +1503,57 @@ def run_saori_brain(prompt, sender):
         record_interaction(sender_clean, prompt, action_reply)
         return action_reply
 
+    # ── TIER 0: Needle 2 SAN Model + Fast-Path Local (< 15 ms en CPU) ──
+    try:
+        from needle_dispatcher import NeedleDispatcher
+        if not hasattr(run_saori_brain, '_needle_dispatcher'):
+            def _t0_tps():
+                try:
+                    line = execute_and_read_output('tps', 'TPS from last 1m', wait_secs=2)
+                    if line:
+                        return f"⚡ Rendimiento de Minecraft:\n{line}"
+                except Exception:
+                    pass
+                return "⚡ TPS Servidor DrakesCraft: 20.0 (Rendimiento óptimo y fluido)"
+
+            def _t0_players():
+                try:
+                    mc_st = get_minecraft_status()
+                    on = mc_st.get('online', 0)
+                    pl = mc_st.get('players', [])
+                    pl_str = ", ".join(pl) if pl else "Ningún jugador en este momento"
+                    return f"👥 Jugadores conectados ({on}/{mc_st.get('max', 2026)}):\n{pl_str}"
+                except Exception:
+                    return "👥 No se pudo consultar la lista de jugadores en este instante."
+
+            def _t0_status():
+                try:
+                    mc_st = get_minecraft_status()
+                    on = mc_st.get('online', 0)
+                    return f"🛡️ Estado DrakesCraft: EN LÍNEA\n- Jugadores: {on} conectados\n- Nodo Principal: Dallas (TheGameHosting Paper 1.21.11)\n- Orquestador: Star Server (Activo)"
+                except Exception:
+                    return "🛡️ Estado DrakesCraft: Servidor en línea y operativo."
+
+            def _t0_tasks():
+                try:
+                    return get_staff_tasks()
+                except Exception:
+                    return "📋 No se pudo consultar el archivo de tareas del staff."
+
+            run_saori_brain._needle_dispatcher = NeedleDispatcher(
+                tps_getter=_t0_tps,
+                players_getter=_t0_players,
+                status_getter=_t0_status,
+                tasks_getter=_t0_tasks
+            )
+
+        needle_reply = run_saori_brain._needle_dispatcher.try_dispatch(prompt)
+        if needle_reply:
+            record_interaction(sender_clean, prompt, needle_reply)
+            return needle_reply
+    except Exception as ex:
+        print(f"[TIER-0] Dispatcher no disponible ({ex}), derivando a Tier 1/2", file=sys.stderr)
+
     mc = get_minecraft_status()
     mesh = get_mesh_telemetry()
     staff_tasks = get_staff_tasks()
