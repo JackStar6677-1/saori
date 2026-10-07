@@ -490,6 +490,14 @@ def handle_server_actions(prompt, sender):
 
     # ── GESTIÓN DE ENERGÍA DE LA INFRAESTRUCTURA (RESTART, STOP, INICIO) ──
     # High Staff según Discord y Jack pueden operar la suite segura.
+    # IMPORTANTE: Distinguir entre una orden de reinicio/apagado ("reinicia el server") vs una pregunta ("¿por qué hubo reinicios?", "cuándo reinicia?")
+    is_question_about_restart = any(q in prompt_lower for q in [
+        'por que se hubo', 'porque hubo', 'por qué hubo', 'por que hubo',
+        'por que hubieron', 'por qué hubieron', 'cuantos reinicios', 'cuántos reinicios',
+        'a que hora reinicia', 'a qué hora reinicia', 'cuando reinicia', 'cuándo reinicia',
+        'que paso con el reinicio', 'qué pasó con el reinicio'
+    ])
+
     power_patterns = [
         r'\breinicia\b', r'\breiniciar\b', r'\breinicio\b', r'\brestart\b',
         r'\bapaga\b', r'\bapagar\b', r'\bstop\b', r'\bdeten el server\b',
@@ -497,7 +505,7 @@ def handle_server_actions(prompt, sender):
         r'\bencender\b', r'\binicia el server\b', r'\biniciar el server\b',
         r'\barranca el server\b', r'\bstart\b'
     ]
-    if any(re.search(pat, prompt_lower) for pat in power_patterns):
+    if not is_question_about_restart and any(re.search(pat, prompt_lower) for pat in power_patterns):
         if is_high_staff:
             is_restart = any(re.search(p, prompt_lower) for p in [r'\breinicia\b', r'\breiniciar\b', r'\breinicio\b', r'\brestart\b'])
             is_stop = any(re.search(p, prompt_lower) for p in [r'\bapaga\b', r'\bapagar\b', r'\bstop\b', r'\bdeten\b', r'\bdetén\b', r'\btira\b'])
@@ -709,6 +717,21 @@ _Asistente de Infraestructura y Moderación de DrakesCraft_
             return f"Error al ejecutar /{raw_cmd.lstrip('/')}: {msg}"
 
 
+    # ANÁLISIS PROFUNDO DE SPARK (60s) — disponible para Jack y Staff
+    spark_analysis_triggers = [
+        'analisis spark', 'análisis spark', 'analiza el spark', 'analizar spark',
+        'perfil spark', 'perfilador spark', 'profiler spark', 'porque caen los tps',
+        'por que caen los tps', 'por qué caen los tps', 'que causa el lag', 'qué causa el lag',
+        'que esta causando la caida', 'qué está causando la caída', 'causa de caida de tps'
+    ]
+    if (is_staff or is_jack) and any(k in prompt_lower for k in spark_analysis_triggers):
+        try:
+            import saori_spark_analyzer
+            res = saori_spark_analyzer.run_live_spark_profiler(timeout_secs=60)
+            return saori_spark_analyzer.formatear_diagnostico_tps(res)
+        except Exception as e:
+            return f"Error ejecutando análisis Spark de 60s: {e}"
+
     # TPS — disponible para Jack y staff
     if any(k in prompt_lower for k in ['tps', 'spark tps', 'lag del server', 'rendimiento del server', 'server performance']):
         import re as _re
@@ -731,8 +754,6 @@ _Asistente de Infraestructura y Moderación de DrakesCraft_
                 return []
 
         def _capture_tps(cmd, keyword, wait):
-            # Solo usamos líneas nuevas emitidas por la consola. Antes se buscaba
-            # "TPS" en un tramo completo del log y podía devolverse chat jugador.
             before = _download_latest_lines()
             ok, _ = execute_minecraft_command(cmd)
             if not ok:
@@ -761,7 +782,11 @@ _Asistente de Infraestructura y Moderación de DrakesCraft_
 
         tps_output = _capture_tps('spark tps', 'TPS', 3.0) or _capture_tps('tps', 'TPS', 2.0)
         if tps_output:
-            return f"TPS del servidor:\n{tps_output}"
+            # Añadir orientación rápida sobre los picos observados
+            analisis_rapido = ""
+            if "270" in tps_output or "300" in tps_output or "360" in tps_output or "16." in tps_output:
+                analisis_rapido = "\n\n💡 *Picos de 250-360ms detectados en el hilo principal (ticking de bloques Slimefun/Networks). Si quieres un desglose detallado de los métodos culpables, pulsa el botón '⚡ Diagnóstico Spark (60s)' abajo o pide 'Saori analiza con Spark'.*"
+            return f"⚡ **TPS & Rendimiento del Servidor:**\n{tps_output}{analisis_rapido}"
         return "Ejecuté /tps en consola pero no capturé respuesta aún. Intenta de nuevo en unos segundos."
 
     # /list — jugadores online directamente de consola
@@ -1755,7 +1780,8 @@ DATOS DEL SISTEMA:
 REGLAS CRÍTICAS:
 - Usa SOLO el primer nombre ({sender_clean}).
 - CAPACIDADES REALES: estás en Discord y WhatsApp (bots de SAORI) y ves la consola de Minecraft (el personaje in-game está pausado). Lo único que puedes hacer por un jugador es responder con información verificada y, ante una emergencia real (dupe, ataque, caída), disparar la alerta interna al staff. NO puedes: mandar mensajes privados a Jack o al staff a pedido de un jugador, publicar en canales, mover archivos, revisar o cerrar tickets, dar rangos ni items. Si te lo piden, di exactamente qué puedes hacer y deriva a un ticket en Discord (#tickets-soporte).
-- Si preguntan por el reinicio del servidor, NUNCA inventes que se está aplicando si no es real. Explica que Jack tiene temporalmente desactivada la ejecución de comandos para Saori y que el High Staff autorizado (Jack, Chagui, Lauti, Pepino) puede iniciar el reinicio seguro con !sreinicio <segundos> <motivo> en Discord o con python3 ~/ai-hub/scripts/reinicio_seguro.py en Star.
+- INTERACCIÓN CON EL STAFF: Si un miembro del Staff (Chagui, Lauti, Pepino, etc.) o Jack te pregunta por qué caen los TPS, qué está pasando o si hay lag, NO evadas ni respondas con frases vacías. Sé resolutiva y analítica: explica la causa técnica directa (ticking de bloques de Slimefun, networks o carga de chunks) y recomienda u ofrece correr un análisis Spark de 60s (`spark profiler start --timeout 60`).
+- Si preguntan por el reinicio del servidor, NUNCA inventes que se está aplicando si no es real. Explica que Jack tiene temporalmente desactivada la ejecución de comandos para Saori y que el High Staff autorizado (Jack, Chagui, Lauti, Pepino) puede iniciar el reinicio seguro con los botones interactivos en Discord, con !sreinicio <segundos> <motivo> o con python3 ~/ai-hub/scripts/reinicio_seguro.py en Star.
 - NUNCA menciones uptime de Star, GB de disco, ni telemetría técnica si NO te lo preguntaron explícitamente.
 - Sé concisa, graciosa, ejecutiva y rápida."""
 

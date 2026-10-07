@@ -121,6 +121,16 @@ class SaoriAIHandler(BaseHTTPRequestHandler):
                     return
 
                 if action == 'restart':
+                    say_msg = data.get('say_message', '').strip()
+                    if say_msg:
+                        # Difundir aviso previo a Minecraft
+                        try:
+                            clean_say = say_msg.replace('\r', ' ').replace('\n', ' ').strip()
+                            if _executor:
+                                _executor.execute_minecraft_command(f"say §c§l[REINICIO]§e {clean_say}")
+                        except Exception as e:
+                            print(f"[SAORI-POWER] Error enviando say previo: {e}", file=sys.stderr)
+
                     cmd = [PYTHON_BIN, os.path.join(SCRIPT_DIR, 'reinicio_seguro.py'), str(seconds), reason, 'saori', '--skip-preflight']
                     subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     msg = f"Protocolo de reinicio seguro iniciado ({seconds}s de aviso, pre-shutdown sync atómico)"
@@ -136,6 +146,22 @@ class SaoriAIHandler(BaseHTTPRequestHandler):
                     raise ValueError(f"Acción de energía desconocida: {action}")
 
                 resp = json.dumps({'ok': True, 'action': action, 'message': msg}, ensure_ascii=False).encode('utf-8')
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json; charset=utf-8')
+                self.send_header('Content-Length', str(len(resp)))
+                self.end_headers()
+                self.wfile.write(resp)
+            except Exception as e:
+                self.send_error_response(e)
+
+        elif self.path == '/spark':
+            try:
+                data = json.loads(body or '{}')
+                timeout = int(data.get('timeout', 60))
+                import saori_spark_analyzer
+                res = saori_spark_analyzer.run_live_spark_profiler(timeout_secs=timeout)
+                formatted = saori_spark_analyzer.formatear_diagnostico_tps(res)
+                resp = json.dumps({'ok': True, 'result': res, 'formatted': formatted}, ensure_ascii=False).encode('utf-8')
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json; charset=utf-8')
                 self.send_header('Content-Length', str(len(resp)))
