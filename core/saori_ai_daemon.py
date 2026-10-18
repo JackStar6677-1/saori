@@ -23,7 +23,7 @@ class SaoriAIHandler(BaseHTTPRequestHandler):
                 'host': platform.node(),
                 'python': PYTHON_BIN,
                 'scripts_dir': SCRIPT_DIR,
-                'endpoints': ['/chat', '/faq', '/power', '/ticket', '/image', '/tts', '/stt', '/health'],
+                'endpoints': ['/chat', '/faq', '/power', '/ticket', '/image', '/tts', '/stt', '/graph', '/health'],
                 'chat_fields': ['prompt', 'sender', 'is_high_staff', 'scope (drakescraft|nexo)']
             }, ensure_ascii=False).encode('utf-8')
             self.send_response(200)
@@ -248,6 +248,30 @@ class SaoriAIHandler(BaseHTTPRequestHandler):
                 resp = json.dumps({'ok': True, 'text': transcription}).encode('utf-8')
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json; charset=utf-8')
+                self.end_headers()
+                self.wfile.write(resp)
+            except Exception as e:
+                self.send_error_response(e)
+        elif self.path == '/graph':
+            # Endpoint de consulta a grafos de conocimiento AST con optimización de tokens
+            try:
+                data = json.loads(body or '{}')
+                repo = data.get('repo', '')
+                query = data.get('query', '')
+                from graph_retriever import graph_retriever
+                if not repo and not query:
+                    result = {
+                        'ok': True,
+                        'total_repositories': len(graph_retriever.list_available_repositories()),
+                        'repositories': graph_retriever.list_available_repositories()
+                    }
+                else:
+                    result = graph_retriever.query_graph_context(repo, query)
+                    result['ok'] = True
+                resp = json.dumps(result, ensure_ascii=False).encode('utf-8')
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json; charset=utf-8')
+                self.send_header('Content-Length', str(len(resp)))
                 self.end_headers()
                 self.wfile.write(resp)
             except Exception as e:
