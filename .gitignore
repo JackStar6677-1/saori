@@ -50,3 +50,5 @@ saori_memory.json
 # Copias de seguridad locales: pueden contener credenciales (ticket #366)
 *.bak
 *.bak-*
+
+graphify-out/
