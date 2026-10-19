@@ -373,7 +373,7 @@ async function updateTaskStatus(client, { taskId, status, note, agent }) {
     const ch = client.channels.cache.get(chId);
     if (!ch) return { ok: false, error: `Canal ${chId} no encontrado` };
 
-    const messages = await ch.messages.fetch({ limit: 50 });
+    const messages = await ch.messages.fetch({ limit: 100 });
     const targetMsg = messages.find(m => m.embeds.length && m.embeds[0].title && m.embeds[0].title.toUpperCase().includes(upperId));
     if (!targetMsg) return { ok: false, error: `Mensaje de tarea ${upperId} no encontrado en canal` };
 
