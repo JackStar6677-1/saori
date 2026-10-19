@@ -1,210 +1,256 @@
 <div align="center">
 
-<img src="assets/saori-banner.svg" alt="SAORI Banner" width="100%" />
+<img src="assets/saori-banner.svg" alt="SAORI SRE Framework Banner" width="100%" />
 
 # 🏛️ S.A.O.R.I. — Autonomous Multi-Agent SRE Framework
 ### **Server Autonomous Orchestrator for Resilient Infrastructure**
-*Esqueleto Base Modular para Asistentes SRE Autónomos y Flotas Multi-Agente Omnicanal*
+*Production-Grade Omnichannel SRE Swarm, OmniAST &amp; Hermes Kernel, and Distributed Self-Healing Fleet*
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![Node.js 20+](https://img.shields.io/badge/node.js-20+-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Discord.js v14](https://img.shields.io/badge/discord.js-v14.16-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.js.org/)
+[![WhatsApp Baileys](https://img.shields.io/badge/whatsapp-Baileys_v6.7-25D366?style=for-the-badge&logo=whatsapp&logoColor=white)](https://github.com/WhiskeySockets/Baileys)
+[![OmniAST Kernel](https://img.shields.io/badge/omniast-Graph_IR_Kernel-06B6D4?style=for-the-badge)](https://github.com/JackStar6677-1/omniast)
+[![Hermes Function Calling](https://img.shields.io/badge/hermes-JSON_Schema_Calling-A855F7?style=for-the-badge)](https://github.com/NousResearch/Hermes-Function-Calling)
 [![Database SQLite WAL](https://img.shields.io/badge/database-SQLite_WAL-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://sqlite.org/)
 [![Symmetric Triad](https://img.shields.io/badge/triad-Codex_%7C_Claude_%7C_Antigravity-8b5cf6?style=for-the-badge)](https://github.com/JackStar6677-1/saori)
 [![Zero Downtime SRE](https://img.shields.io/badge/sre-99.99%25_uptime-10B981?style=for-the-badge)](https://github.com/JackStar6677-1/saori)
 [![License MIT](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)](LICENSE)
 
+[Architecture Overview](#-architecture-overview) • [Core Capabilities](#-core-capabilities) • [Repository Layout](#-repository-layout) • [Getting Started](#-getting-started) • [Contributing](CONTRIBUTING.md)
+
 </div>
 
 ---
 
-## 🌟 Visión del Esqueleto Base
+> [!NOTE]
+> **Language Standard Notice:** While the author's native language is Spanish, this documentation is written in English to adhere to international open-source software engineering standards and enable seamless cross-model interoperability across global AI agents and developers.
 
-Este repositorio contiene la **base y esqueleto modular** de **SAORI**, una arquitectura soberana de ingeniería de confiabilidad de sitios (SRE) y asistencia comunitaria multiagente.
+---
 
-Cualquier desarrollador u organización puede utilizar este esqueleto para desplegar un sistema SRE autónomo conectado a **Discord, WhatsApp y servidores de juegos (ej. Minecraft / Pterodactyl)**, orquestando una **Tríada Simétrica de Agentes de IA** (`Codex`, `Claude`, `Antigravity / Gemini`) con rotación de roles, gestión de cuotas y resolución autónoma de incidentes mediante tickets.
+## 🌟 Vision & Architectural Scope
+
+**SAORI** (*Server Autonomous Orchestrator for Resilient Infrastructure*) is an enterprise-grade, sovereign Site Reliability Engineering (SRE) framework and multi-agent coordination swarm designed to monitor, heal, diagnose, and manage distributed server fleets, game server infrastructures (Purpur/Paper Minecraft, Pterodactyl panels, Slimefun fleets), web gateways, and omnichannel communication streams.
+
+Any engineering team or organization can deploy this modular monorepo to run a **24/7 autonomous SRE swarm** connected simultaneously to **Discord, WhatsApp, and game server consoles**, backed by a **Symmetric Multi-Agent Triad** (`Codex`, `Claude`, `Antigravity / Gemini`) with automated role rotation, context-isolated security firewalls, and self-healing task execution.
 
 > [!IMPORTANT]
-> **Privacidad y Prompts Sanitizados:** Este esqueleto **no incluye prompts propietarios ni datos sensibles**. La personalidad, canon y directivas internas de tu asistente se inyectan dinámicamente vía variables de entorno (`SAORI_SYSTEM_PROMPT`) o archivos externos, manteniendo tu código 100% seguro y desacoplado.
+> **Sanitized Clean-Room Architecture (Zero Secret Leaks):**  
+> This public codebase contains **zero private credentials, zero hardcoded tokens, zero personal telephone numbers, and zero internal infrastructure IPs**. Personality prompts, internal RBAC directives, and operational endpoints are dynamically configured via environment variables (`process.env.*` / `os.environ.get(...)`) and `.env` templates.
 
 ---
 
-## 🚀 Características Principales de la Arquitectura
+## 🚀 Core Capabilities
 
-### 1. 🤖 Tríada Simétrica de Agentes SRE (Codex · Claude · Antigravity)
-- **Equiponderancia & Roles Dinámicos:** Los tres motores operan con igual peso (`1/3`, `1/2` o `1/1` según disponibilidad) rotando responsabilidades:
-  - 🛠️ `desarrollador`: Diseña la solución, implementa código y genera parches.
-  - 🔍 `consultoria-peer`: Audita la arquitectura, revisa edge-cases y optimiza.
-  - 🧪 `qa-testing`: Ejecuta suites de tests, valida compilación y verifica integración.
-- **Configuración de Modelos & Niveles de Razonamiento:**
-  - **⚡ Antigravity (Google DeepMind):** `gemini-3.8-flash-high` con `--effort high` (**MÁXIMO esfuerzo de razonamiento**, el tope analítico para erradicación de warns, refactors de Slimefun e ingeniería pesada).
-  - **🛠️ Codex (OpenAI):** `gpt-5.6-sol` con `-c 'model_reasoning_effort="medium"'` (integración continua, QA y tests).
-  - **🏛️ Claude-Code (Anthropic):** `claude-opus-4-5` / `opus` con `--effort medium` (consultoría peer y lógica).
-- **Mandato de Resolución Integral ("Métele Caña"):**
-  - Erradicación proactiva de advertencias (`WARN`) y errores en consola.
-  - Búsqueda e instalación de plugins open-source y creación de forks en la organización de GitHub de DrakesCraft.
-  - Desarrollo de plugins hotfix en caliente propios si un componente no admite parches upstream.
-  - Regla obligatoria de mantener siempre actualizados los READMEs con diagramas Mermaid y banners SVG.
-- **Conmutación Inteligente de Cuota (Failover):** Si un proveedor agota su ventana de contexto o rate limit, el orquestador transfiere el ticket de forma transparente y alerta al administrador por privado sin interrumpir el servicio.
+### 1. 🤖 Symmetric Triad SRE Engine (Codex · Claude · Antigravity)
+- **Dynamic Role Rotation & Equiponderance:** The three primary AI engines operate with equal authority (`1/3`, `1/2`, or `1/1` depending on quota availability), dynamically rotating operational roles:
+  - 🛠️ `architect_developer`: Designs hotfixes, writes clean modular code, and compiles patches.
+  - 🔍 `peer_consultant`: Audits architectural trade-offs, evaluates edge cases, and optimizes performance.
+  - 🧪 `qa_verifier`: Runs regression test suites, inspects syntax, and verifies end-to-end integration.
+- **Model Tiers & Reasoning Topologies:**
+  - **⚡ Antigravity (Google DeepMind):** `gemini-3.8-flash-high` with high analytical effort (complex bytecode refactors, AST analysis, and heavy infrastructure troubleshooting).
+  - **🛠️ Codex (OpenAI):** `gpt-5.6-sol` with balanced reasoning effort (continuous integration, test verification, and automated triage).
+  - **🏛️ Claude-Code (Anthropic):** `claude-opus-4-5` / `claude-sonnet-4-5` with medium reasoning effort (peer review, formal logic verification, and deep contextual routing).
+- **Automated Circuit Breaker & Failover:** If an AI provider exhausts its context token window or encounters rate limits, the orchestrator seamlessly fails over to the next tier and notifies administrators via private DM.
 
-### 2. ⚡ Desacoplamiento Omnicanal, Recados a Jack & Dialectos Persistentes
-- **Chat Liviano y Ágil:** Bot conversacional de alta velocidad (<1.5s de respuesta) mediante modelos livianos (`Gemini Flash Low` / `Claude Haiku`) para WhatsApp y Discord.
-- **📬 Recados para el Administrador & Creación de Tareas:** Si un usuario o staff solicita en chat *"Saori dile a Jack que..."* o *"crea una tarea para..."*, Saori registra la tarea en el backlog y notifica inmediatamente a Jack por WhatsApp/Discord privado vía `saori_notifier.py`.
-- **🧠 Memoria y Dialectos Persistentes por Usuario:** Reconocimiento dinámico de dialectos y prohibición de modismos (ej. jerga dominicana para un usuario, prohibición de `"po"` o directivas en otros idiomas ordenadas por Jack) almacenados de forma persistente en `saori_user_preferences.json`.
-- **🛠️ Interceptor de Desarrollo:** Solicitudes de programación se despachan atómicamente a la Tríada SRE (`dispatch_ticket.py`) sin bloquear el chat.
-- **🛡️ Firewall de Privacidad de Alertas:** Alertas de cuota, incidentes internos y telemetría de agentes se despachan **estrictamente al DM del administrador**, bloqueando su exposición en canales públicos o de staff.
+### 2. ⚡ Omnichannel Gateway (Discord + WhatsApp + Live Telemetry)
+- **Discord Bot (`integrations/discord`):** Built on Discord.js v14. Features modal-based ticket dispatching, role sync, anti-alt evasion analysis (`multiacct-analyzer.js`), automated task persistence (`taskManager.js`), and live voice streamer management.
+- **WhatsApp Bridge (`integrations/whatsapp`):** Powered by the Baileys socket engine. Includes Dallas Pterodactyl live telemetry (`!stats`, `!tps`, `!online`), remote console command execution (`!cmd`, `!reinicio`), deterministic FAQ query acceleration, and QR terminal generation.
+- **In-Game Avatar Bridge (`avatar/`):** Autonomous Mineflayer socket bridge capable of interacting directly inside Minecraft servers for in-world telemetry and staff communication.
 
-### 3. 🛡️ Fortaleza de Seguridad & RBAC
-- **Anti-Spoofing de Identidad:** Verificación estricta de remitentes y números autorizados (`ADMIN_WHATSAPP_NUMBER`) antes de conceder privilegios administrativos.
-- **Redacción Automática de Secretos:** Filtros regex en el orquestador que purgan contraseñas, tokens Bearer, correos e IPs antes de registrar eventos en la base de datos o alimentar prompts de IA.
-- **Canalización Segura de Consola:** Sanitización estricta de comandos RCON/Pterodactyl bloqueando comandos destructivos o de elevación de privilegios no autorizados.
+### 3. 🧠 OmniAST IR & Hermes Function-Calling Kernel
+- **OmniAST Integration (`core/saori_ai_daemon.py`):** Intermediate representation for AST parsing, multi-language transpilation, and cross-model code transformations.
+- **Hermes Standard Tools:** Function calling following the NousResearch Hermes JSON Schema standard, enabling structured skill invocations across autonomous agents.
+- **Knowledge Lake Connectivity:** Direct interface with SQLite WAL knowledge lakes indexing over **15,900+ items** and verified infrastructure manuals with full-text search (FTS).
 
-### 4. 🎫 Sistema de Tickets con Modals en Discord
-- Formularios interactivos estructurados para soporte, bugs, tienda y denuncias confidenciales.
-- Radicación atómica de tickets en formato Markdown (`TICKET_XXX.md`) listos para el consumo por parte de agentes o personal humano.
+### 4. 🛡️ Strict Privacy, Context Routing & RBAC Isolation
+- **Domain Context Isolation (`config/contexts/`):** Context router (`saori_context_router.py`) enforces strict boundary firewalls between distinct domains (e.g. gaming servers, school administration, physical infrastructure).
+- **Anti-Spoofing & Admin Auth:** Cryptographic sender validation and strict phone/user ID whitelisting before any high-privilege console command or SRE action is executed.
+- **Zero-Leak Redaction Pipeline:** Real-time regex filters strip Bearer tokens, passwords, private IPs, and personal data before logging or feeding prompts to external models.
 
 ---
 
-## 🏗️ Diagrama de Arquitectura
+## 🏗️ Architecture Overview
 
 ```mermaid
 graph TD
-    subgraph Canales ["🌐 Canales de Entrada"]
-        WA["📱 WhatsApp (Baileys)"]
-        DC["💬 Discord (Discord.js v14)"]
-        MC["🎮 Consola / Pterodactyl API"]
+    subgraph INGRESS ["🌐 Omnichannel Ingress Layer"]
+        WA["📱 WhatsApp Bridge (Baileys Engine)"]
+        DC["💬 Discord Bot (Discord.js v14)"]
+        MC["🎮 In-Game Avatar & Pterodactyl Console"]
     end
 
-    subgraph Chatbot ["⚡ Inferencia Conversacional Liviana"]
-        FastBot["saori_executor.py\n(Claude Haiku / Gemini Flash)"]
-        Interceptor{"¿Solicitud de\nDesarrollo / Bug?"}
+    subgraph ROUTER ["🛡️ Context Router & Security Firewall"]
+        CR["saori_context_router.py\n(Domain Boundary Isolation)"]
+        RBAC["Identity & Anti-Spoofing Guard"]
+        Sanitizer["Zero-Leak Secret Redactor"]
     end
 
-    subgraph Orquestacion ["⚙️ Orquestador & Cola SRE"]
-        Dispatcher["dispatch_ticket.py"]
-        TicketDB["💾 Tickets & Locks (SQLite WAL)"]
-        Notifier["saori_notifier.py (Alertas Admin DM)"]
+    subgraph DAEMON ["⚡ OmniAST & Fast Ingestion Daemon (:8089)"]
+        AIDaemon["saori_ai_daemon.py"]
+        HermesEngine["Hermes JSON Schema Tools"]
+        Lake["💾 Knowledge Lake (SQLite WAL / FTS)"]
     end
 
-    subgraph Triada ["🤖 Tríada Simétrica SRE"]
+    subgraph ORCHESTRATION ["⚙️ SRE Orchestrator & Distributed Locks"]
+        Orchestrator["orchestrator.py (Lock Engine)"]
+        TicketDB["💾 Atomic Tickets & Locks (SQLite WAL)"]
+        Notifier["saori_notifier.py (Private Admin DMs)"]
+    end
+
+    subgraph TRIAD ["🤖 Symmetric Multi-Agent SRE Swarm"]
         Codex["Codex (GPT-5.6-sol)"]
         Claude["Claude Code (Opus / Sonnet)"]
         Antigravity["Antigravity (Gemini 3.8 Flash High)"]
     end
 
-    WA --> Interceptor
-    DC --> Interceptor
-    Interceptor -- "Charla / Soporte" --> FastBot
-    Interceptor -- "Código / Bug / Tarea" --> Dispatcher
-    Dispatcher --> TicketDB
-    TicketDB --> Triada
-    Triada --> Notifier
-    MC --> FastBot
+    INGRESS --> RBAC
+    RBAC --> Sanitizer
+    Sanitizer --> CR
+    CR --> AIDaemon
+    AIDaemon <--> Lake
+    AIDaemon <--> HermesEngine
+    CR -- "Complex Incident / Ticket" --> Orchestrator
+    Orchestrator --> TicketDB
+    TicketDB --> TRIAD
+    TRIAD --> Notifier
 ```
 
 ---
 
-## 📂 Estructura del Repositorio
+## 📂 Repository Layout
 
 ```text
 saori/
-├── assets/                       # Banners y recursos visuales
-├── avatar/                       # Bot avatar autónomo in-game (Mineflayer + IPC)
-├── config/                       # Políticas de aislamiento de contexto y roles
-│   └── contexts/                 # Políticas por dominio (drakes.json, star.json, castel.json)
-├── core/                         # Núcleo de inferencia, orquestación y herramientas
-│   ├── orchestrator.py           # Orquestador multi-agente con locks distribuidos y roles simétricos
-│   ├── saori_executor.py         # Inferencia conversacional, interceptor y RBAC sanitizado
-│   ├── saori_context_router.py   # Router de contexto y firewall de aislamiento (drakes/star/castel)
-│   ├── skill_loader.py           # Motor dinámico de Function Calling / Habilidades (Hermes / OpenClaw)
-│   ├── needle_dispatcher.py      # Tier 0 local deterministic dispatcher
-│   ├── dispatch_ticket.py        # Radicador atómico de tickets para la Tríada
-│   ├── saori_notifier.py         # Notificador multi-canal con firewall de privacidad
-│   ├── saori_ai_daemon.py        # Daemon HTTP local (:8089) con soporte OmniAST y Hermes
-│   ├── saori_tts.py              # Motor de síntesis de voz
-│   └── saori_stt.py              # Transcripción neural de notas de voz
-├── skills/                       # Habilidades modulares extensibles (Hermes Agent / OpenClaw standard)
-│   └── system_health.py          # Inspección de salud operativa del host (CPU/RAM/Disco)
-├── integrations/                 # Servicios de conexión a plataformas
-│   ├── discord/                  # Bot de Discord unificado (tickets, moderación, guardias, multiacct)
-│   │   ├── src/                  # Módulos JS de Discord (index.js, database, taskManager, translate)
-│   │   ├── Dockerfile            # Contenedor optimizado Node.js 22
-│   │   └── package.json          # Dependencias (discord.js v14, distube)
-│   └── whatsapp/                 # Puente de WhatsApp (Baileys, audio, interceptor, spark, power)
-│       ├── src/                  # Módulo JS de WhatsApp (index.js sanitizado)
-│       ├── Dockerfile            # Contenedor Node.js 20
-│       └── package.json          # Dependencias (@whiskeysockets/baileys)
-├── runners/                      # Ejecutores de agentes autónomos
-│   ├── runner_star.py            # Runner cíclico de la Tríada con control de cuota y auto-reanudación
-│   └── chat_service.py           # Servicio conversacional socket para el avatar
-├── tests/                        # Tests unitarios del orquestador y subsistemas
-├── docker-compose.yml            # Orquestador Docker Compose unificado (saori-unified)
-├── .env.example                  # Plantilla exhaustiva de variables de entorno (sanitizada)
-└── README.md                     # Documentación oficial del monorepo unificado
+├── assets/                       # Visual assets, logos, and vector banners
+├── avatar/                       # Autonomous in-game avatar engine (Mineflayer + IPC)
+├── config/                       # Domain isolation policies and role definitions
+│   └── contexts/                 # Context boundary rules (drakes.json, star.json, castel.json)
+├── core/                         # Core orchestration, routing, and daemon services
+│   ├── orchestrator.py           # Distributed lock engine & multi-agent orchestrator
+│   ├── saori_executor.py         # Conversational inference, interceptor & RBAC execution
+│   ├── saori_context_router.py   # Context isolation router & anti-cross-leak firewall
+│   ├── skill_loader.py           # Dynamic Hermes / OpenClaw function calling engine
+│   ├── needle_dispatcher.py      # Tier 0 deterministic local query dispatcher
+│   ├── dispatch_ticket.py        # Atomic ticket creation for SRE agents
+│   ├── saori_notifier.py         # Omnichannel notifier with private DM routing
+│   ├── saori_ai_daemon.py        # Local HTTP daemon (:8089) with OmniAST & Hermes support
+│   ├── saori_tts.py              # Neural Text-to-Speech synthesis pipeline
+│   └── saori_stt.py              # Neural Speech-to-Text audio transcription engine
+├── skills/                       # Modular agent skills (system health, telemetry, diagnostics)
+│   ├── system_health.py          # Host resource metrics (CPU, RAM, Disk, System Load)
+│   ├── repo_graph_query.py       # AST knowledge graph traversal skill
+│   └── slimefun_knowledge_query.py # Knowledge lake fast item querying skill
+├── integrations/                 # Production communication platforms
+│   ├── discord/                  # Full-featured Discord bot (tickets, roles, moderation)
+│   │   ├── src/                  # JavaScript sources (index.js, database, taskManager, etc.)
+│   │   ├── Dockerfile            # Production Node.js 22 container specification
+│   │   └── package.json          # Discord dependencies (discord.js v14.16)
+│   └── whatsapp/                 # High-velocity WhatsApp SRE bridge (Baileys)
+│       ├── src/                  # Sanitized JavaScript engine (index.js)
+│       ├── .env.example          # WhatsApp environment variables template
+│       ├── Dockerfile            # Production Node.js 20 container specification
+│       └── package.json          # Baileys and Pino logger dependencies
+├── runners/                      # Autonomous background agent runners
+│   ├── runner_star.py            # Continuous Triad runner with quota management
+│   └── chat_service.py           # Real-time WebSocket chat service for in-game avatar
+├── tests/                        # Comprehensive unit tests for orchestrator & security
+├── docker-compose.yml            # Unified multi-container Docker compose manifest
+├── .env.example                  # Complete sanitized environment variable template
+├── CONTRIBUTING.md               # Contribution guidelines & AI Agent contribution mandate
+└── README.md                     # Official documentation
 ```
 
 ---
 
-## ⚙️ Puesta en Marcha
+## ⚙️ Getting Started
 
-### 1. Requisitos Previos
-- **Linux** (Ubuntu 22.04+ recomendado)
+### 1. Prerequisites
+- **Linux** (Ubuntu 22.04+ LTS recommended) or **macOS / Windows WSL2**
 - **Python 3.10+**
 - **Node.js 20+**
-- **Docker & Docker Compose** (opcional, para despliegue en contenedores)
-- CLIs de tus proveedores de IA configurados en el entorno (`claude`, `codex`, `agy`).
+- **Docker & Docker Compose** (for containerized deployment)
+- Configured CLI credentials for your AI providers (`claude`, `codex`, `agy` / Gemini).
 
-### 2. Configurar Variables de Entorno
-Clona el repositorio y crea tu archivo `.env`:
+### 2. Environment Configuration
+Clone the repository and copy the environment template:
 
 ```bash
 git clone https://github.com/JackStar6677-1/saori.git
 cd saori
 cp .env.example .env
-nano .env
 ```
 
-Configura tus credenciales, canales y tu **System Prompt personalizado**:
+Open `.env` and fill in your platform tokens and custom directives:
 
 ```env
-# Ejemplo de personalización de prompt en .env:
-SAORI_SYSTEM_PROMPT="[AQUÍ TU SYSTEM PROMPT]: Eres SAORI, un asistente SRE experto en Linux, Docker y redes. Ayuda a los usuarios con amabilidad y soluciona incidentes reportados."
-ADMIN_WHATSAPP_NUMBER=56912345678
-WHATSAPP_STAFF_GROUP_JID=123456789@g.us
-DISCORD_BOT_TOKEN=tu_token_de_discord
+# System prompt directive injection
+SAORI_SYSTEM_PROMPT="You are SAORI, an autonomous Site Reliability Engineering (SRE) assistant. You monitor infrastructure health, resolve reported incidents, and assist engineering teams with technical precision."
+
+# Platform credentials
+DISCORD_BOT_TOKEN="your_discord_bot_token"
+ADMIN_WHATSAPP_NUMBER="1234567890"
+WHATSAPP_STAFF_GROUP_JID="120363000000000000@g.us"
+
+# Remote Game / Server API (Optional)
+PTERODACTYL_PANEL_URL="https://panel.example.com"
+PTERODACTYL_SERVER_ID="your_server_id"
+PTERODACTYL_API_KEY="ptlc_your_token"
 ```
 
-### 3. Despliegue con Docker Compose
+### 3. Deploy with Docker Compose
+To build and launch the omnichannel stack (`saori-discord` and `saori-whatsapp`):
+
 ```bash
 docker compose up -d --build
 ```
 
-### 4. Ejecución del Ciclo SRE de la Tríada
-Para lanzar los ciclos de inspección y resolución autónoma de tickets con los agentes:
+Inspect live container logs:
 
 ```bash
-# Ejecutar un ciclo del agente Codex
+docker compose logs -f
+```
+
+### 4. Running the SRE Triad Agents
+Run autonomous ticket-resolution cycles with the Triad engines:
+
+```bash
+# Execute a single SRE cycle with Codex
 python3 runners/runner_star.py --agent codex --max-runs 1
 
-# Ejecutar un ciclo del agente Antigravity
+# Execute a high-effort diagnostic cycle with Antigravity (Gemini)
 python3 runners/runner_star.py --agent antigravity --max-runs 1
 
-# Ejecutar un ciclo de Claude
+# Execute an architectural peer review cycle with Claude
 python3 runners/runner_star.py --agent claude --max-runs 1
 ```
 
 ---
 
-## 🧪 Pruebas Unitarias
+## 🧪 Unit Testing & Verification
 
-El orquestador cuenta con una completa suite de pruebas para verificar bloqueos distribuidos, redacción de credenciales y asignación de roles simétricos:
+Run the test suite to verify distributed locks, secret sanitization, and context isolation:
 
 ```bash
 python3 -m unittest discover -s tests -p "test_*.py"
 ```
 
+Verify Node.js integration syntax:
+
+```bash
+node --check integrations/discord/src/index.js
+node --check integrations/whatsapp/src/index.js
+```
+
 ---
 
-## 📜 Licencia
+## 🤝 Contributing
 
-Distribuido bajo la Licencia **MIT**. Consulta [`LICENSE`](LICENSE) para más detalles.
+Contributions are welcomed from **both human engineers and autonomous AI agents**!  
+Please read [CONTRIBUTING.md](CONTRIBUTING.md) for full details on our **Global Scope Rule**, **Zero Leak Policy**, and the **AI Agent Contribution Mandate**.
+
+---
+
+## 📜 License
+
+Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for complete terms.
