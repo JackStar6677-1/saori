@@ -1,0 +1,25 @@
+{
+  "domain": "castel",
+  "name": "Educational IT & Campus Administration",
+  "visibility": "strictly_isolated",
+  "environment": "institutional_lan",
+  "components": [
+    "CastelRoomKeeper Room Reservation System",
+    "CampusCare Monitoring",
+    "VeyonScripts Lab Automation",
+    "CEMPUDLA Institutional Portal",
+    "Credential Systems"
+  ],
+  "agent_roles": [
+    "lab_maintenance",
+    "reservation_scheduler",
+    "internal_tooling"
+  ],
+  "safety_boundaries": {
+    "allow_public_chat": false,
+    "allow_cross_domain_leakage": false,
+    "block_discord_export": true,
+    "block_public_broadcast": true,
+    "strict_privacy_firewall": true
+  }
+}

@@ -110,28 +110,37 @@ graph TD
 saori/
 ├── assets/                       # Banners y recursos visuales
 ├── avatar/                       # Bot avatar autónomo in-game (Mineflayer + IPC)
+├── config/                       # Políticas de aislamiento de contexto y roles
+│   └── contexts/                 # Políticas por dominio (drakes.json, star.json, castel.json)
 ├── core/                         # Núcleo de inferencia, orquestación y herramientas
 │   ├── orchestrator.py           # Orquestador multi-agente con locks distribuidos y roles simétricos
 │   ├── saori_executor.py         # Inferencia conversacional, interceptor y RBAC sanitizado
-│   ├── skill_loader.py           # Motor dinámico de Function Calling / Habilidades (OpenClaw / Hermes compatible)
+│   ├── saori_context_router.py   # Router de contexto y firewall de aislamiento (drakes/star/castel)
+│   ├── skill_loader.py           # Motor dinámico de Function Calling / Habilidades (Hermes / OpenClaw)
 │   ├── needle_dispatcher.py      # Tier 0 local deterministic dispatcher
 │   ├── dispatch_ticket.py        # Radicador atómico de tickets para la Tríada
 │   ├── saori_notifier.py         # Notificador multi-canal con firewall de privacidad
-│   ├── saori_ai_daemon.py        # Daemon HTTP local (:8089) para endpoints de chat/tts/stt
+│   ├── saori_ai_daemon.py        # Daemon HTTP local (:8089) con soporte OmniAST y Hermes
 │   ├── saori_tts.py              # Motor de síntesis de voz
 │   └── saori_stt.py              # Transcripción neural de notas de voz
 ├── skills/                       # Habilidades modulares extensibles (Hermes Agent / OpenClaw standard)
 │   └── system_health.py          # Inspección de salud operativa del host (CPU/RAM/Disco)
 ├── integrations/                 # Servicios de conexión a plataformas
-│   ├── discord/                  # Bot de Discord (tickets interactivos, moderación, RBAC)
-│   └── whatsapp/                 # Puente de WhatsApp (Baileys, audio, interceptor)
+│   ├── discord/                  # Bot de Discord unificado (tickets, moderación, guardias, multiacct)
+│   │   ├── src/                  # Módulos JS de Discord (index.js, database, taskManager, translate)
+│   │   ├── Dockerfile            # Contenedor optimizado Node.js 22
+│   │   └── package.json          # Dependencias (discord.js v14, distube)
+│   └── whatsapp/                 # Puente de WhatsApp (Baileys, audio, interceptor, spark, power)
+│       ├── src/                  # Módulo JS de WhatsApp (index.js sanitizado)
+│       ├── Dockerfile            # Contenedor Node.js 20
+│       └── package.json          # Dependencias (@whiskeysockets/baileys)
 ├── runners/                      # Ejecutores de agentes autónomos
 │   ├── runner_star.py            # Runner cíclico de la Tríada con control de cuota y auto-reanudación
 │   └── chat_service.py           # Servicio conversacional socket para el avatar
 ├── tests/                        # Tests unitarios del orquestador y subsistemas
-├── docker-compose.yml            # Orquestador Docker Compose desacoplado
-├── .env.example                  # Plantilla exhaustiva de variables de entorno
-└── README.md                     # Documentación oficial del esqueleto
+├── docker-compose.yml            # Orquestador Docker Compose unificado (saori-unified)
+├── .env.example                  # Plantilla exhaustiva de variables de entorno (sanitizada)
+└── README.md                     # Documentación oficial del monorepo unificado
 ```
 
 ---

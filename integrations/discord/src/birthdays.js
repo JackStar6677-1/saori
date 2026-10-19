@@ -16,6 +16,8 @@ const {
     TextInputStyle 
 } = require('discord.js');
 
+const especiales = require('./birthdays_special');
+
 const DATA_FILE = path.join(__dirname, 'data', 'birthdays.json');
 
 const MESES = [
@@ -363,6 +365,17 @@ class BirthdayManager {
                 this.saveData();
             }
 
+            // Secuencia especial (solo este canal, una vez por anio); no bloquea otras celebraciones.
+            try {
+                const esp = especiales.especialPara(userId, this.getCurrentSantiagoTime().year);
+                if (esp && (!isTest || this.forceSpecial)) {
+                    const n = await especiales.ejecutarSecuencia(channel, userId, displayName, avatarUrl, esp);
+                    console.log(`[BIRTHDAYS] 💛 Secuencia especial enviada (${n} mensajes) para ${displayName}.`);
+                }
+            } catch (e) {
+                console.error('[BIRTHDAYS] Error en secuencia especial:', e.message);
+            }
+
             console.log(`[BIRTHDAYS] ✅ Cumpleaños celebrado exitosamente para ${displayName} (${userId})`);
             return true;
         } catch (err) {
@@ -371,9 +384,9 @@ class BirthdayManager {
         }
     }
 
-    async checkDailyBirthdays() {
+    async checkDailyBirthdays(silent = false) {
         const santiago = this.getCurrentSantiagoTime();
-        console.log(`[BIRTHDAYS] 🕒 Revisando cumpleaños para la fecha ${santiago.day}/${santiago.month}/${santiago.year}...`);
+        if (!silent) console.log(`[BIRTHDAYS] 🕒 Revisando cumpleaños para la fecha ${santiago.day}/${santiago.month}/${santiago.year}...`);
 
         let celebratedCount = 0;
         for (const [userId, data] of Object.entries(this.birthdays)) {
@@ -387,7 +400,7 @@ class BirthdayManager {
 
         if (celebratedCount > 0) {
             console.log(`[BIRTHDAYS] 🎊 Se celebraron ${celebratedCount} cumpleaños hoy.`);
-        } else {
+        } else if (!silent) {
             console.log(`[BIRTHDAYS] ℹ️ No hay cumpleaños pendientes por celebrar en esta revisión.`);
         }
     }
@@ -399,9 +412,13 @@ class BirthdayManager {
             this.checkDailyBirthdays().catch(console.error);
         }, 10000);
 
+        // Cada minuto (silencioso) para celebrar a las 00:00 en punto; lastCelebratedYear evita repetir.
+        let revisando = false;
         setInterval(() => {
-            this.checkDailyBirthdays().catch(console.error);
-        }, 30 * 60 * 1000);
+            if (revisando) return;
+            revisando = true;
+            this.checkDailyBirthdays(true).catch(console.error).finally(() => { revisando = false; });
+        }, 60 * 1000);
     }
 }
 

@@ -4,7 +4,8 @@
   "description": "SAORI Discord SRE Bot (Powered by Claude Haiku Brain & Star Telemetry)",
   "main": "src/index.js",
   "scripts": {
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "update-avatar": "node src/scripts/update-avatar.js"
   },
   "dependencies": {
     "@discordjs/voice": "^0.19.2",

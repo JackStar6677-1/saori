@@ -1,0 +1,26 @@
+{
+  "domain": "star",
+  "name": "Star Cloud Infrastructure & SRE Orchestration",
+  "visibility": "operator_only",
+  "environment": "vps_24_7",
+  "components": [
+    "Docker Stacks (/opt/stacks)",
+    "SAORI SRE Swarm (saori_model_broker, saori_executor)",
+    "Multi-Account Model Pools (Antigravity 1/2, Codex 1/2, Claude 1/2)",
+    "Shared Memory (SQLite WAL port 8077)",
+    "Systemd Timers & Supervisors",
+    "OmniAST Graph Kernel Engine"
+  ],
+  "agent_roles": [
+    "infrastructure_sre",
+    "backup_coordinator",
+    "circuit_breaker_sentinel",
+    "telemetry_streamer"
+  ],
+  "safety_boundaries": {
+    "allow_public_chat": false,
+    "allow_school_context": false,
+    "allow_internal_ips": true,
+    "authorized_operators": ["admin", "operator"]
+  }
+}

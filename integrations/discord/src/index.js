@@ -1,6 +1,9 @@
 // SAORI Discord SRE & Support Engine · Channel Purge & Moderation Suite
 
 require('dotenv').config();
+const logger = require('./logger');
+logger.hookConsole();
+const db = require('./database');
 const { 
     Client, 
     GatewayIntentBits, 
@@ -37,15 +40,25 @@ const { SpotifyPlugin } = require('@distube/spotify');
 const legacyGuild = require('./legacyGuild');
 const { multiacctAnalyzer } = require('./multiacct-analyzer.js');
 const birthdays = require('./birthdays');
+const guard = require('./discordGuard');
+const translator = require('./translate');
+const GENERAL_EN_CHANNEL = process.env.CHANNEL_GENERAL_EN || '1539636518417596517';
 const rankSync = require('./rank-sync');
+const taskManager = require('./taskManager');
 
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const DISABLE_AI_RESPONSES = process.env.SAORI_DISABLE_AI !== "false"; // true by default in failover
 console.log(`[SAORI-CONFIG] 🤖 Respuestas conversacionales de IA: ${DISABLE_AI_RESPONSES ? 'DESACTIVADAS (Modo Operativo Deterministico)' : 'ACTIVADAS'}`);
-const AI_DAEMON_URL = process.env.AI_DAEMON_URL || 'http://127.0.0.1:8089/chat';
-const IMAGE_DAEMON_URL = 'http://127.0.0.1:8089/image';
-const TTS_URL = 'http://127.0.0.1:8089/tts';
-const STT_URL = 'http://127.0.0.1:8089/stt';
+const AI_DAEMON_BASE = process.env.SAORI_AI_BASE || 'http://127.0.0.1:8089';
+const AI_DAEMON_URL = process.env.AI_DAEMON_URL || `${AI_DAEMON_BASE}/chat`;
+const IMAGE_DAEMON_URL = process.env.IMAGE_DAEMON_URL || `${AI_DAEMON_BASE}/image`;
+const TTS_URL = process.env.TTS_URL || `${AI_DAEMON_BASE}/tts`;
+const STT_URL = process.env.STT_URL || `${AI_DAEMON_BASE}/stt`;
+const TICKET_URL = process.env.SAORI_TICKET_URL || `${AI_DAEMON_BASE}/ticket`;
+const POWER_URL = process.env.SAORI_POWER_URL || `${AI_DAEMON_BASE}/power`;
+const SPARK_URL = process.env.SAORI_SPARK_URL || `${AI_DAEMON_BASE}/spark`;
+const GRAPH_URL = process.env.SAORI_GRAPH_URL || `${AI_DAEMON_BASE}/graph`;
+const pendingRestartRequests = new Map(); // nonce -> { reason, sayMessage, seconds, user, timestamp }
 
 process.on('unhandledRejection', (reason, promise) => {
     console.error('[SAORI-DISCORD] Unhandled Rejection:', reason);
@@ -71,6 +84,7 @@ const CHANNELS = {
     TICKETS_SOPORTE: process.env.CHANNEL_TICKETS_SOPORTE || '1539636904482578482',   // 🎫・ᴛɪᴄᴋᴇᴛs-sᴏᴘᴏʀᴛᴇ
     CATEGORIA_TICKETS: process.env.CHANNEL_CATEGORIA_TICKETS || '1539764389530312815', // ᴛɪᴄᴋᴇᴛꜱ
     GENERAL_ES: process.env.CHANNEL_GENERAL_ES || '1539636493725864037',        // 💬・ɢᴇɴᴇʀᴀʟ-ᴇsᴘᴀñᴏʟ
+    GENERAL_EN: process.env.CHANNEL_GENERAL_EN || '1539636518417596517',        // 🌍・ɢᴇɴᴇʀᴀʟ-ᴇɴɢʟɪsʜ
     SUGERENCIAS: process.env.CHANNEL_SUGERENCIAS || '1539636565188542554', // 💡・sᴜɢᴇʀᴇɴᴄɪᴀs
     STAFF_CHAT: process.env.CHANNEL_STAFF_CHAT || '1539637349284061185',        // 💬・sᴛᴀғғ-ᴄʜᴀᴛ
     TAREAS_PENDIENTES: process.env.CHANNEL_TAREAS_PENDIENTES || '1539637422692769802', // 📋・ᴛᴀʀᴇᴀs-ᴘᴇɴᴅɪᴇɴᴛᴇs
@@ -91,6 +105,12 @@ const CHANNELS = {
     POSTULACIONES_STAFF: process.env.CHANNEL_POSTULACIONES_STAFF || '1545668320789798993',// 📋・ᴘᴏsᴛᴜʟᴀᴄɪᴏɴᴇs-sᴛᴀғғ
     VOZ_DIRECCION: process.env.CHANNEL_VOZ_DIRECCION || '1545668372753027144',
     CUMPLEANOS: process.env.CHANNEL_CUMPLEANOS || '1549938599967989832' // 🎂・ᴄᴜᴍᴘʟᴇᴀñᴏs       // 🔊・ᴠᴏᴢ-ᴅɪʀᴇᴄᴄɪóɴ
+};
+
+// 🌐 Mapeo Oficial de Roles de Idioma
+const LANGUAGE_ROLES = {
+    ES: '1553012509399851010', // 🇪🇸 ︱ ᴇsᴘᴀñᴏʟ
+    EN: '1553012511253594122'  // 🇬🇧 ︱ ᴇɴɢʟɪsʜ
 };
 
 function buildInteractionThreadName(message) {
@@ -262,6 +282,7 @@ async function updateServerStats(guild) {
         }
 
         console.log(`[STATS] ✅ Estadísticas actualizadas: Discord ${totalMembers} (${humans} humanos) | MC Online: ${mcOnline}`);
+        db.recordTelemetry(totalMembers, humans, null, null, mcOnline, parseFloat((process.memoryUsage().rss / (1024 * 1024)).toFixed(1)));
     } catch (err) {
         console.error('[STATS] Error al actualizar estadísticas:', err.message);
     }
@@ -306,6 +327,7 @@ async function updateNexoStats(guild) {
             if (channel && channel.name !== label) await channel.setName(label, 'Estadísticas automáticas NEXO').catch(() => {});
         }
         console.log(`[NEXO-STATS] ${guild.memberCount} miembros, ${humans} humanos, ${staff} staff, ${online} en línea.`);
+        db.recordTelemetry(guild.memberCount, humans, staff, online, null, parseFloat((process.memoryUsage().rss / (1024 * 1024)).toFixed(1)));
     } catch (error) {
         console.error('[NEXO-STATS] Error actualizando estadísticas:', error.message);
     }
@@ -984,6 +1006,22 @@ function startDiscordRestApiServer(client) {
                 return;
             }
 
+            // POST /api/tasks/update: Actualizar estado de una tarea en Discord y memoria
+            if (req.method === 'POST' && pathname === '/api/tasks/update') {
+                let body = '';
+                req.on('data', chunk => { body += chunk.toString(); });
+                req.on('end', async () => {
+                    try {
+                        const data = JSON.parse(body || '{}');
+                        const result = await taskManager.updateTaskStatus(client, data);
+                        return sendJson(result.ok ? 200 : 400, result);
+                    } catch (e) {
+                        return sendJson(400, { ok: false, error: e.message });
+                    }
+                });
+                return;
+            }
+
             // POST /api/irp/approval-request: Alerta interactiva con botón 1-click para Jack (Ticket #350)
             if (req.method === 'POST' && pathname === '/api/irp/approval-request') {
                 let body = '';
@@ -1216,12 +1254,26 @@ try {
 
 // Detecta si el texto parece estar en inglés basándose en palabras clave comunes
 function detectLanguage(text) {
+    if (!text) return 'es';
     const t = text.toLowerCase();
     const enWords = ['i ', 'the ', 'is ', 'are ', 'my ', 'you ', 'it ', 'have ', 'want ', 'need ', 'can ', 'would ', 'like ', 'please ', 'hello', 'hi ', 'how ', 'what ', 'where ', 'when ', 'this ', 'that ', 'with ', 'for ', 'and ', 'but '];
     const esWords = ['yo ', 'el ', 'la ', 'es ', 'son ', 'mi ', 'tu ', 'quiero ', 'necesito ', 'puedo ', 'hola', 'como ', 'donde ', 'cuando ', 'esto ', 'eso ', 'con ', 'para ', 'y ', 'pero ', 'tengo '];
     const enScore = enWords.filter(w => t.includes(w)).length;
     const esScore = esWords.filter(w => t.includes(w)).length;
     return enScore > esScore ? 'en' : 'es';
+}
+
+// Determina el idioma preferido de un usuario según rol, canal o detección de texto
+function getUserLanguage(member, channelId, text = '') {
+    if (channelId === CHANNELS.GENERAL_EN) return 'en';
+    if (member && member.roles && member.roles.cache) {
+        if (member.roles.cache.has(LANGUAGE_ROLES.EN)) return 'en';
+        if (member.roles.cache.has(LANGUAGE_ROLES.ES)) return 'es';
+    }
+    if (text) {
+        return detectLanguage(text);
+    }
+    return 'es';
 }
 
 function sanitizePublicText(text) {
@@ -1374,6 +1426,14 @@ async function applySuggestionVerdict({ targetMsg, action, reason, user, member 
         await targetMsg.thread.send({ embeds: [notifEmbed] }).catch(() => {});
     }
 
+    try {
+        const numMatch = targetMsg.embeds?.[0]?.title?.match(/#(\d+)/);
+        const sugId = numMatch ? parseInt(numMatch[1], 10) : null;
+        if (sugId) {
+            db.updateSuggestionStatus(sugId, statusTitle, verdictValue, staffTag);
+        }
+    } catch (_) {}
+
     return { ok: true, statusKey, statusText, shouldCloseReactions };
 }
 
@@ -1465,6 +1525,7 @@ async function handleSuggestion(message, rawText, isDirectCmd = false) {
         }
 
         console.log(`[SUGGESTIONS] 💡 Sugerencia #${counter} publicada de ${authorName}: "${cleanText.slice(0, 60)}..."`);
+        db.saveSuggestion(counter, message.author.id, authorName, cleanText, sent.id, targetChannel.id);
     } catch (err) {
         console.error('[SUGGESTIONS] Error publicando sugerencia:', err);
         if (isDirectCmd) {
@@ -1487,12 +1548,54 @@ ${prompt}` : prompt;
         });
         if (res.ok) {
             const data = await res.json();
+            // Trabajos largos (revision de codigo): el daemon responde job_id y aqui se espera el resultado final.
+            if (data.job_id) {
+                const jobBase = AI_DAEMON_URL.replace(/\/chat\/?$/, '');
+                const t0 = Date.now();
+                // Mensaje "Trabajando…" con emoji que va cambiando; el llamador lo edita con la respuesta final.
+                const frames = ['⚙️', '🔍', '🧠', '📊', '🛠️', '✨'];
+                const prog = options.progress;
+                let statusMsg = null;
+                let frame = 0;
+                const pintar = async () => {
+                    if (!prog || !prog.message) return;
+                    const seg = Math.floor((Date.now() - t0) / 1000);
+                    const texto = `${frames[frame++ % frames.length]} **Trabajando…** ${prog.etiqueta || 'revisando con el diff real'} · ${seg}s`;
+                    try {
+                        if (!statusMsg) {
+                            const m = prog.message;
+                            statusMsg = m.reference
+                                ? await m.channel.send({ content: texto })
+                                : await m.reply({ content: texto, allowedMentions: { repliedUser: false } });
+                            prog.statusMessage = statusMsg;
+                        } else {
+                            await statusMsg.edit({ content: texto });
+                        }
+                    } catch (_) { /* el progreso es opcional */ }
+                };
+                await pintar();
+                while (Date.now() - t0 < 240000) {
+                    await new Promise(r => setTimeout(r, 4000));
+                    try {
+                        const jr = await fetch(`${jobBase}/job/${data.job_id}`);
+                        if (jr.ok) {
+                            const j = await jr.json();
+                            if (j.estado === 'listo' && j.respuesta) return String(j.respuesta).trim();
+                        }
+                    } catch (_) { /* sigue esperando */ }
+                    await pintar();
+                }
+                return 'La revisión está tardando más de lo normal; vuelve a pedírmela en un rato, po.';
+            }
             if (data.response) {
                 return data.response.trim();
             }
         }
     } catch (e) {
         console.error('[SAORI-DISCORD] Error contactando Saori Brain:', e.message);
+    }
+    if (options.lang === 'en') {
+        return `Hello ${sender}, my external cognitive modules are currently recalibrating, but all server controls and functions (\`shelp\`, music, auto-roles, tickets) remain active and available for you. 🌸`;
     }
     return `Hola ${sender}, mis núcleos cognitivos externos se están recalibrando en este momento, pero todos los controles y funciones del servidor (\`shelp\`, música, auto-roles, tickets) siguen activos y a tu disposición. 🌸`;
 }
@@ -1584,7 +1687,7 @@ async function generateVoiceAudio(text) {
 
 async function dispatchTicketToTriad(title, desc, author, channelName) {
     try {
-        const res = await fetch('http://127.0.0.1:8089/ticket', {
+        const res = await fetch(TICKET_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ title, desc, author, channel: channelName }),
@@ -1906,18 +2009,38 @@ const HIGH_STAFF_ROLE_IDS = new Set([
 ]);
 
 // ── GESTIÓN SEGURA DE ENERGÍA DE LA INFRAESTRUCTURA (HIGH STAFF & JACK) ──
-async function triggerSafePowerAction(action, seconds, reason, sender) {
-    const POWER_URL = 'http://127.0.0.1:8089/power';
+async function triggerSafePowerAction(action, seconds, reason, sender, sayMessage = '') {
     try {
+        const body = { action, seconds, reason, sender, is_high_staff: true };
+        if (sayMessage) body.say_message = sayMessage;
         const res = await fetch(POWER_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action, seconds, reason, sender, is_high_staff: true }),
+            body: JSON.stringify(body),
             timeout: 15000
         });
         return await res.json();
     } catch (err) {
         console.error('[SAORI-POWER] Error llamando a /power:', err.message);
+        return { ok: false, error: err.message };
+    }
+}
+
+// ── ANÁLISIS AUTOMATIZADO DE SPARK (60s) ──
+async function triggerSparkAnalysis(timeoutSecs = 60) {
+    try {
+        const res = await fetch(SPARK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ timeout: timeoutSecs }),
+            timeout: (timeoutSecs + 40) * 1000
+        });
+        if (res.ok) {
+            return await res.json();
+        }
+        return { ok: false, error: `HTTP ${res.status}` };
+    } catch (err) {
+        console.error('[SAORI-SPARK] Error solicitando análisis Spark:', err.message);
         return { ok: false, error: err.message };
     }
 }
@@ -1968,6 +2091,50 @@ function getStaffMemberHierarchy(member, authorId) {
         return { level: STAFF_LEVELS.HELPER, roleName: 'Staff General', isStaff: true, isHighStaff: isHighStaff, canDCBan: false, canMCBan: false };
     }
     return { level: STAFF_LEVELS.USER, roleName: 'Usuario', isStaff: false, isHighStaff: false, canDCBan: false, canMCBan: false };
+}
+
+// ── BOTONES DE ACCIÓN RÁPIDA PARA EL STAFF (SRE SAORI) ──
+function buildStaffActionRow(hierarchy, isJack = false) {
+    if (!hierarchy || (!hierarchy.isStaff && !isJack)) return null;
+
+    const row = new ActionRowBuilder();
+
+    // Botón 1: Diagnóstico Spark (60s)
+    row.addComponents(
+        new ButtonBuilder()
+            .setCustomId('btn_staff_spark_60s')
+            .setLabel('⚡ Diagnóstico Spark (60s)')
+            .setStyle(ButtonStyle.Primary)
+    );
+
+    // Botón 2: TPS & Métricas rápidas
+    row.addComponents(
+        new ButtonBuilder()
+            .setCustomId('btn_staff_tps')
+            .setLabel('📊 TPS & Métricas')
+            .setStyle(ButtonStyle.Secondary)
+    );
+
+    // Botón 3: Jugadores Online
+    row.addComponents(
+        new ButtonBuilder()
+            .setCustomId('btn_staff_players')
+            .setLabel('👥 Jugadores')
+            .setStyle(ButtonStyle.Secondary)
+    );
+
+    // Botón 4: Reinicio Seguro (Estrictamente ADMIN, DEV y OWNER)
+    const canRestart = isJack || hierarchy.level >= STAFF_LEVELS.DEV;
+    if (canRestart) {
+        row.addComponents(
+            new ButtonBuilder()
+                .setCustomId('btn_staff_safe_restart')
+                .setLabel('🔄 Reinicio Seguro')
+                .setStyle(ButtonStyle.Danger)
+        );
+    }
+
+    return row;
 }
 
 // =========================================================================
@@ -2421,7 +2588,21 @@ function getSmenuCategoryEmbed(category) {
     }
 }
 
-function buildClaimsGuideEmbed() {
+function buildClaimsGuideEmbed(lang = 'es') {
+    if (lang === 'en') {
+        return new EmbedBuilder()
+            .setTitle('🛡️ DrakesCraft · Land Claiming Guide (Golden Shovel)')
+            .setColor(0xE67E22)
+            .setDescription('Protect your chests, builds, and Slimefun machines easily and securely.')
+            .addFields(
+                { name: '📍 Step 1: Get a Golden Shovel', value: 'Craft or obtain a golden shovel (`/kit claim` or normal crafting). Holding it displays your available claim blocks.', inline: false },
+                { name: '📍 Step 2: Mark First Corner', value: 'Right-click the ground where you want your claim to begin. A diamond block marker will appear.', inline: false },
+                { name: '📍 Step 3: Mark Opposite Corner', value: 'Walk diagonally to the opposite corner and right-click the ground. Gold blocks and particles outline your protected zone.', inline: false },
+                { name: '👥 Step 4: Grant Permissions to Friends', value: '• `/trust <player>` · Full build, break, and chest access.\n• `/accesstrust <player>` · Doors, buttons, and switches only.\n• `/containertrust <player>` · Chests and crafting tables only.\n• `/untrust <player>` · Revoke all permissions.', inline: false },
+                { name: '🗑️ Step 5: Remove or Abandon Claim', value: 'Stand inside your claim and type `/abandonclaim` to free the blocks and reuse them elsewhere.', inline: false }
+            )
+            .setFooter({ text: 'GriefPrevention Protection Suite · DrakesCraft Network' });
+    }
     return new EmbedBuilder()
         .setTitle('🛡️ DrakesCraft · Guía Oficial de Protección con Pala de Oro')
         .setColor(0xE67E22)
@@ -2436,7 +2617,19 @@ function buildClaimsGuideEmbed() {
         .setFooter({ text: 'GriefPrevention Protection Suite · DrakesCraft Network' });
 }
 
-function buildVoteGuideEmbed() {
+function buildVoteGuideEmbed(lang = 'es') {
+    if (lang === 'en') {
+        return new EmbedBuilder()
+            .setTitle('🎁 DrakesCraft · Daily Voting & Rewards')
+            .setColor(0x2ECC71)
+            .setDescription('Voting helps more players find our server and generously rewards you every 24 hours!')
+            .addFields(
+                { name: '⭐ Vote Rewards', value: 'Each confirmed vote gives:\n• **₯1,500 Dragmas** for your personal balance.\n• **300 Experience Points (XP)**.\n• **1 Vote Key** to unlock vote crates at `/spawn`.', inline: false },
+                { name: '🗳️ How to Vote', value: 'Type `/vote` in Minecraft chat to get direct links or visit the server vote lists.', inline: false },
+                { name: '📅 Daily Login Streak', value: 'Type `/daily` every day to claim escalating streak bonuses for consecutive days.', inline: false }
+            )
+            .setFooter({ text: 'Reward Engine · DrakesCraft Network' });
+    }
     return new EmbedBuilder()
         .setTitle('🎁 DrakesCraft · Votación Diaria y Recompensas')
         .setColor(0x2ECC71)
@@ -2948,15 +3141,13 @@ client.on('guildMemberAdd', async (member) => {
     }
 
     try {
-        // ✨ Auto-Nickname en Small Caps y Asignación de Rol Polis
+        // ✨ Auto-Nickname en Small Caps (Onboarding Primer Paso: el rol Polis se activa con el botón de bienvenida)
         if (!member.user.bot && member.id !== JACK_DISCORD_ID) {
             const rawName = member.user.globalName || member.user.username;
             const targetNick = formatMemberNickname(rawName, member.roles.cache.map(r => r.id), member.id);
             if (targetNick) {
                 await member.setNickname(targetNick).catch(() => {});
             }
-            const polisRoleId = '1539643572251271198'; // 🏛️ ︱ ᴘᴏʟɪs
-            await member.roles.add(polisRoleId).catch(() => {});
         }
 
         const channel = member.guild.channels.cache.get(CHANNELS.BIENVENIDAS) || 
@@ -2968,33 +3159,25 @@ client.on('guildMemberAdd', async (member) => {
                 .setTitle(`🌸 ¡Bienvenido/a a ⚡ ᴅʀᴀᴋᴇsᴄʀᴀғᴛ ɴᴇᴛᴡᴏʀᴋ ⚡!`)
                 .setDescription(
                     `¡Hola ${member}! Te damos la más cálida bienvenida a nuestra comunidad. Soy **SAORI**, la Inteligencia Artificial y SRE de la red. ✨\n\n` +
-                    `Ya se te otorgó automáticamente la ciudadanía con el rol <@&1539643572251271198> y formateamos tu nick. Aquí tienes la guía completa para comenzar:`
+                    `🏛️ **Paso 1 Obligatorio:** Para activar tu ciudadanía, desbloquear los canales de la comunidad y recibir tu rol de miembro, presiona el botón **Activar Acceso & Ciudadanía Polis** abajo 👇\n\n` +
+                    `¡Luego pasa por <#${CHANNELS.GENERAL_ES}> a saludar y dejarnos tu nick de Minecraft!`
                 )
                 .addFields(
                     {
                         name: '📜 Primeros Pasos & Configuración',
                         value:
                             `• **Normativa Oficial:** Lee <#${CHANNELS.REGLAS}> para convivir en paz.\n` +
-                            `• **Personaliza tu Perfil:** En <#${CHANNELS.AUTO_ROLES}> elige tu país, plataforma (Java/Bedrock) y alertas.\n` +
-                            `• **Enlaces Oficiales:** Conoce nuestra web, tienda y WhatsApp en <#1539636367011876945>.`,
+                            `• **Personaliza tu Perfil:** En <#${CHANNELS.AUTO_ROLES}> elige tu idioma (🇪🇸/🇬🇧), país, plataforma y alertas.\n` +
+                            `• **Enlaces Oficiales:** Conoce nuestra web, tienda y redes en <#1539636367011876945>.`,
                         inline: false
                     },
                     {
                         name: '💬 Comunidad & Charlas',
                         value:
                             `• **Charla General:** <#${CHANNELS.GENERAL_ES}>\n` +
+                            `• **English Chat:** <#${CHANNELS.GENERAL_EN}>\n` +
                             `• **Habla con Saori (IA):** <#${CHANNELS.SAORI_CHAT}>\n` +
-                            `• **Chat Minecraft en vivo:** <#${CHANNELS.MINECRAFT_CHAT}>\n` +
-                            `• **Fotos & Capturas:** <#1539636544099450931>`,
-                        inline: true
-                    },
-                    {
-                        name: '🎁 Eventos, Soporte & Ayuda',
-                        value:
-                            `• **Sorteos & Jefes:** <#${CHANNELS.SORTEOS_EVENTOS}>\n` +
-                            `• **Soporte / Tickets:** <#${CHANNELS.TICKETS_SOPORTE}>\n` +
-                            `• **Buzón de Sugerencias:** <#${CHANNELS.SUGERENCIAS}>\n` +
-                            `• **Reporte de Bugs:** <#1539640716802662532>`,
+                            `• **Chat Minecraft en vivo:** <#${CHANNELS.MINECRAFT_CHAT}>`,
                         inline: true
                     },
                     {
@@ -3002,7 +3185,7 @@ client.on('guildMemberAdd', async (member) => {
                         value:
                             '• **IP Java & Bedrock:** `mc.drakescraft.cl` · **Puerto:** `25565`\n' +
                             '• **Web Oficial:** [web.drakescraft.cl](https://web.drakescraft.cl)\n' +
-                            `• **Comandos Útiles:** Escribe \`smenu\`, \`sperfil\` o \`shelp\` en <#${CHANNELS.GENERAL_ES}> o <#1539636586663383060>.`,
+                            `• **Comandos Útiles:** Escribe \`smenu\`, \`sperfil\` o \`shelp\` en <#${CHANNELS.GENERAL_ES}>.`,
                         inline: false
                     }
                 )
@@ -3010,8 +3193,16 @@ client.on('guildMemberAdd', async (member) => {
                 .setFooter({ text: '⚡ DrakesCraft Network · Creada por Jack · Impulsada por SAORI AI', iconURL: client.user.displayAvatarURL() })
                 .setTimestamp();
 
-            await channel.send({ content: `👋 ¡Bienvenido/a ${member}!`, embeds: [welcomeEmbed] });
-            console.log(`[SAORI-DISCORD] 🌸 Bienvenida enviada a ${member.user.tag}`);
+            const verifyRow = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId('btn_verify_polis')
+                    .setLabel('🏛️ Activar Acceso & Ciudadanía Polis')
+                    .setStyle(ButtonStyle.Success)
+                    .setEmoji('✨')
+            );
+
+            await channel.send({ content: `👋 ¡Bienvenido/a ${member}!`, embeds: [welcomeEmbed], components: [verifyRow] });
+            console.log(`[SAORI-DISCORD] 🌸 Bienvenida con botón de verificación enviada a ${member.user.tag}`);
         }
 
         // 🛡️ Auditoría de Ingreso con detección de cuentas recientes (< 7 días)
@@ -3511,6 +3702,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 client.on('threadCreate', async (thread) => {
     try {
         if (!thread.guild) return;
+        guard.autoTagForum(thread).catch(() => {});
         const embed = new EmbedBuilder()
             .setColor(0x9B59B6)
             .setTitle('🧵 Hilo Creado')
@@ -3530,6 +3722,9 @@ client.on('threadCreate', async (thread) => {
 // =========================================================================
 
 const AUTO_ROLES_MAP = {
+    // 🌐 Idiomas Preferidos / Preferred Languages
+    '🇬🇧': '1553012511253594122', // 🇬🇧 ︱ ᴇɴɢʟɪsʜ
+
     // 🎮 Plataformas
     '☕': '1539643667856494613', // ☕ ︱ ᴊᴀᴠᴀ
     '📱': '1539643739176308866', // 📱 ︱ ʙᴇᴅʀᴏᴄᴋ
@@ -3570,7 +3765,7 @@ const AUTO_ROLES_MAP = {
     '🇺🇾': '1544922131056558202', // 🇺🇾 ︱ ᴜʀᴜɢᴜᴀʏ
     '🇪🇨': '1544922133149515837', // 🇪🇨 ︱ ᴇᴄᴜᴀᴅᴏʀ
     '🇧🇴': '1544922134235578389', // 🇧🇴 ︱ 🇧🇴ʟɪᴠɪᴀ
-    '🇪🇸': '1539644660996247752', // 🇪🇸 ︱ ᴇsᴘᴀñᴀ
+    '🇪🇸': '1539644660996247752', // 🇪🇸 ︱ ᴇsᴘᴀñᴀ (en panel de países)
     '🇻🇪': '1544922136056045621', // 🇻🇪 ︱ ᴠᴇɴᴇᴢᴜᴇʟᴀ
     '🇩🇴': '1544922137913987142', // 🇩🇴 ︱ ʀ. ᴅᴏᴍɪɴɪᴄᴀɴᴀ
     '🇬🇹': '1544922139570733107', // 🇬🇹 ︱ ɢᴜᴀᴛᴇᴍᴀʟᴀ
@@ -3583,10 +3778,22 @@ const AUTO_ROLES_MAP = {
     '🌎': '1539644717292200058'  // 🌎 ︱ ᴏᴛʀᴏ ᴘᴀís
 };
 
-function getRoleIdFromEmoji(emojiName) {
+function getRoleIdFromEmoji(emojiName, message = null) {
     if (!emojiName) return null;
-    if (AUTO_ROLES_MAP[emojiName]) return AUTO_ROLES_MAP[emojiName];
     const clean = emojiName.replace(/\uFE0F/g, '');
+
+    // Desambiguación para bandera de España 🇪🇸:
+    // Si la reacción ocurre en el Panel 2 (Países / Internacional), mapea al rol de país España (1539644660996247752).
+    // Si ocurre en el Panel 1 (Idiomas y Preferencias), mapea al rol de idioma Español (1553012509399851010).
+    if (emojiName === '🇪🇸' || clean === '🇪🇸') {
+        const title = message?.embeds?.[0]?.title || '';
+        if (/PA[ÍI]SES|INTERNACIONAL/i.test(title)) {
+            return '1539644660996247752'; // 🇪🇸 ︱ ᴇsᴘᴀñᴀ
+        }
+        return LANGUAGE_ROLES.ES; // 🇪🇸 ︱ ᴇsᴘᴀñᴏʟ
+    }
+
+    if (AUTO_ROLES_MAP[emojiName]) return AUTO_ROLES_MAP[emojiName];
     if (AUTO_ROLES_MAP[clean]) return AUTO_ROLES_MAP[clean];
     return null;
 }
@@ -3601,7 +3808,7 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
         if (reaction.message.channelId !== CHANNELS.AUTO_ROLES) return;
         if (reaction.message.guildId !== DRAKES_OFFICIAL_GUILD_ID) return;
 
-        const roleId = getRoleIdFromEmoji(reaction.emoji.name);
+        const roleId = getRoleIdFromEmoji(reaction.emoji.name, reaction.message);
         if (!roleId) return;
 
         const guild = reaction.message.guild;
@@ -3630,7 +3837,7 @@ client.on(Events.MessageReactionRemove, async (reaction, user) => {
         if (reaction.message.channelId !== CHANNELS.AUTO_ROLES) return;
         if (reaction.message.guildId !== DRAKES_OFFICIAL_GUILD_ID) return;
 
-        const roleId = getRoleIdFromEmoji(reaction.emoji.name);
+        const roleId = getRoleIdFromEmoji(reaction.emoji.name, reaction.message);
         if (!roleId) return;
 
         const guild = reaction.message.guild;
@@ -3661,7 +3868,7 @@ async function syncAutoRolesChannel(guild) {
         let totalAssigned = 0;
         for (const [msgId, msg] of messages) {
             for (const [emojiKey, reaction] of msg.reactions.cache) {
-                const roleId = getRoleIdFromEmoji(reaction.emoji.name);
+                const roleId = getRoleIdFromEmoji(reaction.emoji.name, msg);
                 if (!roleId) continue;
                 const role = guild.roles.cache.get(roleId);
                 if (!role) continue;
@@ -3697,6 +3904,8 @@ async function sendAutoRolesPanels(targetChannel) {
             '¡Personaliza tu experiencia en **DrakesCraft Network**!\n' +
             'Reacciona a este mensaje con los emojis correspondientes para obtener o remover tus roles.\n\n' +
             '───────────────────────────────────\n' +
+            '🌐 **IDIOMA PREFERIDO / PREFERRED LANGUAGE**\n' +
+            '🇪🇸 ➔ Español   ·   🇬🇧 ➔ English\n\n' +
             '🎮 **PLATAFORMA DE JUEGO**\n' +
             '☕ ➔ Java Edition   ·   📱 ➔ Bedrock / Mobile\n\n' +
             '🕹️ **MODALIDADES DE MINECRAFT**\n' +
@@ -3713,12 +3922,12 @@ async function sendAutoRolesPanels(targetChannel) {
             '🎁 ➔ Eventos, Sorteos y Recompensas\n' +
             '🚀 ➔ Actualizaciones y Changelogs Técnicos\n' +
             '───────────────────────────────────\n' +
-            '> 💡 **Tip:** Vuelve a pulsar la reacción en cualquier momento para retirarte el rol.'
+            '> 💡 **Tip:** Vuelve a pulsar la reacción en cualquier momento para retirarte el rol. / React again anytime to remove a role.'
         )
         .setFooter({ text: 'DrakesCraft Network · Sistema Autónomo de Roles' });
 
     const msg1 = await targetChannel.send({ embeds: [embed1] });
-    const emojis1 = ['☕', '📱', '⚡', '🏝️', '☁️', '⚔️', '🎯', '♂️', '♀️', '✨', '📢', '⛏️', '🎁', '🚀'];
+    const emojis1 = ['🇪🇸', '🇬🇧', '☕', '📱', '⚡', '🏝️', '☁️', '⚔️', '🎯', '♂️', '♀️', '✨', '📢', '⛏️', '🎁', '🚀'];
     for (const em of emojis1) {
         await msg1.react(em).catch(() => null);
     }
@@ -3749,6 +3958,77 @@ async function sendAutoRolesPanels(targetChannel) {
     for (const em of emojis2) {
         await msg2.react(em).catch(() => null);
     }
+}
+
+// =========================================================================
+// 💻 EMBELLECEDOR DE AVISOS DE GITHUB (push) — SAORI los deja "enchulados"
+// =========================================================================
+
+/** Emoji + tipo según Conventional Commits. */
+function classifyCommit(subject) {
+    const m = (subject || '').match(/^(\w+)(\([^)]*\))?!?:/);
+    const type = m ? m[1].toLowerCase() : '';
+    const map = {
+        feat: '🆕', fix: '🛠️', perf: '⚡', refactor: '♻️', docs: '📝',
+        chore: '🔧', style: '🎨', test: '🧪', build: '⚙️', ci: '⚙️', revert: '⏪'
+    };
+    return { emoji: map[type] || '🔹', type };
+}
+
+/**
+ * Parsea el mensaje de texto del webhook de GitHub (push) y arma un embed enriquecido.
+ * Devuelve null si el mensaje no parece un push de GitHub.
+ */
+function buildGithubEmbed(content) {
+    if (!content) return null;
+    const repoM = content.match(/\[([A-Za-z0-9._-]+):([A-Za-z0-9._/-]+)\]/);
+    if (!repoM) return null;
+    const repo = repoM[1];
+    const branch = repoM[2];
+    const urls = [...content.matchAll(/https?:\/\/github\.com\/[^\s)]+/g)].map(mm => mm[0].replace(/[.,)]+$/, ''));
+    const compareUrl = urls.find(u => /\/(commit|compare)\//.test(u))
+        || urls.find(u => /github\.com\/[^/]+\/[^/]+/.test(u));
+
+    const commitRe = /\[?`([0-9a-f]{7,40})`\]?(?:\(([^)]+)\))?\s+([\s\S]*?)\s+-\s+([^\n]+)/g;
+    const commits = [];
+    let mm;
+    while ((mm = commitRe.exec(content)) !== null) {
+        commits.push({
+            sha: mm[1],
+            url: mm[2] || null,
+            msg: mm[3].replace(/\s+/g, ' ').trim(),
+            author: mm[4].trim()
+        });
+    }
+    if (!commits.length) return null;
+    // Enlaza cada sha a su URL de commit cuando GitHub no la puso inline.
+    for (const c of commits) {
+        if (!c.url) {
+            c.url = urls.find(u => u.includes('/commit/') && u.toLowerCase().includes(c.sha.toLowerCase()))
+                || (commits.length === 1 && compareUrl && /\/commit\//.test(compareUrl) ? compareUrl : null);
+        }
+    }
+
+    const typeColor = { feat: 0x2ECC71, fix: 0xE67E22, perf: 0x3498DB, refactor: 0x9B59B6, docs: 0x95A5A6 };
+    const first = classifyCommit(commits[0].msg);
+    const color = typeColor[first.type] || 0x5865F2;
+
+    const lines = commits.slice(0, 10).map(c => {
+        const { emoji } = classifyCommit(c.msg);
+        const sha = c.url ? `[\`${c.sha}\`](${c.url})` : `\`${c.sha}\``;
+        return `${emoji} ${sha} ${c.msg}`.slice(0, 300);
+    });
+    const extra = commits.length > 10 ? `\n…y ${commits.length - 10} commits más` : '';
+
+    return {
+        color,
+        author: compareUrl ? { name: `${repo} · ${branch}`, url: compareUrl } : { name: `${repo} · ${branch}` },
+        title: `💻 ${commits.length} commit${commits.length > 1 ? 's' : ''} nuevo${commits.length > 1 ? 's' : ''}`,
+        url: compareUrl || undefined,
+        description: lines.join('\n') + extra,
+        footer: { text: `GitHub · DrakesCraft-Labs · por ${commits[0].author}` },
+        timestamp: new Date().toISOString()
+    };
 }
 
 // =========================================================================
@@ -3815,8 +4095,190 @@ async function sendDenunciasPanel(targetChannel) {
 // =========================================================================
 // 🧭 GUÍA INTERACTIVA DE COMANDOS SHELP (Navigation Suite v3.0)
 // =========================================================================
-function getShelpCategoryEmbed(category) {
+function getShelpCategoryEmbed(category, lang = 'es') {
     const avatarUrl = client.user?.displayAvatarURL();
+    if (lang === 'en') {
+        switch (category) {
+            case 'tickets':
+                return new EmbedBuilder()
+                    .setTitle('🎫 Category: Tickets & Autonomous SRE Support')
+                    .setColor(0x3498DB)
+                    .setDescription('DrakesCraft support combines AI assistance and automated escalation to the SRE Trinity:')
+                    .addFields(
+                        { 
+                            name: '• sticket <issue>', 
+                            value: 'Opens a technical support ticket in Star. The Trinity (Claude Code, Codex Astra, Antigravity) analyzes live server logs and diagnoses issues.\n*Example:* `sticket Unable to craft advanced machine`' 
+                        },
+                        { 
+                            name: '• Interactive Panels in #tickets-soporte', 
+                            value: 'Use guided buttons to open structured tickets:\n' +
+                                   '🛒 *Tebex Store Purchases* · 🐛 *Bugs & Errors* · 🎒 *Lost Items* · ❓ *General Inquiries* · 🛡️ *Staff Application* · ⚖️ *Reports*' 
+                        },
+                        { 
+                            name: '• Safe Closing Protocol & Audit', 
+                            value: 'Tickets feature two-step confirmation to prevent accidental closures and record automated summaries in `#🛡️・auditoría`.' 
+                        }
+                    )
+                    .setFooter({ text: 'S.A.O.R.I. Tickets & SRE Suite · DrakesCraft', iconURL: avatarUrl });
+
+            case 'musica':
+                return new EmbedBuilder()
+                    .setTitle('🎵 Category: Music & Voice Streaming')
+                    .setColor(0x9B59B6)
+                    .setDescription('High-fidelity audio player compatible with YouTube, Spotify, and web streams:')
+                    .addFields(
+                        { name: '• splay <song / link>', value: 'Plays tracks or playlists from Spotify/YouTube in your current voice channel.' },
+                        { name: '• sskip', value: 'Skips to the next song in the queue.' },
+                        { name: '• spause / sresume', value: 'Pauses or resumes the current track.' },
+                        { name: '• squeue', value: 'Displays the queued songs and total duration.' },
+                        { name: '• sstop', value: 'Stops playback, clears the queue, and disconnects Saori.' },
+                        { name: '• smusica', value: 'Displays player guide and in-game `/musica` commands.' }
+                    )
+                    .setFooter({ text: 'S.A.O.R.I. Music Suite · DrakesCraft', iconURL: avatarUrl });
+
+            case 'stats':
+                return new EmbedBuilder()
+                    .setTitle('📊 Category: Telemetry & Performance')
+                    .setColor(0x2ECC71)
+                    .setDescription('Live monitoring of servers, compute nodes, and network status:')
+                    .addFields(
+                        { 
+                            name: '• stps (or tps)', 
+                            value: 'Live server metrics: allocated/used RAM (GB), CPU%, Uptime, Online players (`online/100`), engine (`Purpur 1.21.11`), and 20.0 TPS.' 
+                        },
+                        { 
+                            name: '• sonline (or sjugadores)', 
+                            value: 'Detailed list of online Minecraft players with real-time count.' 
+                        },
+                        { 
+                            name: '• sstats / sstats drakes', 
+                            value: 'General health and metrics of the Paper/Purpur network.' 
+                        },
+                        { 
+                            name: '• sstats star / nova / nexus', 
+                            value: 'Status of the primary physical host Star (RAM, Docker) and compute nodes.' 
+                        },
+                        { 
+                            name: '• sping', 
+                            value: 'Discord WebSocket latency and internal link to Star nodes.' 
+                        }
+                    )
+                    .setFooter({ text: 'S.A.O.R.I. SRE Telemetry · DrakesCraft', iconURL: avatarUrl });
+
+            case 'drakes':
+                return new EmbedBuilder()
+                    .setTitle('🧭 Category: Menu, Server & Game Modes')
+                    .setColor(0xF39C12)
+                    .setDescription('Direct shortcuts to the Minecraft server, official guides, and utilities:')
+                    .addFields(
+                        { name: '• smenu (or menu)', value: 'Opens the interactive menu hub with 8 categories and quick buttons.' },
+                        { name: '• sperfil [@user] (or smiperfil)', value: 'Displays your player card: join date, assigned roles, and rank.' },
+                        { name: '• sstaff (or staff)', value: 'Official staff directory with live presence status (🟢 Online, 🔴 DND, etc.).' },
+                        { name: '• svip (or vip)', value: 'Catalog of the 11 Olympian God ranks and exclusive perks.' },
+                        { name: '• sclaim (or claim)', value: 'Interactive guide to protect land with a Golden Shovel (`/claim`).' },
+                        { name: '• svotar (or votar)', value: 'Vote links to earn daily in-game rewards and keys.' },
+                        { name: '• sredes (or redes)', value: 'Our official social media channels (TikTok, Instagram, YouTube, Discord).' },
+                        { name: '• sip', value: 'Official server IP: Java & Bedrock (`mc.drakescraft.cl:25565`).' },
+                        { name: '• sweb / stienda', value: 'Official website: https://web.drakescraft.cl · Store: https://web.drakescraft.cl' },
+                        { name: '• sguia / sreglas', value: 'Encyclopedia of game modes (Slimefun, Claims, Economy) and server rules.' },
+                        { name: '• sreencarnar <code>', value: 'Security confirmation for Prestige Rebirth requested in-game with `/reencarnar`.' }
+                    )
+                    .setFooter({ text: 'DrakesCraft Network · Official Guide', iconURL: avatarUrl });
+
+            case 'moderacion':
+                return new EmbedBuilder()
+                    .setTitle('🛡️ Category: Moderation & Staff Protocols')
+                    .setColor(0xE74C3C)
+                    .setDescription('Operational security and moderation suite reserved for Staff members:\n' +
+                                    '💡 *Note:* If you are a Staff member, execute **`shelpstaff`** to open the interactive operational handbook.')
+                    .addFields(
+                        { name: '• shelpstaff (or staffhelp)', value: 'Comprehensive staff handbook (Admins, Mods, Devs, and natural language queries).' },
+                        { name: '• sinactivos [days] / sinactivos purgar [days]', value: 'Audit (Admins) and safe purge (Owners) of inactive members with whitelist.' },
+                        { name: '• sclear <1-100> / !purge <1-100>', value: 'Quick message purge in the current channel.' },
+                        { name: '• skick @user [reason]', value: 'Kick a user from Discord with mod log recording.' },
+                        { name: '• sban @user [reason]', value: 'Permanent Discord ban (Administrators & Owners only).' },
+                        { name: '• smute @user <minutes> [reason]', value: 'Apply temporary timeout with audit record.' },
+                        { name: '• sunmute @user', value: 'Remove timeout from a member.' },
+                        { name: '• swarn @user <reason>', value: 'Send official DM warning to the user and log to mod channel.' },
+                        { name: '• slowmode <seconds>', value: 'Set slowmode delay in the current channel.' },
+                        { name: '• slock / sunlock', value: 'Lock or unlock channel for @everyone.' },
+                        { name: '• schan / srol / sanuncio / ssay', value: 'Direct management of channels, roles, and broadcasts (Admins only).' }
+                    )
+                    .setFooter({ text: 'S.A.O.R.I. High Moderation Suite · Staff Only', iconURL: avatarUrl });
+
+            case 'comunidad':
+                return new EmbedBuilder()
+                    .setTitle('💡 Category: Community, Profiles & Roles')
+                    .setColor(0x00E5FF)
+                    .setDescription('Engagement features, identity customization, and community utilities:')
+                    .addFields(
+                        { name: '• smenu (or menu)', value: 'Main menu with quick access buttons.' },
+                        { name: '• sperfil [@user] (or smiperfil)', value: 'View profile card, join date, assigned roles, and rank.' },
+                        { name: '• ssugerencia <idea>', value: 'Post your idea in suggestions channel with thumbs up/down voting and discussion thread.' },
+                        { name: '• smisroles', value: 'Check your assigned roles: language, platform, game modes, and gender.' },
+                        { name: '• sautoroles (Staff)', value: 'Post or refresh the interactive auto-roles panels in <#1539636390751502376>.' },
+                        { name: '• svotar (or votar)', value: 'Support DrakesCraft on server voting lists to earn rewards in-game.' },
+                        { name: '• !imagen <prompt>', value: 'Generate illustrations and concept art using AI.' },
+                        { name: '• Chat with Saori', value: 'Talk to Saori naturally in <#1544811720571355196> or by mentioning `@SAORI`.' }
+                    )
+                    .setFooter({ text: 'DrakesCraft Community & Identity', iconURL: avatarUrl });
+
+            default:
+                return new EmbedBuilder()
+                    .setTitle('🐺 S.A.O.R.I. · Complete Command Guide (v3.0)')
+                    .setColor(0x00E5FF)
+                    .setDescription(
+                        '**S.A.O.R.I. (Server Autonomous Orchestrator for Resilient Infrastructure)**\n' +
+                        'Welcome to the official command catalog for DrakesCraft Network 🐉\n' +
+                        'Select a category below or type the commands:'
+                    )
+                    .addFields(
+                        { 
+                            name: '🧭 1. Menu, Profiles & Community', 
+                            value: '• `smenu` · Interactive menu with quick action buttons.\n' +
+                                   '• `sperfil [@user]` · View player card, join date, and roles.\n' +
+                                   '• `sstaff` · Official staff directory with live presence.\n' +
+                                   '• `smisroles` · Check your country, language, and platform roles.' 
+                        },
+                        { 
+                            name: '⛏️ 2. Minecraft Server & Telemetry', 
+                            value: '• `sip` · Official IP (Java & Bedrock `mc.drakescraft.cl:25565`).\n' +
+                                   '• `stps` (or `tps`) · Live telemetry (TPS 20.0, RAM, CPU, online players).\n' +
+                                   '• `sonline` · List of players currently online in Minecraft.\n' +
+                                   '• `sclaim` · Official land claiming guide with golden shovel.' 
+                        },
+                        { 
+                            name: '👑 3. Store, VIPs & Rewards', 
+                            value: '• `svip` · Catalog of 11 Olympian God ranks and perks.\n' +
+                                   '• `stienda` · Official store link (https://web.drakescraft.cl).\n' +
+                                   '• `svotar` · Vote for the server and claim daily rewards.\n' +
+                                   '• `sredes` · Official social media links.' 
+                        },
+                        { 
+                            name: '🎵 4. Music & Voice Streaming', 
+                            value: '• `splay <song/link>` · Play Spotify or YouTube tracks in voice channels.\n' +
+                                   '• `sskip`, `spause`, `sresume`, `squeue`, `sstop`, `smusica`.' 
+                        },
+                        { 
+                            name: '🎫 5. Support, Tickets & Suggestions', 
+                            value: '• `sticket <issue>` · Open a technical support ticket analyzed by SRE Trinity.\n' +
+                                   '• `ssugerencia <idea>` · Submit a suggestion with voting in <#1539636565188542554>.\n' +
+                                   '• `sreencarnar <code>` · Confirm Prestige rebirth protocol.' 
+                        },
+                        { 
+                            name: '🎨 6. Neural Art & Intelligent Chat', 
+                            value: '• `!imagen <prompt>` · Generate AI illustrations and art.\n' +
+                                   '• **Natural Chat:** Talk with Saori in <#1544811720571355196> or mention `@SAORI`.' 
+                        },
+                        { 
+                            name: '🛡️ 7. Staff Team & Moderation', 
+                            value: '• If you are a Staff member, execute `shelpstaff` for the operational handbook.' 
+                        }
+                    )
+                    .setFooter({ text: 'S.A.O.R.I. Suite v3.0 · DrakesCraft Network', iconURL: avatarUrl });
+        }
+    }
+
     switch (category) {
         case 'tickets':
             return new EmbedBuilder()
@@ -3998,7 +4460,21 @@ function getShelpCategoryEmbed(category) {
     }
 }
 
-function getShelpButtonRows() {
+function getShelpButtonRows(lang = 'es') {
+    if (lang === 'en') {
+        const row1 = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('btn_shelp_main').setLabel('🏠 Home').setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId('btn_shelp_drakes').setLabel('🧭 Drakes & Menu').setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('btn_shelp_stats').setLabel('📊 Telemetry').setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('btn_shelp_musica').setLabel('🎵 Music').setStyle(ButtonStyle.Primary)
+        );
+        const row2 = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('btn_shelp_tickets').setLabel('🎫 Tickets & SRE').setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('btn_shelp_comunidad').setLabel('💡 Community & Profile').setStyle(ButtonStyle.Success),
+            new ButtonBuilder().setCustomId('btn_shelp_moderacion').setLabel('🛡️ Moderation (Staff)').setStyle(ButtonStyle.Danger)
+        );
+        return [row1, row2];
+    }
     const row1 = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('btn_shelp_main').setLabel('🏠 Inicio').setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId('btn_shelp_drakes').setLabel('🧭 Drakes & Menú').setStyle(ButtonStyle.Primary),
@@ -4141,7 +4617,9 @@ async function registerApplicationSlashCommands(botClient) {
             new SlashCommandBuilder().setName("clear").setDescription("🛡️ Staff: Elimina un número de mensajes recientes del canal")
                 .addIntegerOption(o => o.setName("cantidad").setDescription("Cantidad de mensajes a eliminar (1-100)").setRequired(true)),
             new SlashCommandBuilder().setName("slowmode").setDescription("🛡️ Staff: Ajusta el modo lento de este canal")
-                .addIntegerOption(o => o.setName("segundos").setDescription("Segundos de enfriamiento (0 para desactivar)").setRequired(true))
+                .addIntegerOption(o => o.setName("segundos").setDescription("Segundos de enfriamiento (0 para desactivar)").setRequired(true)),
+            new SlashCommandBuilder().setName("verificar").setDescription("🏛️ Activa tu ciudadanía Polis y desbloquea los canales de la comunidad"),
+            new SlashCommandBuilder().setName("sverificar").setDescription("🏛️ Activa tu ciudadanía Polis y desbloquea los canales de la comunidad")
         ].map(c => c.toJSON());
 
         await rest.put(Routes.applicationCommands(clientId), { body: commands });
@@ -4152,13 +4630,47 @@ async function registerApplicationSlashCommands(botClient) {
 }
 
 async function handleSlashCommand(interaction) {
+    const startTime = Date.now();
+    let cmdSuccess = 1;
+    const rawCmd = interaction.commandName.toLowerCase();
     try {
-        const rawCmd = interaction.commandName.toLowerCase();
         const cmd = rawCmd.startsWith('s') && rawCmd.length > 2 ? rawCmd.slice(1) : rawCmd;
+        const lang = getUserLanguage(interaction.member, interaction.channelId);
 
         // /scumple o /cumple
         if (cmd === 'cumple') {
             return await birthdays.handleBirthdaySlashCommand(interaction, birthdayManager);
+        }
+
+        // /sverificar o /verificar
+        if (['verificar', 'verificacion'].includes(cmd)) {
+            const polisRoleId = '1539643572251271198'; // 🏛️ ︱ ᴘᴏʟɪs
+            const member = interaction.member;
+            if (!member) {
+                return await interaction.reply({ content: '❌ No se pudo identificar tu miembro.', flags: MessageFlags.Ephemeral });
+            }
+            const alreadyHas = member.roles.cache.has(polisRoleId);
+            if (alreadyHas) {
+                return await interaction.reply({
+                    content: `🏛️ **¡Ya eres un Ciudadano verificado de la Polis!**\nTienes acceso completo a todos los canales. Pasa a saludar a <#${CHANNELS.GENERAL_ES}> o conecta a \`mc.drakescraft.cl\`. ✨`,
+                    flags: MessageFlags.Ephemeral
+                });
+            }
+            try {
+                await member.roles.add(polisRoleId);
+                const rawName = member.user.globalName || member.user.username;
+                const targetNick = formatMemberNickname(rawName, member.roles.cache.map(r => r.id), member.id);
+                if (targetNick) {
+                    await member.setNickname(targetNick).catch(() => {});
+                }
+                return await interaction.reply({
+                    content: `🌸 **¡Bienvenido/a a la Polis de DrakesCraft Network!**\nSe te ha otorgado el rol <@&${polisRoleId}> y se han activado todos los canales de la comunidad.\n\n👉 Pasa a presentarte y dejarnos tu nick en <#${CHANNELS.GENERAL_ES}>.\n🎮 Conéctate a Minecraft: \`mc.drakescraft.cl\` (Java & Bedrock)`,
+                    flags: MessageFlags.Ephemeral
+                });
+            } catch (err) {
+                console.error('[ONBOARDING] Error asignando rol Polis en slash command:', err);
+                return await interaction.reply({ content: '⚠️ Hubo un detalle al asignarte el rol. Por favor avisa a un administrador.', flags: MessageFlags.Ephemeral });
+            }
         }
 
         // /srangos, /rangos, /srankup, /rankup
@@ -4185,7 +4697,9 @@ async function handleSlashCommand(interaction) {
         // /sip o /ip
         if (cmd === 'ip') {
             return await interaction.reply({
-                content: '⛏️ **IP de Conexión DrakesCraft:**\n• **Java & Bedrock:** `mc.drakescraft.cl:25565` (Java 1.20.5 - 1.21.x vía ViaVersion / Bedrock Puerto: `25565`)\n• **Texturas (opcional):** `stexturas`'
+                content: lang === 'en'
+                    ? '⛏️ **DrakesCraft Server IP:**\n• **Java & Bedrock:** `mc.drakescraft.cl:25565` (Java 1.20.5 - 1.21.x via ViaVersion / Bedrock Port: `25565`)\n• **Resource Pack (optional):** `stexturas`'
+                    : '⛏️ **IP de Conexión DrakesCraft:**\n• **Java & Bedrock:** `mc.drakescraft.cl:25565` (Java 1.20.5 - 1.21.x vía ViaVersion / Bedrock Puerto: `25565`)\n• **Texturas (opcional):** `stexturas`'
             });
         }
 
@@ -4230,13 +4744,13 @@ async function handleSlashCommand(interaction) {
 
         // /sclaim o /claim
         if (cmd === 'claim') {
-            const claimEmbed = buildClaimsGuideEmbed();
+            const claimEmbed = buildClaimsGuideEmbed(lang);
             return await interaction.reply({ embeds: [claimEmbed] });
         }
 
         // /svotar o /votar
         if (cmd === 'votar') {
-            const voteEmbed = buildVoteGuideEmbed();
+            const voteEmbed = buildVoteGuideEmbed(lang);
             return await interaction.reply({ embeds: [voteEmbed] });
         }
 
@@ -4268,41 +4782,58 @@ async function handleSlashCommand(interaction) {
         // /sguia o /guia
         if (cmd === 'guia') {
             const guiaEmbed = new EmbedBuilder()
-                .setTitle('📖 Enciclopedia & Guías de DrakesCraft')
+                .setTitle(lang === 'en' ? '📖 DrakesCraft Encyclopedia & Guides' : '📖 Enciclopedia & Guías de DrakesCraft')
                 .setColor(0xFFB300)
-                .setDescription('Aquí tienes la documentación oficial para dominar todas las modalidades:')
+                .setDescription(lang === 'en' ? 'Here is the official documentation to master all game modes:' : 'Aquí tienes la documentación oficial para dominar todas las modalidades:')
                 .addFields(
-                    { name: '⚡ Slimefun & Tecnología', value: 'Guía de máquinas, energía y aleaciones: [web.drakescraft.cl/guia.html](https://web.drakescraft.cl/guia.html)' },
-                    { name: '💼 Trabajos y Economía', value: 'Gana dinero minando, talando y crafteando con `/jobs join`.' },
-                    { name: '🏝️ OneBlock & SkyBlock', value: 'Inicia tu isla con `/ob` o `/is` y sube de nivel tu generador.' },
-                    { name: '🛡️ Protecciones', value: 'Asegura tus cofres y parcelas usando menas de protección con `/ps` o pala de oro.' }
+                    lang === 'en' ? [
+                        { name: '⚡ Slimefun & Technology', value: 'Guide to machines, power grids, and alloys: [web.drakescraft.cl/guia.html](https://web.drakescraft.cl/guia.html)' },
+                        { name: '💼 Jobs & Economy', value: 'Earn money mining, logging, and crafting with `/jobs join`.' },
+                        { name: '🏝️ OneBlock & SkyBlock', value: 'Start your island with `/ob` or `/is` and level up your generator.' },
+                        { name: '🛡️ Land Claims', value: 'Protect your chests and plots using a golden shovel with `/claim`.' }
+                    ] : [
+                        { name: '⚡ Slimefun & Tecnología', value: 'Guía de máquinas, energía y aleaciones: [web.drakescraft.cl/guia.html](https://web.drakescraft.cl/guia.html)' },
+                        { name: '💼 Trabajos y Economía', value: 'Gana dinero minando, talando y crafteando con `/jobs join`.' },
+                        { name: '🏝️ OneBlock & SkyBlock', value: 'Inicia tu isla con `/ob` o `/is` y sube de nivel tu generador.' },
+                        { name: '🛡️ Protecciones', value: 'Asegura tus cofres y parcelas usando menas de protección con `/ps` o pala de oro.' }
+                    ]
                 )
-                .setFooter({ text: 'S.A.O.R.I. Guías Oficiales', iconURL: client.user.displayAvatarURL() });
+                .setFooter({ text: lang === 'en' ? 'S.A.O.R.I. Official Guides' : 'S.A.O.R.I. Guías Oficiales', iconURL: client.user.displayAvatarURL() });
             return await interaction.reply({ embeds: [guiaEmbed] });
         }
 
         // /sreglas o /reglas
         if (cmd === 'reglas') {
             const reglasEmbed = new EmbedBuilder()
-                .setTitle('📜 Normativa Oficial de DrakesCraft Network')
+                .setTitle(lang === 'en' ? '📜 Official Rules of DrakesCraft Network' : '📜 Normativa Oficial de DrakesCraft Network')
                 .setColor(0xF1C40F)
-                .setDescription('Para mantener una comunidad justa y divertida, todos los miembros deben respetar:')
+                .setDescription(lang === 'en' ? 'To maintain a fair, respectful, and enjoyable community, all players must abide by the following:' : 'Para mantener una comunidad justa y divertida, todos los miembros deben respetar:')
                 .addFields(
-                    { name: '1. Respeto y Convivencia', value: 'Cero toxicidad, insultos graves, discriminación, acoso o lenguaje de odio.', inline: false },
-                    { name: '2. Juego Limpio', value: 'Prohibido uso de hacks, auto-clickers, x-ray, exploits o duplicaciones.', inline: false },
-                    { name: '3. Respeto a Protecciones', value: 'Prohibido grifear o robar en zonas y reclamos ajenos.', inline: false },
-                    { name: '4. Comercio Justo', value: 'Prohibidas estafas económicas en transacciones o tiendas.', inline: false },
-                    { name: '5. Seguridad', value: 'Prohibido compartir enlaces maliciosos o publicidad no autorizada.', inline: false }
+                    lang === 'en' ? [
+                        { name: '1. Respect & Sportsmanship', value: 'Zero tolerance for severe toxicity, harassment, discrimination, hate speech, or excessive verbal abuse in public or in-game chats.', inline: false },
+                        { name: '2. Fair Play & Prohibited Cheats', value: 'Hacks, x-ray, auto-clickers, baritone, movement exploits, or dupe bugs will result in an immediate permanent ban.', inline: false },
+                        { name: '3. Land Claims & No Griefing', value: 'Griefing around claimed borders, stealing via bugs/unlocked chests, or intentionally trapping/blocking players is strictly forbidden.', inline: false },
+                        { name: '4. One Account Rule (Strict No-Alts Policy)', value: 'Each player is allowed ONLY ONE account. Alternate accounts (alts) to bypass bans, duplicate claim space, farm starter kits, or exploit economy are permanently banned across all accounts.', inline: false },
+                        { name: '5. Fair Trade & Economy', value: 'Scamming in player transactions (`/pay`), chest shops (`/qs`), auction house, or exploiting market bugs will result in balances wiped and bans.', inline: false },
+                        { name: '6. Account Security & Advertising', value: 'Sharing phishing links, IP loggers, malware, or advertising other Minecraft servers is strictly prohibited.', inline: false }
+                    ] : [
+                        { name: '1. Respeto y Convivencia', value: 'Cero toxicidad, insultos graves, discriminación, acoso o lenguaje de odio en canales públicos o chats in-game.', inline: false },
+                        { name: '2. Prohibición de Trampas y Ventajas Desleales', value: 'Uso de hacks, auto-clickers, x-ray, barítonos o modificación de clientes para obtener ventajas está penado con ban permanente.', inline: false },
+                        { name: '3. Respeto a Parcelas y Protecciones', value: 'Grifear alrededor de zonas protegidas, robar en cofres no asegurados con bugs o bloquear accesos está estrictamente prohibido.', inline: false },
+                        { name: '4. Regla de Cuenta Única (Cero Alts)', value: 'Cada jugador tiene permitido jugar ÚNICAMENTE con una sola cuenta. El uso de cuentas secundarias (alts) para evadir sanciones, duplicar parcelas, abusar de kits iniciales o inflar la economía conllevará baneo permanente inmediato en todas sus cuentas.', inline: false },
+                        { name: '5. Economía y Comercio Limpio', value: 'Prohibidas las estafas en transacciones de dinero (`/pay`), tiendas de jugadores (`/qs`) o comercio de ítems.', inline: false },
+                        { name: '6. Seguridad de Cuentas y Enlaces', value: 'Prohibido compartir enlaces maliciosos, IP loggers, phishing o publicidad de otros servidores.', inline: false }
+                    ]
                 )
-                .setFooter({ text: 'Consulta el canal <#' + CHANNELS.REGLAS + '> para la normativa completa' });
+                .setFooter({ text: lang === 'en' ? 'Check <#' + CHANNELS.REGLAS + '> for the full detailed rules.' : 'Consulta el canal <#' + CHANNELS.REGLAS + '> para la normativa completa' });
             return await interaction.reply({ embeds: [reglasEmbed] });
         }
 
         // /shelp o /help
         if (cmd === 'help') {
             const category = interaction.options.getString('categoria') || 'main';
-            const helpEmbed = getShelpCategoryEmbed(category);
-            const shelpRows = getShelpButtonRows();
+            const helpEmbed = getShelpCategoryEmbed(category, lang);
+            const shelpRows = getShelpButtonRows(lang);
             return await interaction.reply({ embeds: [helpEmbed], components: shelpRows });
         }
 
@@ -4359,6 +4890,7 @@ async function handleSlashCommand(interaction) {
                     await sent.edit({ components: [debateRow] }).catch(() => {});
                 }
             } catch (_) {}
+            db.saveSuggestion(counter, interaction.user.id, interaction.member?.displayName || interaction.user.username, propuesta.trim(), sent.id, sugChannel.id);
             return await interaction.reply({ content: `✅ ¡Tu sugerencia **#${counter}** ha sido publicada exitosamente en <#${CHANNELS.SUGERENCIAS}>!\n🔗 Enlace: ${sent.url}`, flags: MessageFlags.Ephemeral });
         }
 
@@ -4492,6 +5024,30 @@ async function handleSlashCommand(interaction) {
             }
         }
 
+        // /sdb o /db
+        if (cmd === 'db') {
+            const h = getStaffMemberHierarchy(interaction.member, interaction.user.id);
+            if (!h.isStaff && interaction.user.id !== JACK_DISCORD_ID) {
+                return await interaction.reply({ content: '❌ Solo los miembros del Staff de DrakesCraft pueden consultar el estado de la base de datos.', flags: MessageFlags.Ephemeral });
+            }
+            const stats = db.getStatsSummary();
+            const embed = new EmbedBuilder()
+                .setTitle('🗄️ SAORI SQLite WAL Database')
+                .setColor(0x9B59B6)
+                .setDescription('**Motor:** SQLite con modo WAL (Write-Ahead Logging)\n**Retención de logs y métricas:** 7 días (rotación y purga automática)')
+                .addFields(
+                    { name: '🔄 Interacciones', value: `\`${stats?.totalInteractions ?? 0}\``, inline: true },
+                    { name: '💡 Sugerencias', value: `\`${stats?.totalSuggestions ?? 0}\``, inline: true },
+                    { name: '🎫 Tickets (Abiertos / Total)', value: `\`${stats?.openTickets ?? 0}\` / \`${stats?.totalTickets ?? 0}\``, inline: true },
+                    { name: '🎂 Cumpleaños', value: `\`${stats?.totalBirthdays ?? 0}\``, inline: true },
+                    { name: '🛡️ Moderación', value: `\`${stats?.totalModerations ?? 0}\``, inline: true },
+                    { name: '📁 Archivos de Log', value: `\`${logger.getActiveLogFiles().length}\` activos`, inline: true }
+                )
+                .setFooter({ text: 'DrakesCraft SRE · SQLite Engine & Weekly Log Pruning' })
+                .setTimestamp();
+            return await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+        }
+
         // /sticket o /ticket
         if (cmd === 'ticket') {
             const issue = interaction.options.getString('problema');
@@ -4555,6 +5111,7 @@ async function handleSlashCommand(interaction) {
                 .setFooter({ text: 'DrakesCraft Moderation Suite' })
                 .setTimestamp();
             await interaction.reply({ embeds: [warnEmbed] });
+            db.recordModeration(targetUser.id, targetUser.tag, interaction.user.id, interaction.user.tag, 'WARN', reason, null);
             await sendAuditLog(warnEmbed);
             await sendModLog(warnEmbed);
             return;
@@ -4595,6 +5152,7 @@ async function handleSlashCommand(interaction) {
                     .setFooter({ text: 'DrakesCraft Moderation Suite' })
                     .setTimestamp();
                 await interaction.reply({ embeds: [muteEmbed] });
+                db.recordModeration(targetMember.id, targetMember.user.tag, interaction.user.id, interaction.user.tag, 'TIMEOUT', reason, durationMs);
                 await sendAuditLog(muteEmbed);
                 await sendModLog(muteEmbed);
                 return;
@@ -4633,6 +5191,7 @@ async function handleSlashCommand(interaction) {
                     .setFooter({ text: 'DrakesCraft Moderation Suite' })
                     .setTimestamp();
                 await interaction.reply({ embeds: [kickEmbed] });
+                db.recordModeration(targetMember.id, targetMember.user.tag, interaction.user.id, interaction.user.tag, 'KICK', reason, null);
                 await sendAuditLog(kickEmbed);
                 await sendModLog(kickEmbed);
                 return;
@@ -4672,6 +5231,7 @@ async function handleSlashCommand(interaction) {
                     .setFooter({ text: 'DrakesCraft Moderation Suite' })
                     .setTimestamp();
                 await interaction.reply({ embeds: [banEmbed] });
+                db.recordModeration(targetUser.id, targetUser.tag, interaction.user.id, interaction.user.tag, 'BAN', reason, null);
                 await sendAuditLog(banEmbed);
                 await sendModLog(banEmbed);
                 return;
@@ -4731,17 +5291,35 @@ async function handleSlashCommand(interaction) {
 
         return await interaction.reply({ content: `⚠️ Comando \`/${interaction.commandName}\` recibido pero sin rutina específica.`, flags: MessageFlags.Ephemeral });
     } catch (err) {
+        cmdSuccess = 0;
         console.error('[SLASH-HANDLER] Error ejecutando comando:', err);
         if (interaction.deferred || interaction.replied) {
             await interaction.followUp({ content: `❌ Ocurrió un error al procesar la orden: ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
         } else {
             await interaction.reply({ content: `❌ Ocurrió un error al procesar la orden: ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
         }
+    } finally {
+        const latency = Date.now() - startTime;
+        db.recordCommand(rawCmd, interaction.user.id, interaction.user.tag || interaction.user.username, interaction.channelId || null, latency, cmdSuccess);
     }
 }
 
 client.on(Events.InteractionCreate, async (interaction) => {
     try {
+        const iType = interaction.isChatInputCommand() ? 'SLASH_COMMAND' : 
+                      (interaction.isButton() ? 'BUTTON' : 
+                      (interaction.isModalSubmit() ? 'MODAL' : 
+                      (interaction.isStringSelectMenu() ? 'SELECT_MENU' : 'OTHER')));
+        const iDetail = interaction.commandName || interaction.customId || null;
+        db.recordInteraction(
+            interaction.user.id,
+            interaction.user.tag || interaction.user.username,
+            interaction.channelId || null,
+            interaction.channel?.name || null,
+            iType,
+            iDetail
+        );
+
         if (await legacyGuild.handleInteraction(interaction)) return;
         if (interaction.guildId === legacyGuild.LEGACY_GUILD_ID) {
             if (interaction.isChatInputCommand()) {
@@ -4793,6 +5371,37 @@ client.on(Events.InteractionCreate, async (interaction) => {
         // 1. MANEJO DE BOTONES (DESPLIEGUE DE FORMULARIOS / MODALES O ACCIONES)
         if (interaction.isButton()) {
             const id = interaction.customId;
+
+            // 🏛️ BOTÓN DE VERIFICACIÓN / ONBOARDING PRIMER PASO (ROL POLIS)
+            if (id === 'btn_verify_polis' || id === 'btn_activar_servidor') {
+                const polisRoleId = '1539643572251271198'; // 🏛️ ︱ ᴘᴏʟɪs
+                const member = interaction.member;
+                if (!member) {
+                    return await interaction.reply({ content: '❌ No se pudo identificar tu usuario.', flags: MessageFlags.Ephemeral });
+                }
+                const alreadyHas = member.roles.cache.has(polisRoleId);
+                if (alreadyHas) {
+                    return await interaction.reply({
+                        content: `🏛️ **¡Ya eres un Ciudadano verificado de la Polis!**\nTienes acceso completo a todos los canales. Pasa a saludar a <#${CHANNELS.GENERAL_ES}> o conecta a \`mc.drakescraft.cl\`. ✨`,
+                        flags: MessageFlags.Ephemeral
+                    });
+                }
+                try {
+                    await member.roles.add(polisRoleId);
+                    const rawName = member.user.globalName || member.user.username;
+                    const targetNick = formatMemberNickname(rawName, member.roles.cache.map(r => r.id), member.id);
+                    if (targetNick) {
+                        await member.setNickname(targetNick).catch(() => {});
+                    }
+                    return await interaction.reply({
+                        content: `🌸 **¡Bienvenido/a a la Polis de DrakesCraft Network!**\nSe te ha otorgado el rol <@&${polisRoleId}> y se han activado todos los canales de la comunidad.\n\n👉 Pasa a presentarte y dejarnos tu nick en <#${CHANNELS.GENERAL_ES}>.\n🎮 Conéctate a Minecraft: \`mc.drakescraft.cl\` (Java & Bedrock)`,
+                        flags: MessageFlags.Ephemeral
+                    });
+                } catch (err) {
+                    console.error('[ONBOARDING] Error asignando rol Polis en botón:', err);
+                    return await interaction.reply({ content: '⚠️ Hubo un detalle al asignarte el rol. Por favor avisa a un administrador.', flags: MessageFlags.Ephemeral });
+                }
+            }
 
             if (id.startsWith('btn_sug_manage_')) {
                 const hierarchy = getStaffMemberHierarchy(interaction.member, interaction.user.id);
@@ -5047,11 +5656,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 return await interaction.reply({ embeds: [profileEmbed], flags: MessageFlags.Ephemeral });
             }
             if (id === 'btn_user_claim') {
-                const claimEmbed = buildClaimsGuideEmbed();
+                const lang = getUserLanguage(interaction.member, interaction.channelId);
+                const claimEmbed = buildClaimsGuideEmbed(lang);
                 return await interaction.reply({ embeds: [claimEmbed], flags: MessageFlags.Ephemeral });
             }
             if (id === 'btn_user_vote') {
-                const voteEmbed = buildVoteGuideEmbed();
+                const lang = getUserLanguage(interaction.member, interaction.channelId);
+                const voteEmbed = buildVoteGuideEmbed(lang);
                 return await interaction.reply({ embeds: [voteEmbed], flags: MessageFlags.Ephemeral });
             }
             if (id === 'btn_smenu_back_home') {
@@ -5062,8 +5673,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
             // NAVEGACIÓN INTERACTIVA DE SHELP
             if (id.startsWith('btn_shelp_')) {
                 const category = id.replace('btn_shelp_', '');
-                const embed = getShelpCategoryEmbed(category);
-                const rows = getShelpButtonRows();
+                const lang = getUserLanguage(interaction.member, interaction.channelId);
+                const embed = getShelpCategoryEmbed(category, lang);
+                const rows = getShelpButtonRows(lang);
                 return await interaction.update({ embeds: [embed], components: rows });
             }
 
@@ -5180,6 +5792,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                     )
                     .setTimestamp();
                 await sendAuditLog(auditEmbed);
+                db.closeTicket(interaction.channel.id, interaction.user.tag || interaction.user.username, 'Cerrado por usuario o staff');
 
                 setTimeout(() => {
                     interaction.channel.delete().catch(() => null);
@@ -5240,13 +5853,190 @@ client.on(Events.InteractionCreate, async (interaction) => {
                         )
                         .setTimestamp();
                     await sendAuditLog(auditEmbed);
-                } else {
-                    await interaction.followUp({
-                        content: `❌ Hubo un problema al comunicar con la consola del servidor para ejecutar el código \`${code}\`. Verifica si el servidor está en línea o contacta al Staff.`,
-                        flags: MessageFlags.Ephemeral
-                    }).catch(() => null);
                 }
                 return;
+            }
+
+            // ── BOTONES DE ACCIÓN RÁPIDA STAFF (SAORI SRE) ──
+            if (id === 'btn_staff_spark_60s') {
+                const hierarchy = getStaffMemberHierarchy(interaction.member, interaction.user.id);
+                const isJack = interaction.user.id === JACK_DISCORD_ID;
+                if (!hierarchy.isStaff && !isJack) {
+                    return await interaction.reply({
+                        content: '❌ **Acceso denegado:** Solo los miembros del Staff oficial pueden solicitar diagnósticos Spark.',
+                        flags: MessageFlags.Ephemeral
+                    });
+                }
+
+                await interaction.reply({
+                    content: '⏳ **Iniciando análisis Spark de 60 segundos en Dallas...**\n`spark profiler start --timeout 60` enviado a consola. Analizando hilo principal, por favor espera ~65 segundos.',
+                    flags: MessageFlags.Ephemeral
+                });
+
+                // Ejecución en background
+                try {
+                    const sparkRes = await triggerSparkAnalysis(60);
+                    if (sparkRes && sparkRes.ok && sparkRes.formatted) {
+                        await interaction.followUp({
+                            content: sparkRes.formatted,
+                            flags: MessageFlags.Ephemeral
+                        });
+                    } else {
+                        await interaction.followUp({
+                            content: `❌ No se pudo completar el análisis Spark: ${sparkRes?.error || 'Sin respuesta del servidor'}`,
+                            flags: MessageFlags.Ephemeral
+                        });
+                    }
+                } catch (e) {
+                    await interaction.followUp({
+                        content: `❌ Error contactando con el daemon Spark: ${e.message}`,
+                        flags: MessageFlags.Ephemeral
+                    });
+                }
+                return;
+            }
+
+            if (id === 'btn_staff_tps') {
+                const hierarchy = getStaffMemberHierarchy(interaction.member, interaction.user.id);
+                const isJack = interaction.user.id === JACK_DISCORD_ID;
+                if (!hierarchy.isStaff && !isJack) {
+                    return await interaction.reply({
+                        content: '❌ **Acceso denegado:** Solo Staff puede consultar métricas de consola.',
+                        flags: MessageFlags.Ephemeral
+                    });
+                }
+
+                await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+                const tpsRes = await askSaoriBrain('spark tps', interaction.user.username, '', true);
+                return await interaction.editReply({
+                    content: tpsRes || 'No se pudo obtener el reporte de TPS en este momento.'
+                });
+            }
+
+            if (id === 'btn_staff_players') {
+                const hierarchy = getStaffMemberHierarchy(interaction.member, interaction.user.id);
+                const isJack = interaction.user.id === JACK_DISCORD_ID;
+                if (!hierarchy.isStaff && !isJack) {
+                    return await interaction.reply({
+                        content: '❌ **Acceso denegado:** Solo Staff puede ver la lista de jugadores.',
+                        flags: MessageFlags.Ephemeral
+                    });
+                }
+
+                await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+                const playersRes = await askSaoriBrain('quien esta conectado', interaction.user.username, '', true);
+                return await interaction.editReply({
+                    content: playersRes || 'No se pudo obtener la lista de jugadores.'
+                });
+            }
+
+            // BOTÓN REINICIO SEGURO: Abre modal con motivo y mensaje /say in-game
+            if (id === 'btn_staff_safe_restart') {
+                const hierarchy = getStaffMemberHierarchy(interaction.member, interaction.user.id);
+                const isJack = interaction.user.id === JACK_DISCORD_ID;
+                const canRestart = isJack || hierarchy.level >= STAFF_LEVELS.DEV; // Admin, Dev y Owner
+                if (!canRestart) {
+                    return await interaction.reply({
+                        content: '❌ **Acceso denegado:** El reinicio seguro está restringido estrictamente a los roles **Admin, Dev y Owner** (High Staff / Dirección).',
+                        flags: MessageFlags.Ephemeral
+                    });
+                }
+
+                const modal = new ModalBuilder()
+                    .setCustomId('modal_staff_restart_confirm')
+                    .setTitle('🔄 Protocolo de Reinicio Seguro (Paso 1)');
+
+                const reasonInput = new TextInputBuilder()
+                    .setCustomId('restart_reason')
+                    .setLabel('Motivo del Reinicio (Auditoría / Logs)')
+                    .setStyle(TextInputStyle.Short)
+                    .setRequired(true)
+                    .setPlaceholder('Ej: Mantenimiento por lag de redes / Parche de plugins')
+                    .setMaxLength(100);
+
+                const sayInput = new TextInputBuilder()
+                    .setCustomId('restart_say_message')
+                    .setLabel('Mensaje in-game previo (/say a Dallas)')
+                    .setStyle(TextInputStyle.Paragraph)
+                    .setRequired(true)
+                    .setPlaceholder('Ej: Reinicio por mantenimiento de estabilidad. Volvemos en 2 minutos.')
+                    .setMaxLength(200);
+
+                const waitInput = new TextInputBuilder()
+                    .setCustomId('restart_wait_seconds')
+                    .setLabel('Tiempo de aviso en segundos (mínimo 120s)')
+                    .setStyle(TextInputStyle.Short)
+                    .setRequired(false)
+                    .setValue('120')
+                    .setMaxLength(4);
+
+                modal.addComponents(
+                    new ActionRowBuilder().addComponents(reasonInput),
+                    new ActionRowBuilder().addComponents(sayInput),
+                    new ActionRowBuilder().addComponents(waitInput)
+                );
+
+                return await interaction.showModal(modal);
+            }
+
+            // DOBLE CONFIRMACIÓN: Click en confirmar reinicio
+            if (id.startsWith('btn_confirm_exec_restart_')) {
+                const hierarchy = getStaffMemberHierarchy(interaction.member, interaction.user.id);
+                const isJack = interaction.user.id === JACK_DISCORD_ID;
+                const canRestart = isJack || hierarchy.level >= STAFF_LEVELS.DEV;
+                if (!canRestart) {
+                    return await interaction.reply({
+                        content: '❌ **Acceso denegado:** No posees rango suficiente para confirmar el reinicio.',
+                        flags: MessageFlags.Ephemeral
+                    });
+                }
+
+                const nonce = id.replace('btn_confirm_exec_restart_', '');
+                const pendingData = pendingRestartRequests.get(nonce);
+                if (!pendingData) {
+                    return await interaction.update({
+                        content: '⚠️ Esta solicitud de reinicio ya expiró o fue procesada.',
+                        components: [],
+                        embeds: []
+                    });
+                }
+
+                pendingRestartRequests.delete(nonce);
+
+                await interaction.update({
+                    content: `🔄 **Ejecutando Protocolo de Reinicio Seguro...**\n• **Operador:** ${interaction.user.username}\n• **Motivo:** ${pendingData.reason}\n• **Aviso in-game:** ${pendingData.seconds}s`,
+                    components: [],
+                    embeds: []
+                });
+
+                const res = await triggerSafePowerAction(
+                    'restart',
+                    pendingData.seconds,
+                    pendingData.reason,
+                    interaction.user.username,
+                    pendingData.sayMessage
+                );
+
+                if (res.ok) {
+                    await interaction.followUp({
+                        content: `✅ **Reinicio Seguro en marcha:** ${res.message || 'Proceso iniciado correctamente.'}\nSe ha transmitido el aviso previo vía \`/say\` a los jugadores in-game.`,
+                        flags: MessageFlags.Ephemeral
+                    });
+                } else {
+                    await interaction.followUp({
+                        content: `❌ **Error iniciando reinicio seguro:** ${res.error || 'Fallo desconocido'}`,
+                        flags: MessageFlags.Ephemeral
+                    });
+                }
+                return;
+            }
+
+            if (id === 'btn_cancel_exec_restart') {
+                return await interaction.update({
+                    content: '🛑 **Operación de reinicio seguro cancelada.** No se han realizado cambios en el servidor.',
+                    components: [],
+                    embeds: []
+                });
             }
         }
 
@@ -5292,6 +6082,78 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
             if (customId === 'modal_cumple_register') {
                 return await birthdays.handleBirthdayModalSubmit(interaction, birthdayManager);
+            }
+
+            // DOBLE CONFIRMACIÓN DE REINICIO SEGURO (MODAL SUBMISSION -> BOTONES DE CONFIRMACIÓN)
+            if (customId === 'modal_staff_restart_confirm') {
+                const hierarchy = getStaffMemberHierarchy(interaction.member, interaction.user.id);
+                const isJack = interaction.user.id === JACK_DISCORD_ID;
+                const canRestart = isJack || hierarchy.level >= STAFF_LEVELS.DEV;
+                if (!canRestart) {
+                    return await interaction.reply({
+                        content: '❌ **Acceso denegado:** Solo roles **Admin, Dev y Owner** pueden coordinar reinicios.',
+                        flags: MessageFlags.Ephemeral
+                    });
+                }
+
+                const reason = interaction.fields.getTextInputValue('restart_reason')?.trim() || 'Mantenimiento del servidor';
+                const sayMessage = interaction.fields.getTextInputValue('restart_say_message')?.trim() || reason;
+                const waitSecsStr = interaction.fields.getTextInputValue('restart_wait_seconds')?.trim() || '120';
+                let waitSecs = parseInt(waitSecsStr, 10);
+                if (isNaN(waitSecs) || waitSecs < 120) {
+                    waitSecs = 120; // Garantía canónica: mínimo 120s
+                }
+
+                const nonce = crypto.randomBytes(8).toString('hex');
+                pendingRestartRequests.set(nonce, {
+                    reason,
+                    sayMessage,
+                    seconds: waitSecs,
+                    user: interaction.user.username,
+                    userId: interaction.user.id,
+                    timestamp: Date.now()
+                });
+
+                // Auto-expirar solicitud en 3 minutos
+                setTimeout(() => {
+                    pendingRestartRequests.delete(nonce);
+                }, 180000);
+
+                const confirmEmbed = new EmbedBuilder()
+                    .setColor(0xFF0000)
+                    .setTitle('⚠️ Confirmación Crítica: Reinicio Seguro en Dallas')
+                    .setDescription(
+                        `Estás a punto de iniciar el **Protocolo de Reinicio Seguro** en DrakesCraft (Dallas).\n\n` +
+                        `📋 **Detalles de la Operación:**\n` +
+                        `• **Operador:** <@${interaction.user.id}>\n` +
+                        `• **Motivo:** \`${reason}\`\n` +
+                        `• **Aviso in-game:** \`${waitSecs} segundos\` de cuenta atrás progresiva\n` +
+                        `• **Mensaje transmitido (/say):**\n` +
+                        `> *§c§l[REINICIO]§e ${sayMessage}*\n\n` +
+                        `🛡️ **Acciones Atómicas que se ejecutarán:**\n` +
+                        `1. Difusión previa inmediata vía \`/say\` a todos los jugadores.\n` +
+                        `2. Cuenta atrás verificada con guardado de Slimefun e inventarios IRP.\n` +
+                        `3. Expulsión limpia de jugadores y \`save-all flush\` antes de la señal Pterodactyl.\n\n` +
+                        `¿Deseas autorizar la ejecución inmediata?`
+                    )
+                    .setFooter({ text: 'Doble Confirmación Requerida · Vence en 3 minutos' });
+
+                const confirmRow = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`btn_confirm_exec_restart_${nonce}`)
+                        .setLabel('🔴 CONFIRMAR REINICIO AHORA')
+                        .setStyle(ButtonStyle.Danger),
+                    new ButtonBuilder()
+                        .setCustomId('btn_cancel_exec_restart')
+                        .setLabel('⚪ Cancelar Operación')
+                        .setStyle(ButtonStyle.Secondary)
+                );
+
+                return await interaction.reply({
+                    embeds: [confirmEmbed],
+                    components: [confirmRow],
+                    flags: MessageFlags.Ephemeral
+                });
             }
             const guild = interaction.guild;
             const user = interaction.user;
@@ -5495,6 +6357,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             });
 
             // Despachar a la Trinidad SRE en Star si es bug o reporte técnico
+            db.saveTicket(ticketChannel.id, ticketChannel.id, user.id, user.tag || user.username, tipo);
             dispatchTicketToTriad(
                 `[Ticket ${tipo.toUpperCase()}] ${summaryText.slice(0, 50)}...`,
                 summaryText,
@@ -5674,7 +6537,363 @@ async function handleSocialMediaVideoPreview(message) {
     }
 }
 
+// Gestión de Mensajes y Tickets
+// 🎥 Previsualizador automático de Reels de Instagram, TikTok y videos sociales
+async function handleSocialMediaVideoPreview(message) {
+    if (message.author.bot) return;
+
+    const igRegex = /https?:\/\/(?:www\.)?instagram\.com\/(?:reel|p)\/([a-zA-Z0-9_-]+)[^\s]*/i;
+    const ttRegex = /https?:\/\/(?:www\.)?(?:tiktok\.com\/@[^\s\/]+\/video\/\d+|vm\.tiktok\.com\/[a-zA-Z0-9_-]+)[^\s]*/i;
+    
+    const match = message.content.match(igRegex) || message.content.match(ttRegex);
+    if (!match) return;
+
+    const rawUrl = match[0];
+    const isInstagram = rawUrl.includes('instagram.com');
+    const mediaId = match[1] || crypto.randomBytes(4).toString('hex');
+    const tempOut = `/tmp/saori_vid_${Date.now()}_${mediaId}.mp4`;
+
+    try {
+        await message.react('🎬').catch(() => {});
+
+        await new Promise((resolve, reject) => {
+            execFile('yt-dlp', [
+                '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+                '--max-filesize', '24M',
+                '--no-playlist',
+                rawUrl,
+                '-o', tempOut
+            ], { timeout: 35000 }, (err) => {
+                if (err) return reject(err);
+                resolve();
+            });
+        });
+
+        if (fs.existsSync(tempOut)) {
+            const stats = fs.statSync(tempOut);
+            if (stats.size > 0 && stats.size <= 24 * 1024 * 1024) {
+                await message.reply({
+                    content: `🎬 **Video ${isInstagram ? 'Reel de Instagram' : 'TikTok'}:**`,
+                    files: [new AttachmentBuilder(tempOut, { name: `video_${mediaId}.mp4` })],
+                    allowedMentions: { repliedUser: false }
+                });
+            }
+        }
+    } catch (err) {
+        console.error(`[SAORI-VIDEO] Error procesando video ${rawUrl}:`, err.message);
+    } finally {
+        if (fs.existsSync(tempOut)) {
+            try { fs.unlinkSync(tempOut); } catch (ignored) {}
+        }
+    }
+}
+
+// 🌐 Traducción bajo demanda: reacciona con 🌐 a cualquier mensaje
+client.on(Events.MessageReactionAdd, async (reaction, user) => {
+    try {
+        if (user.bot) return;
+        if (reaction.emoji.name !== '🌐') return;
+        if (reaction.partial) { try { await reaction.fetch(); } catch (e) { return; } }
+        const msg = reaction.message.partial ? await reaction.message.fetch().catch(() => null) : reaction.message;
+        if (!msg || !msg.content || !msg.content.trim()) return;
+        let out = await translator.traducir(msg.content, 'es'), destino = 'ES';
+        if (out && out.origen === 'es') { out = await translator.traducir(msg.content, 'en'); destino = 'EN'; }
+        if (!out || !out.texto) return;
+
+        // En canales de anuncios oficiales no ensuciar el canal publico: enviar por MD
+        if (ANNOUNCEMENT_CHANNELS.includes(msg.channel.id)) {
+            try {
+                await user.send({
+                    embeds: [new EmbedBuilder().setColor(0x3498DB)
+                        .setDescription(`ðŸŒ� **${destino}:** ${out.texto}`)
+                        .setFooter({ text: `Traduccion solicitada de #${msg.channel.name} Â· Saori` })],
+                });
+            } catch (ignored) {}
+            return;
+        }
+
+        await msg.reply({
+            embeds: [new EmbedBuilder().setColor(0x3498DB)
+                .setDescription(`ðŸŒ� **${destino}:** ${out.texto}`)
+                .setFooter({ text: `pedido por ${user.username} Â· Saori` })],
+            allowedMentions: { repliedUser: false },
+        }).catch(() => {});
+    } catch (e) { console.error('[SAORI-TRAD-REACT]', e.message); }
+});
+
+// 🌐 Canales de Anuncios Oficiales con Auto-Traducción Simultánea
+const ANNOUNCEMENT_CHANNELS = [
+    CHANNELS.ANUNCIOS_DISCORD, // 1539636299395502211
+    CHANNELS.ANUNCIOS_MC,      // 1539636335307137145
+    CHANNELS.CHANGELOG         // 1539636837168185456
+];
+
+const processedAnnouncementTranslations = new Set();
+
+async function handleAnnouncementAutoTranslation(message) {
+    if (!message || !message.channel || !message.guild) return;
+    if (processedAnnouncementTranslations.has(message.id)) return;
+
+    // Prevencion de bucles infinitos y duplicados: ignorar cualquier bot o mensaje propio de Saori
+    if (message.author?.bot || message.author?.id === client.user.id) return;
+
+    // Esperar brevemente (1.5s) para asegurar que los embeds de Discord/Webhooks se hayan registrado en la API
+    await new Promise(r => setTimeout(r, 1500));
+
+    let fullMsg = message;
+    try {
+        fullMsg = await message.channel.messages.fetch(message.id);
+    } catch (e) {
+        fullMsg = message;
+    }
+
+    if (processedAnnouncementTranslations.has(fullMsg.id)) return;
+    processedAnnouncementTranslations.add(fullMsg.id);
+
+    const embeds = fullMsg.embeds || [];
+    const content = (fullMsg.content || '').trim();
+
+    if (embeds.length === 0 && content.length < 5) return;
+
+    try {
+        if (embeds.length > 0) {
+            const translatedEmbeds = [];
+            let targetLang = 'en';
+
+            for (const emb of embeds) {
+                const tr = await translator.traducirEmbed(emb, 'en');
+                if (tr && tr.embed) {
+                    targetLang = tr.targetLang;
+                    translatedEmbeds.push(tr.embed);
+                }
+            }
+
+            if (translatedEmbeds.length > 0) {
+                const headerText = targetLang === 'en'
+                    ? '🌐 **Official English Announcement / Comunicado en Inglés**'
+                    : '🌐 **Traducción Oficial al Español**';
+
+                await fullMsg.reply({
+                    content: headerText,
+                    embeds: translatedEmbeds,
+                    allowedMentions: { repliedUser: false }
+                });
+                await fullMsg.react('🌐').catch(() => null);
+                console.log(`[ANNOUNCEMENT-TRAD] ✅ Anuncio traducido y publicado en #${fullMsg.channel.name} (${fullMsg.channel.id})`);
+            }
+        } else if (content.length >= 5) {
+            // Mensaje de texto plano sin embeds (limpiar posibles pings masivos del texto traducido)
+            const cleanText = content.replace(/<@&?\d+>/g, '').trim();
+            if (cleanText.length >= 3) {
+                const tr = await translator.traducir(cleanText, 'en');
+                if (tr && tr.texto && tr.origen && tr.origen !== 'en') {
+                    const embed = new EmbedBuilder()
+                        .setTitle('🌐 Official English Announcement')
+                        .setDescription(tr.texto)
+                        .setColor(0x3498DB)
+                        .setFooter({ text: '🌐 Official English Translation · Saori Multi-Language Bridge' })
+                        .setTimestamp(fullMsg.createdAt);
+
+                    await fullMsg.reply({
+                        embeds: [embed],
+                        allowedMentions: { repliedUser: false }
+                    });
+                    await fullMsg.react('🌐').catch(() => null);
+                    console.log(`[ANNOUNCEMENT-TRAD] ✅ Anuncio de texto traducido en #${fullMsg.channel.name}`);
+                }
+            }
+        }
+    } catch (err) {
+        console.error('[ANNOUNCEMENT-TRAD] Error procesando traducción de anuncio:', err.message);
+    }
+}
+
+const seenDiscordMessageIds = new Set();
+function isDuplicateDiscordMessage(msgId) {
+    if (!msgId) return false;
+    if (seenDiscordMessageIds.has(msgId)) return true;
+    seenDiscordMessageIds.add(msgId);
+    if (seenDiscordMessageIds.size > 2000) {
+        const it = seenDiscordMessageIds.values();
+        for (let i = 0; i < 500; i++) {
+            seenDiscordMessageIds.delete(it.next().value);
+        }
+    }
+    setTimeout(() => seenDiscordMessageIds.delete(msgId), 30000);
+    return false;
+}
+
 client.on('messageCreate', async (message) => {
+    // 🛡️ DEDUPLICACIÓN DE EVENTOS DE MENSAJE (Evita ejecuciones concurrentes idénticas en milisegundos)
+    if (!message || !message.id || isDuplicateDiscordMessage(message.id)) return;
+
+    // 📌 GESTIÓN Y DESPACHO DE TAREAS SOBERANAS DE JACK (DRAKES & SLIMEFUN)
+    const isTaskMsg = await taskManager.handleTaskMessage(message).catch(e => {
+        console.error('[TASK-MANAGER] Error handling task message:', e.message);
+        return false;
+    });
+    if (isTaskMsg) return;
+
+    // 🛡️ SLIMEFUN-HUB-CHANNEL-MODERATION: Moderación de Canales y Política Anti-Enlaces
+    if (message.guild && message.guild.id === '699391897369575476' && !message.author.bot) {
+        const isStaff = message.member?.permissions?.has('ManageMessages') || message.author.id === JACK_DISCORD_ID;
+        
+        if (!isStaff) {
+            const chId = message.channel.id;
+            const contentText = message.content || '';
+            const urls = contentText.match(/https?:\/\/[^\s]+/gi) || [];
+
+            // 1. Canal #📷・ᴍᴇᴅɪᴀ-ʏ-ᴇɴʟᴀᴄᴇs (1554118948121743401): Solo capturas, videos y enlaces
+            if (chId === '1554118948121743401') {
+                const hasMedia = message.attachments.size > 0 || urls.length > 0;
+                if (!hasMedia && !message.channel.isThread()) {
+                    await message.delete().catch(() => {});
+                    const warn = await message.channel.send({
+                        content: `📷 ${message.author}, este canal es exclusivo para capturas, videos y enlaces multimedia. Para conversar sobre las imágenes, abre un hilo en la publicación o ve a <#1554118954140827659> (#☕・ᴏғғ-ᴛᴏᴘɪᴄ).`
+                    }).catch(() => null);
+                    if (warn) setTimeout(() => warn.delete().catch(() => {}), 8000);
+                    return;
+                }
+            }
+
+            // 2. Política Anti-Enlaces no autorizados en canales regulares
+            const ALLOWED_LINK_CHANNELS = [
+                '1554118948121743401', // #📷・ᴍᴇᴅɪᴀ-ʏ-ᴇɴʟᴀᴄᴇs
+                '1554118924121931917', // #💡・ᴘʀᴏᴊᴇᴄᴛs
+                '1554118742093332551', // #✨・ᴀᴅᴅᴏɴ-sʜᴏᴡᴄᴀsᴇ
+                '1554118744899461153', // #🖥️・sᴇʀᴠᴇʀ-sʜᴏᴡᴄᴀsᴇ
+                '1554118885857562624', // #📦・ᴛᴇsᴛɪɴɢ-ʙᴜɪʟᴅs
+                '1547456208506585178'  // #💬・sᴛᴀғғ-ᴄʜᴀᴛ
+            ];
+
+            const ALLOWED_DOMAINS = [
+                'github.com',
+                'gist.github.com',
+                'raw.githubusercontent.com',
+                'pastebin.com',
+                'mclo.gs',
+                'paste.gg',
+                'bytebin.lucko.me',
+                'hastebin.com',
+                'spigotmc.org',
+                'modrinth.com',
+                'hangar.papermc.io',
+                'papermc.io',
+                'drakescraft.cl',
+                'youtube.com',
+                'youtu.be'
+            ];
+
+            if (!ALLOWED_LINK_CHANNELS.includes(chId) && urls.length > 0 && !message.channel.isThread()) {
+                const hasUnauthorizedLink = urls.some(u => {
+                    try {
+                        const parsed = new URL(u);
+                        const host = parsed.hostname.toLowerCase();
+                        return !ALLOWED_DOMAINS.some(allowed => host === allowed || host.endsWith('.' + allowed));
+                    } catch {
+                        return true;
+                    }
+                });
+
+                if (hasUnauthorizedLink) {
+                    await message.delete().catch(() => {});
+                    const warn = await message.channel.send({
+                        content: `⚠️ ${message.author}, los enlaces externos no autorizados están restringidos en este canal para prevenir spam y sitios no seguros. Si deseas compartir capturas, videos o enlaces comunitarios, por favor utiliza <#1554118948121743401> (#📷・ᴍᴇᴅɪᴀ-ʏ-ᴇɴʟᴀᴄᴇs) o consulta a un moderador.`
+                    }).catch(() => null);
+                    if (warn) setTimeout(() => warn.delete().catch(() => {}), 9000);
+
+                    // Registrar en mod-logs
+                    const modLogs = message.guild.channels.cache.get('1547456210025058314');
+                    if (modLogs) {
+                        const logEmbed = new EmbedBuilder()
+                            .setTitle('🛡️ Enlace no autorizado bloqueado')
+                            .setColor(0xE74C3C)
+                            .setDescription(`**Usuario:** ${message.author.tag} (\`${message.author.id}\`)\n**Canal:** <#${chId}>\n**Contenido:**\n\`\`\`${contentText.slice(0, 500)}\`\`\``)
+                            .setTimestamp();
+                        modLogs.send({ embeds: [logEmbed] }).catch(() => {});
+                    }
+                    return;
+                }
+            }
+
+            // 3. Auto-Reacciones y Auto-Hilos en #🗳️・sᴜɢɢᴇsᴛɪᴏɴs (1554118951254892585)
+            if (chId === '1554118951254892585' && !message.channel.isThread()) {
+                await message.react('👍').catch(() => {});
+                await message.react('👎').catch(() => {});
+                const summary = contentText.slice(0, 50).replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ ]/g, '').trim() || 'Debate de Sugerencia';
+                await message.startThread({
+                    name: `🗳️・${summary}`,
+                    autoArchiveDuration: 1440
+                }).catch(() => {});
+            }
+
+            // 4. Auto-Hilos en #🐛・ʙᴜɢ-ʀᴇᴘᴏʀᴛs (1554118882992726146)
+            if (chId === '1554118882992726146' && !message.channel.isThread()) {
+                const summary = contentText.slice(0, 45).replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ ]/g, '').trim() || 'Investigación de Bug';
+                await message.startThread({
+                    name: `🐛・${message.author.username} - ${summary}`,
+                    autoArchiveDuration: 1440
+                }).catch(() => {});
+            }
+        }
+    }
+
+    // 🌐 Auto-traducción simultánea en Canales Oficiales de Anuncios y Changelogs
+    // (1539636299395502211, 1539636335307137145, 1539636837168185456)
+        // 💻 Embellecedor + bridge de avisos de GitHub (push): enchulado en el canal origen y en el hub Slimefun
+    if (message.webhookId && message.channel.id === '1539636813239419001') {
+        const hubGithubCh = client.guilds.cache.get('699391897369575476')?.channels.cache.get('1554118738939215902');
+        const rich = buildGithubEmbed(message.content);
+        if (rich) {
+            // En el canal origen (DrakesCraft Network): reemplaza el mensaje plano por el embed bonito.
+            try {
+                await message.channel.send({ embeds: [rich] });
+                await message.delete().catch(() => {});
+            } catch (e) {
+                console.error('[GITHUB-EMBELLECER] Error en canal origen:', e.message);
+            }
+            if (hubGithubCh) hubGithubCh.send({ embeds: [rich] }).catch(e => console.error('[GITHUB-HUB-BRIDGE]', e.message));
+        } else if (hubGithubCh) {
+            // Fallback: si no se pudo parsear, al menos espeja el original al hub.
+            hubGithubCh.send({ content: message.content || undefined, embeds: message.embeds })
+                .catch(e => console.error('[GITHUB-HUB-BRIDGE]', e.message));
+        }
+    }
+
+    // 🔔 AUTO-NOTIFICACIONES Y PINGS EN CANALES DE AVISOS
+    // Se ejecuta para cualquier mensaje (humanos, bots, webhooks o scripts) en canales de avisos oficiales.
+    const targetNotifRoleId = NOTIFICATION_CHANNELS_MAP[message.channel.id];
+    if (targetNotifRoleId && message.guild) {
+        // Ignorar si es la propia Saori emitiendo la respuesta de traducción bilingüe en inglés o un ping propio
+        const isTranslationReply = message.author.id === client.user.id && (
+            message.content?.includes('Official English Announcement') ||
+            message.content?.includes('Traducción Oficial al Español') ||
+            message.embeds?.some(e => e.footer?.text && (e.footer.text.includes('Multi-Language Bridge') || e.footer.text.includes('Translation')))
+        );
+        const alreadyMentionsRole = message.mentions.roles.has(targetNotifRoleId) || 
+                                     (message.content && message.content.includes(`<@&${targetNotifRoleId}>`));
+        const isSelfPing = message.author.id === client.user.id && message.content && message.content.startsWith(`<@&${targetNotifRoleId}>`);
+        const now = Date.now();
+        const lastNotif = notifChannelCooldowns.get(message.channel.id) || 0;
+
+        if (!alreadyMentionsRole && !isSelfPing && !isTranslationReply && (now - lastNotif > 10000)) {
+            notifChannelCooldowns.set(message.channel.id, now);
+            try {
+                await message.channel.send({
+                    content: `<@&${targetNotifRoleId}> 🔔`,
+                    allowedMentions: { roles: [targetNotifRoleId] }
+                });
+                console.log(`[AUTO-NOTIF] 🔔 Rol ${targetNotifRoleId} etiquetado automáticamente en #${message.channel.name}`);
+            } catch (err) {
+                console.error('[AUTO-NOTIF] Error al enviar ping de rol:', err.message);
+            }
+        }
+    }
+
+    if (message.guild && ANNOUNCEMENT_CHANNELS.includes(message.channel.id)) {
+        await handleAnnouncementAutoTranslation(message).catch(e => console.error('[ANNOUNCEMENT-TRAD]', e.message));
+    }
+
     if (message.author.bot) return;
 
     // DIRECTIVA JACK: Saori NUNCA responde ni procesa mensajes por DM privado
@@ -5684,6 +6903,9 @@ client.on('messageCreate', async (message) => {
 
     // 🎥 Auto-previsualizador de videos (Reels de Instagram / TikTok)
     handleSocialMediaVideoPreview(message).catch(e => console.error('[SAORI-VIDEO-PREVIEW] Error:', e.message));
+
+    // 🛡️ Anti-flood/anti-spam comunitario (ambos guilds, antes de cualquier rama)
+    if (await guard.antiFlood(message)) return;
 
     if (message.guildId === legacyGuild.LEGACY_GUILD_ID) {
         // NEXO: funciones deterministas (hilos de ayuda/ideas) y, desde pass2 2026-09-16, IA acotada
@@ -5715,6 +6937,22 @@ client.on('messageCreate', async (message) => {
                 await message.react('🔥');
             } catch (ignored) {}
         }
+    }
+
+    // 🌐 Puente bilingüe: en #general-english traduce lo no-inglés al inglés
+    if (message.channel.id === GENERAL_EN_CHANNEL && (message.content || '').trim().length > 3) {
+        try {
+            const resTr = await translator.traducir(message.content, 'en');
+            if (resTr && resTr.origen && resTr.origen !== 'en' && resTr.texto &&
+                resTr.texto.toLowerCase() !== message.content.trim().toLowerCase()) {
+                await message.reply({
+                    embeds: [new EmbedBuilder().setColor(0x3498DB)
+                        .setDescription(`🌐 **EN:** ${resTr.texto}`)
+                        .setFooter({ text: `traducido de ${resTr.origen} · Saori` })],
+                    allowedMentions: { repliedUser: false },
+                }).catch(() => {});
+            }
+        } catch (e) { console.error('[SAORI-BILINGUE]', e.message); }
     }
 
     // 1. Detección y respuesta en Minecraft Chat (DiscordSRV Webhook / Bridge)
@@ -5807,29 +7045,6 @@ client.on('messageCreate', async (message) => {
         if (message.author.bot || message.webhookId) return;
     }
 
-    // 🔔 AUTO-NOTIFICACIONES Y PINGS EN CANALES DE AVISOS
-    const targetNotifRoleId = NOTIFICATION_CHANNELS_MAP[message.channel.id];
-    if (targetNotifRoleId) {
-        const alreadyMentionsRole = message.mentions.roles.has(targetNotifRoleId) || 
-                                     message.content.includes(`<@&${targetNotifRoleId}>`);
-        const isSelfPing = message.author.id === client.user.id && message.content.startsWith(`<@&${targetNotifRoleId}>`);
-        const now = Date.now();
-        const lastNotif = notifChannelCooldowns.get(message.channel.id) || 0;
-        if (!alreadyMentionsRole && !isSelfPing && (now - lastNotif > 10000)) {
-            notifChannelCooldowns.set(message.channel.id, now);
-            try {
-                await message.channel.send({
-                    content: `<@&${targetNotifRoleId}> 🔔`,
-                    allowedMentions: { roles: [targetNotifRoleId] }
-                });
-                console.log(`[AUTO-NOTIF] 🔔 Rol ${targetNotifRoleId} etiquetado automáticamente en #${message.channel.name}`);
-            } catch (err) {
-                console.error('[AUTO-NOTIF] Error al enviar ping de rol:', err.message);
-            }
-        }
-    }
-
-    if (message.author.bot) return;
 
     // 🕒 RESPUESTA AUTOMÁTICA SI MENCIONAN A JACK EN HORARIO LABORAL
     let workHoursNoticeSent = false;
@@ -6176,6 +7391,8 @@ client.on('messageCreate', async (message) => {
     // =========================================================================
     // COMANDO SHELP (GUÍA COMPLETA DE COMANDOS SAORI v3.0)
     // =========================================================================
+    const userLang = getUserLanguage(message.member, message.channel.id, contentLower);
+
     if (contentLower === 'shelp' || contentLower === '/shelp' || contentLower === '!shelp' || 
         contentLower === 'saori help' || contentLower === 'saori shelp' ||
         contentLower.startsWith('shelp ') || contentLower.startsWith('/shelp ') || contentLower.startsWith('!shelp ')) {
@@ -6184,16 +7401,16 @@ client.on('messageCreate', async (message) => {
         let category = 'main';
         if (args.length > 0) {
             const requested = args[0].toLowerCase();
-            if (['tickets', 'ticket', 'soporte'].includes(requested)) category = 'tickets';
-            else if (['musica', 'music', 'play', 'cancion'].includes(requested)) category = 'musica';
-            else if (['stats', 'tps', 'telemetria', 'rendimiento', 'online'].includes(requested)) category = 'stats';
-            else if (['drakes', 'menu', 'perfil', 'staff', 'vip', 'claim', 'votar', 'redes', 'ip'].includes(requested)) category = 'drakes';
+            if (['tickets', 'ticket', 'soporte', 'support'].includes(requested)) category = 'tickets';
+            else if (['musica', 'music', 'play', 'cancion', 'song'].includes(requested)) category = 'musica';
+            else if (['stats', 'tps', 'telemetria', 'telemetry', 'rendimiento', 'online'].includes(requested)) category = 'stats';
+            else if (['drakes', 'menu', 'perfil', 'profile', 'staff', 'vip', 'claim', 'votar', 'vote', 'redes', 'ip'].includes(requested)) category = 'drakes';
             else if (['moderacion', 'mod', 'staffhelp', 'admin'].includes(requested)) category = 'moderacion';
-            else if (['comunidad', 'roles', 'sugerencias', 'perfiles'].includes(requested)) category = 'comunidad';
+            else if (['comunidad', 'community', 'roles', 'sugerencias', 'perfiles'].includes(requested)) category = 'comunidad';
         }
 
-        const helpEmbed = getShelpCategoryEmbed(category);
-        const shelpRows = getShelpButtonRows();
+        const helpEmbed = getShelpCategoryEmbed(category, userLang);
+        const shelpRows = getShelpButtonRows(userLang);
         return message.reply({ embeds: [helpEmbed], components: shelpRows, allowedMentions: { repliedUser: false } });
     }
 
@@ -6203,17 +7420,24 @@ client.on('messageCreate', async (message) => {
         return message.reply({ embeds: [embed], components, allowedMentions: { repliedUser: false } });
     }
     if (contentLower === 'sip' || contentLower === '/sip' || contentLower === '!sip') {
-        return message.reply({ content: '⛏️ **IP de Conexión DrakesCraft:**\n• **Java & Bedrock:** `mc.drakescraft.cl:25565` (Java 1.20.5 - 1.21.x vía ViaVersion / Bedrock Puerto: `25565`)\n• **Texturas (opcional):** `stexturas`', allowedMentions: { repliedUser: false } });
+        const replyText = userLang === 'en'
+            ? '⛏️ **DrakesCraft Server IP:**\n• **Java & Bedrock:** `mc.drakescraft.cl:25565` (Java 1.20.5 - 1.21.x via ViaVersion / Bedrock Port: `25565`)\n• **Resource Pack (optional):** `stexturas`'
+            : '⛏️ **IP de Conexión DrakesCraft:**\n• **Java & Bedrock:** `mc.drakescraft.cl:25565` (Java 1.20.5 - 1.21.x vía ViaVersion / Bedrock Puerto: `25565`)\n• **Texturas (opcional):** `stexturas`';
+        return message.reply({ content: replyText, allowedMentions: { repliedUser: false } });
     }
     if (['stexturas', 'spack', 'sversion'].includes(contentLower.replace(/^[\/!]/, ''))) {
-        return message.reply({
-            content: '🎨 **Pack de texturas oficial (opcional):** https://pack.drakescraft.cl/latest.zip\n' +
-                     '• Slimefun 1.21.5+ v2.4, formato de pack 64 → requiere **Java 1.21.5 o superior** (no funciona en 1.20.x).\n' +
-                     '• Por ahora el servidor **no lo envía automáticamente** al entrar; instálalo manual en `Opciones > Paquetes de recursos`. Tras el próximo reinicio, Odysseia lo ofrecerá al conectar (siempre opcional).\n' +
-                     '• Jugadores **Bedrock** no reciben estas texturas.\n' +
-                     '• Versiones para entrar: Java 1.20.5+ (vía ViaVersion) · Servidor Purpur 1.21.11 · IP `mc.drakescraft.cl`.',
-            allowedMentions: { repliedUser: false }
-        });
+        const replyText = userLang === 'en'
+            ? '🎨 **Official Resource Pack (Optional):** https://pack.drakescraft.cl/latest.zip\n' +
+              '• Slimefun 1.21.5+ v2.4, pack format 64 → requires **Java 1.21.5 or newer** (does not work on 1.20.x).\n' +
+              '• Not currently forced on login; install manually in `Options > Resource Packs`.\n' +
+              '• **Bedrock** players do not need this pack.\n' +
+              '• Compatible versions: Java 1.20.5+ (via ViaVersion) · Server engine Purpur 1.21.11 · IP `mc.drakescraft.cl`.'
+            : '🎨 **Pack de texturas oficial (opcional):** https://pack.drakescraft.cl/latest.zip\n' +
+              '• Slimefun 1.21.5+ v2.4, formato de pack 64 → requiere **Java 1.21.5 o superior** (no funciona en 1.20.x).\n' +
+              '• Por ahora el servidor **no lo envía automáticamente** al entrar; instálalo manual en `Opciones > Paquetes de recursos`. Tras el próximo reinicio, Odysseia lo ofrecerá al conectar (siempre opcional).\n' +
+              '• Jugadores **Bedrock** no reciben estas texturas.\n' +
+              '• Versiones para entrar: Java 1.20.5+ (vía ViaVersion) · Servidor Purpur 1.21.11 · IP `mc.drakescraft.cl`.';
+        return message.reply({ content: replyText, allowedMentions: { repliedUser: false } });
     }
     if (contentLower === 'sweb' || contentLower === '/sweb' || contentLower === '!sweb') {
         return message.reply({ content: '🌐 **Web Oficial:** https://web.drakescraft.cl', allowedMentions: { repliedUser: false } });
@@ -6229,6 +7453,15 @@ client.on('messageCreate', async (message) => {
     if (['sautoroles', 's!autoroles', 'sroles panel', 'sroles setup'].includes(contentLower)) {
         if (!isStaffMember) {
             return message.reply({ content: '❌ Solo Jack y el Staff Administrador pueden desplegar los paneles de auto-roles.', allowedMentions: { repliedUser: false } });
+        }
+        // Multi-guild: en el hub Slimefun (NEXO) se publican menús de selección; en la red oficial, reacciones.
+        if (message.guild?.id === legacyGuild.LEGACY_GUILD_ID) {
+            try {
+                await legacyGuild.publishAutoRolesPanel(message.guild);
+                return message.reply({ content: '✅ Panel de auto-roles del hub Slimefun publicado (idioma, región, intereses y temas).', allowedMentions: { repliedUser: false } });
+            } catch (error) {
+                return message.reply({ content: `❌ No se pudo publicar el panel NEXO: ${error.message}`, allowedMentions: { repliedUser: false } });
+            }
         }
         const autoRolesChannel = client.channels.cache.get(CHANNELS.AUTO_ROLES) || message.channel;
         await sendAutoRolesPanels(autoRolesChannel);
@@ -6296,8 +7529,31 @@ client.on('messageCreate', async (message) => {
     const rawCmdText = content.trim();
     const cleanCmdText = rawCmdText.replace(/^[\/!]/, '');
     const cmdTokens = cleanCmdText.split(/\s+/);
-    const primaryCmd = cmdTokens[0].toLowerCase();
+    const primaryCmd = cmdTokens[0]?.toLowerCase() || '';
     const cmdArgs = cmdTokens.slice(1);
+
+    if (primaryCmd === 'sdb' || primaryCmd === 'db') {
+        const h = getStaffMemberHierarchy(message.member, message.author.id);
+        if (!h.isStaff && message.author.id !== JACK_DISCORD_ID) {
+            return message.reply({ content: '❌ Solo los miembros del Staff de DrakesCraft pueden consultar el estado de la base de datos.', allowedMentions: { repliedUser: false } });
+        }
+        const stats = db.getStatsSummary();
+        const embed = new EmbedBuilder()
+            .setTitle('🗄️ SAORI SQLite WAL Database')
+            .setColor(0x9B59B6)
+            .setDescription('**Motor:** SQLite con modo WAL (Write-Ahead Logging)\n**Retención de logs y métricas:** 7 días (rotación y purga automática)')
+            .addFields(
+                { name: '🔄 Interacciones', value: `\`${stats?.totalInteractions ?? 0}\``, inline: true },
+                { name: '💡 Sugerencias', value: `\`${stats?.totalSuggestions ?? 0}\``, inline: true },
+                { name: '🎫 Tickets (Abiertos / Total)', value: `\`${stats?.openTickets ?? 0}\` / \`${stats?.totalTickets ?? 0}\``, inline: true },
+                { name: '🎂 Cumpleaños', value: `\`${stats?.totalBirthdays ?? 0}\``, inline: true },
+                { name: '🛡️ Moderación', value: `\`${stats?.totalModerations ?? 0}\``, inline: true },
+                { name: '📁 Archivos de Log', value: `\`${logger.getActiveLogFiles().length}\` activos`, inline: true }
+            )
+            .setFooter({ text: 'DrakesCraft SRE · SQLite Engine & Weekly Log Pruning' })
+            .setTimestamp();
+        return message.reply({ embeds: [embed], allowedMentions: { repliedUser: false } });
+    }
 
     if (primaryCmd === 'splay') {
         const voiceChannel = message.member?.voice?.channel;
@@ -6621,17 +7877,25 @@ client.on('messageCreate', async (message) => {
     // COMANDO SGUIA (DOCUMENTACIÓN OFICIAL)
     // =========================================================================
     if (primaryCmd === 'sguia' || primaryCmd === 'guia') {
+        const lang = getUserLanguage(message.member, message.channel.id);
         const guiaEmbed = new EmbedBuilder()
-            .setTitle('📖 Enciclopedia & Guías de DrakesCraft')
+            .setTitle(lang === 'en' ? '📖 DrakesCraft Encyclopedia & Guides' : '📖 Enciclopedia & Guías de DrakesCraft')
             .setColor(0xFFB300)
-            .setDescription('Aquí tienes la documentación oficial para dominar todas las modalidades:')
+            .setDescription(lang === 'en' ? 'Here is the official documentation to master all game modes:' : 'Aquí tienes la documentación oficial para dominar todas las modalidades:')
             .addFields(
-                { name: '⚡ Slimefun & Tecnología', value: 'Guía paso a paso de máquinas, energía y aleaciones: [web.drakescraft.cl/guia.html](https://web.drakescraft.cl/guia.html)' },
-                { name: '💼 Trabajos y Economía', value: 'Gana dinero minando, talando y crafteando con `/jobs join`.' },
-                { name: '🏝️ OneBlock & SkyBlock', value: 'Inicia tu isla con `/ob` o `/is` y sube de nivel tu generador.' },
-                { name: '🛡️ Protecciones', value: 'Asegura tus cofres y parcelas usando bloques de protección o WorldGuard.' }
+                lang === 'en' ? [
+                    { name: '⚡ Slimefun & Technology', value: 'Guide to machines, power grids, and alloys: [web.drakescraft.cl/guia.html](https://web.drakescraft.cl/guia.html)' },
+                    { name: '💼 Jobs & Economy', value: 'Earn money mining, logging, and crafting with `/jobs join`.' },
+                    { name: '🏝️ OneBlock & SkyBlock', value: 'Start your island with `/ob` or `/is` and level up your generator.' },
+                    { name: '🛡️ Land Claims', value: 'Protect your chests and plots using a golden shovel with `/claim`.' }
+                ] : [
+                    { name: '⚡ Slimefun & Tecnología', value: 'Guía paso a paso de máquinas, energía y aleaciones: [web.drakescraft.cl/guia.html](https://web.drakescraft.cl/guia.html)' },
+                    { name: '💼 Trabajos y Economía', value: 'Gana dinero minando, talando y crafteando con `/jobs join`.' },
+                    { name: '🏝️ OneBlock & SkyBlock', value: 'Inicia tu isla con `/ob` o `/is` y sube de nivel tu generador.' },
+                    { name: '🛡️ Protecciones', value: 'Asegura tus cofres y parcelas usando bloques de protección o WorldGuard.' }
+                ]
             )
-            .setFooter({ text: 'S.A.O.R.I. Guías Oficiales', iconURL: client.user.displayAvatarURL() });
+            .setFooter({ text: lang === 'en' ? 'S.A.O.R.I. Official Guides' : 'S.A.O.R.I. Guías Oficiales', iconURL: client.user.displayAvatarURL() });
         return message.reply({ embeds: [guiaEmbed], allowedMentions: { repliedUser: false } });
     }
 
@@ -6795,8 +8059,35 @@ client.on('messageCreate', async (message) => {
     const contextTag = isTicketChannel ? `Ticket #${message.channel.name}` : (isDM ? 'DM' : `#${message.channel.name}`);
     console.log(`[SAORI-DISCORD] 📨 [${isJack ? 'Jack' : senderName} en ${contextTag}]: ${cleanPrompt}`);
 
+    // =========================================================================
+    // 🌸 CHECK DE PRESENCIA Y SALUDO DIRECTO A SAORI (LIVENESS / GREETING)
+    // =========================================================================
+    const promptNorm = cleanPrompt.toLowerCase().replace(/[¿?¡!.,;:~]/g, '').trim();
+    const isPresenceCheck = /^(estas|estas presente|estas ahi|estas activa|estas viva|sigues ahi|estas conectada|estas por ahi|tas ahi|tas|estas en linea)$/i.test(promptNorm);
+    const isSimpleGreeting = /^(hola|hola saori|buenas|buenos dias|buenas tardes|buenas noches|que tal|como estas|que onda)$/i.test(promptNorm);
 
-
+    if (isPresenceCheck || isSimpleGreeting) {
+        const lang = getUserLanguage(message.member, message.channel.id, cleanPrompt);
+        let greetingResponse = '';
+        if (lang === 'en') {
+            if (isJack) {
+                greetingResponse = '🌸 Hello Creator! Yes, I am right here, active and at your command.';
+            } else if (senderName.toLowerCase().includes('chagui')) {
+                greetingResponse = '🌸 Hello Chagui! Yes, I am here and attentive to whatever you need.';
+            } else {
+                greetingResponse = `🌸 Hello ${senderName}! Yes, I am here and operational. How can I assist you?`;
+            }
+        } else {
+            if (isJack) {
+                greetingResponse = '🌸 ¡Hola Creador! Sí, aquí estoy presente, atenta a lo que mandes, po.';
+            } else if (senderName.toLowerCase().includes('chagui')) {
+                greetingResponse = '🌸 ¡Hola Chagui! Sí, aquí estoy presente y atenta a lo que necesites en el servidor, po.';
+            } else {
+                greetingResponse = `🌸 ¡Hola ${senderName}! Sí, aquí estoy presente y operativa para lo que necesites en el servidor, po.`;
+            }
+        }
+        return message.reply({ content: greetingResponse, allowedMentions: { repliedUser: false } });
+    }
     // =========================================================================
     // COMANDO SONLINE / SJUGADORES (LISTA EN VIVO DE MINECRAFT)
     // =========================================================================
@@ -6832,18 +8123,29 @@ client.on('messageCreate', async (message) => {
     // COMANDO SREGLAS (NORMATIVA OFICIAL)
     // =========================================================================
     if (primaryCmd === 'sreglas' || primaryCmd === 'reglas') {
+        const lang = getUserLanguage(message.member, message.channel.id);
         const reglasEmbed = new EmbedBuilder()
-            .setTitle('📜 Normativa Oficial de DrakesCraft Network')
+            .setTitle(lang === 'en' ? '📜 Official Rules of DrakesCraft Network' : '📜 Normativa Oficial de DrakesCraft Network')
             .setColor(0xF1C40F)
-            .setDescription('Para mantener una comunidad justa y divertida, todos los miembros deben respetar:')
+            .setDescription(lang === 'en' ? 'To maintain a fair, respectful, and enjoyable community, all players must abide by the following:' : 'Para mantener una comunidad justa y divertida, todos los miembros deben respetar:')
             .addFields(
-                { name: '1. Respeto y Convivencia', value: 'Cero toxicidad, insultos graves, discriminación, acoso o lenguaje de odio en canales públicos o chats in-game.', inline: false },
-                { name: '2. Prohibición de Trampas y Ventajas Desleales', value: 'Uso de hacks, auto-clickers, x-ray, barítonos o modificación de clientes para obtener ventajas está penado con ban permanente.', inline: false },
-                { name: '3. Respeto a Parcelas y Protecciones', value: 'Grifear alrededor de zonas protegidas, robar en cofres no asegurados con bugs o bloquear accesos está estrictamente prohibido.', inline: false },
-                { name: '4. Economía y Comercio Limpio', value: 'Prohibidas las estafas en transacciones de dinero (`/pay`), tiendas de jugadores (`/qs`) o comercio de ítems.', inline: false },
-                { name: '5. Seguridad de Cuentas y Enlaces', value: 'Prohibido compartir enlaces maliciosos, IP loggers, phishing o publicidad de otros servidores.', inline: false }
+                lang === 'en' ? [
+                    { name: '1. Respect & Sportsmanship', value: 'Zero tolerance for severe toxicity, harassment, discrimination, hate speech, or excessive verbal abuse in public or in-game chats.', inline: false },
+                    { name: '2. Fair Play & Prohibited Cheats', value: 'Hacks, x-ray, auto-clickers, baritone, movement exploits, or dupe bugs will result in an immediate permanent ban.', inline: false },
+                    { name: '3. Land Claims & No Griefing', value: 'Griefing around claimed borders, stealing via bugs/unlocked chests, or intentionally trapping/blocking players is strictly forbidden.', inline: false },
+                    { name: '4. One Account Rule (Strict No-Alts Policy)', value: 'Each player is allowed ONLY ONE account. Alternate accounts (alts) to bypass bans, duplicate claim space, farm starter kits, or exploit economy are permanently banned across all accounts.', inline: false },
+                    { name: '5. Fair Trade & Economy', value: 'Scamming in player transactions (`/pay`), chest shops (`/qs`), auction house, or exploiting market bugs will result in balances wiped and bans.', inline: false },
+                    { name: '6. Account Security & Advertising', value: 'Sharing phishing links, IP loggers, malware, or advertising other Minecraft servers is strictly prohibited.', inline: false }
+                ] : [
+                    { name: '1. Respeto y Convivencia', value: 'Cero toxicidad, insultos graves, discriminación, acoso o lenguaje de odio en canales públicos o chats in-game.', inline: false },
+                    { name: '2. Prohibición de Trampas y Ventajas Desleales', value: 'Uso de hacks, auto-clickers, x-ray, barítonos o modificación de clientes para obtener ventajas está penado con ban permanente.', inline: false },
+                    { name: '3. Respeto a Parcelas y Protecciones', value: 'Grifear alrededor de zonas protegidas, robar en cofres no asegurados con bugs o bloquear accesos está estrictamente prohibido.', inline: false },
+                    { name: '4. Regla de Cuenta Única (Cero Alts)', value: 'Cada jugador tiene permitido jugar ÚNICAMENTE con una sola cuenta. El uso de cuentas secundarias (alts) para evadir sanciones, duplicar parcelas, abusar de kits iniciales o inflar la economía conllevará baneo permanente inmediato en todas sus cuentas.', inline: false },
+                    { name: '5. Economía y Comercio Limpio', value: 'Prohibidas las estafas en transacciones de dinero (`/pay`), tiendas de jugadores (`/qs`) o comercio de ítems.', inline: false },
+                    { name: '6. Seguridad de Cuentas y Enlaces', value: 'Prohibido compartir enlaces maliciosos, IP loggers, phishing o publicidad de otros servidores.', inline: false }
+                ]
             )
-            .setFooter({ text: 'Consulta el canal de reglas para la versión completa y detallada' });
+            .setFooter({ text: lang === 'en' ? 'Check <#' + CHANNELS.REGLAS + '> for the full detailed rules.' : 'Consulta el canal de reglas para la versión completa y detallada' });
         return message.reply({ embeds: [reglasEmbed], allowedMentions: { repliedUser: false } });
     }
 
@@ -6853,39 +8155,44 @@ client.on('messageCreate', async (message) => {
     if (primaryCmd === 'smisroles' || (primaryCmd === 'sroles' && cmdArgs[0]?.toLowerCase() === 'misroles')) {
         const member = message.member;
         if (!member) return message.reply({ content: '❌ Solo puedes consultar tus roles dentro del servidor.' });
-
+        const lang = getUserLanguage(member, message.channel.id);
         const userRoles = member.roles.cache;
-        
-        let plataforma = 'No seleccionada';
-        if (userRoles.has('1544920853471432777')) plataforma = '☕ Java Edition';
-        else if (userRoles.has('1544920854930985160')) plataforma = '📱 Bedrock / Móvil';
+
+        let idioma = lang === 'en' ? 'Not selected' : 'No seleccionado';
+        if (userRoles.has(LANGUAGE_ROLES.ES)) idioma = '🇪🇸 Español';
+        else if (userRoles.has(LANGUAGE_ROLES.EN)) idioma = '🇬🇧 English';
+
+        let plataforma = lang === 'en' ? 'Not selected' : 'No seleccionada';
+        if (userRoles.has('1539643667856494613') || userRoles.has('1544920853471432777')) plataforma = '☕ Java Edition';
+        else if (userRoles.has('1539643739176308866') || userRoles.has('1544920854930985160')) plataforma = '📱 Bedrock / Mobile';
 
         const modalidades = [];
         if (userRoles.has('1544920856684265533')) modalidades.push('⚡ Slimefun & Tech');
         if (userRoles.has('1544920860861927516')) modalidades.push('🏝️ OneBlock');
         if (userRoles.has('1544920865173671938')) modalidades.push('☁️ SkyBlock');
-        if (userRoles.has('1544920866851127379')) modalidades.push('⚔️ Survival Clásico');
+        if (userRoles.has('1544920866851127379')) modalidades.push(lang === 'en' ? '⚔️ Classic Survival' : '⚔️ Survival Clásico');
         if (userRoles.has('1544920867866148917')) modalidades.push('🎯 PvP & Arenas');
 
         const avisos = [];
-        if (userRoles.has('1539644011214807181')) avisos.push('📢 Avisos Discord');
-        if (userRoles.has('1539644151165882418')) avisos.push('⛏️ Avisos MC');
-        if (userRoles.has('1539644230941806602')) avisos.push('🎁 Sorteos');
-        if (userRoles.has('1539644293914824814')) avisos.push('🚀 Changelogs');
+        if (userRoles.has('1539644011214807181')) avisos.push(lang === 'en' ? '📢 Discord Notices' : '📢 Avisos Discord');
+        if (userRoles.has('1539644151165882418')) avisos.push(lang === 'en' ? '⛏️ Minecraft Notices' : '⛏️ Avisos MC');
+        if (userRoles.has('1539644230941806602')) avisos.push(lang === 'en' ? '🎁 Giveaways' : '🎁 Sorteos');
+        if (userRoles.has('1539644293914824814')) avisos.push(lang === 'en' ? '🚀 Changelogs' : '🚀 Changelogs');
 
         const topRole = member.roles.highest;
 
         const perfilEmbed = new EmbedBuilder()
-            .setTitle(`👤 Perfil de Roles · ${member.displayName}`)
+            .setTitle(lang === 'en' ? `👤 Role Profile · ${member.displayName}` : `👤 Perfil de Roles · ${member.displayName}`)
             .setColor(0x9B59B6)
             .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
             .addFields(
-                { name: '👑 Rol Principal', value: `${topRole} (\`${topRole.name}\`)`, inline: true },
-                { name: '🎮 Plataforma', value: plataforma, inline: true },
-                { name: '🕹️ Modalidades Favoritas', value: modalidades.length > 0 ? modalidades.join('\n') : '*(Ninguna seleccionada en #auto-roles)*', inline: false },
-                { name: '🔔 Notificaciones Activas', value: avisos.length > 0 ? avisos.join(' · ') : '*(Ninguna seleccionada)*', inline: false }
+                { name: lang === 'en' ? '👑 Highest Role' : '👑 Rol Principal', value: `${topRole} (\`${topRole.name}\`)`, inline: true },
+                { name: lang === 'en' ? '🌐 Preferred Language' : '🌐 Idioma Preferido', value: idioma, inline: true },
+                { name: lang === 'en' ? '🎮 Platform' : '🎮 Plataforma', value: plataforma, inline: true },
+                { name: lang === 'en' ? '🕹️ Favorite Game Modes' : '🕹️ Modalidades Favoritas', value: modalidades.length > 0 ? modalidades.join('\n') : (lang === 'en' ? '*(None selected in #auto-roles)*' : '*(Ninguna seleccionada en #auto-roles)*'), inline: false },
+                { name: lang === 'en' ? '🔔 Active Notifications' : '🔔 Notificaciones Activas', value: avisos.length > 0 ? avisos.join(' · ') : (lang === 'en' ? '*(None selected)*' : '*(Ninguna seleccionada)*'), inline: false }
             )
-            .setFooter({ text: 'Personaliza tus roles en el canal #🎭・auto-roles' })
+            .setFooter({ text: lang === 'en' ? 'Customize your roles in the #🎭・auto-roles channel' : 'Personaliza tus roles en el canal #🎭・auto-roles' })
             .setTimestamp();
 
         return message.reply({ embeds: [perfilEmbed], allowedMentions: { repliedUser: false } });
@@ -7246,7 +8553,8 @@ client.on('messageCreate', async (message) => {
     // 🛡️ GUÍA DE PROTECCIÓN DE TERRENOS (SCLAIM)
     // =========================================================================
     if (primaryCmd === 'sclaim' || primaryCmd === 'claim' || primaryCmd === 'claims') {
-        const claimEmbed = buildClaimsGuideEmbed();
+        const lang = getUserLanguage(message.member, message.channel.id);
+        const claimEmbed = buildClaimsGuideEmbed(lang);
         return message.reply({ embeds: [claimEmbed], allowedMentions: { repliedUser: false } });
     }
 
@@ -7254,7 +8562,8 @@ client.on('messageCreate', async (message) => {
     // 🎁 VOTACIÓN Y RECOMPENSAS DIARIAS (SVOTAR / SRECOMPENSA)
     // =========================================================================
     if (primaryCmd === 'svotar' || primaryCmd === 'votar' || primaryCmd === 'srecompensa') {
-        const voteEmbed = buildVoteGuideEmbed();
+        const lang = getUserLanguage(message.member, message.channel.id);
+        const voteEmbed = buildVoteGuideEmbed(lang);
         return message.reply({ embeds: [voteEmbed], allowedMentions: { repliedUser: false } });
     }
 
@@ -7510,6 +8819,68 @@ client.on('messageCreate', async (message) => {
         await message.reply({ embeds: [embed] });
         await sendAuditLog(embed);
         return;
+    }
+
+    // =========================================================================
+    // 🕸️ CONSULTA DE GRAFOS DE CONOCIMIENTO (TOKEN-OPTIMIZED GRAPH RETRIEVER)
+    // =========================================================================
+    if (primaryCmd === 'sgrafo' || primaryCmd === 'sgraph') {
+        if (!cmdArgs.length) {
+            return message.reply({
+                content: '💡 **Uso:** `!sgrafo <repositorio> [consulta]`\n*Ejemplo:* `!sgrafo AxGraves-Drakes spawn height` o `!sgrafo Drakes-Suites nukes`\nPara ver los repos disponibles: `!sgrafo list`'
+            });
+        }
+
+        const targetRepo = cmdArgs[0];
+        const queryTerm = cmdArgs.slice(1).join(' ');
+
+        try {
+            const fetchRes = await fetch(GRAPH_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ repo: targetRepo === 'list' ? '' : targetRepo, query: queryTerm })
+            });
+
+            if (!fetchRes.ok) {
+                return message.reply({ content: `⚠️ Error consultando daemon de grafos: HTTP ${fetchRes.status}` });
+            }
+
+            const data = await fetchRes.json();
+            if (targetRepo === 'list' || (!targetRepo && !queryTerm)) {
+                const repos = data.repositories || [];
+                return message.reply({
+                    content: `📚 **Repositorios en Grafos de Conocimiento (${repos.length}):**\n` +
+                             `\`${repos.slice(0, 30).join('`, `')}\`${repos.length > 30 ? ` ... y ${repos.length - 30} más.` : ''}\n` +
+                             `*Consulta cualquiera con:* \`!sgrafo <nombre> <termino>\``
+                });
+            }
+
+            if (!data.found) {
+                return message.reply({ content: `❌ ${data.message || 'No se encontraron datos para este repositorio.'}` });
+            }
+
+            const nodes = data.selected_nodes || [];
+            const nodesText = nodes.length > 0 
+                ? nodes.map(n => `• **${n.name}** \`${n.file}:${n.line || 'L1'}\` ${n.is_class ? '*(Clase)*' : n.is_callable ? '*(Función)*' : ''}`).join('\n')
+                : '*No hubo coincidencias exactas de nodos.*';
+
+            const graphEmbed = new EmbedBuilder()
+                .setTitle(`🕸️ Grafo de Conocimiento: ${data.repo}`)
+                .setColor(0x8B5CF6)
+                .setDescription(`Consulta: \`${queryTerm || '*'}\`\n\n${nodesText}`)
+                .addFields(
+                    { name: '📊 Nodos Totales', value: `${data.total_repo_nodes}`, inline: true },
+                    { name: '🎯 Coincidencias', value: `${data.matched_count}`, inline: true },
+                    { name: '⚡ Ahorro de Tokens', value: `${data.token_saving_estimate}`, inline: true }
+                )
+                .setFooter({ text: 'SAORI SRE · Graph Knowledge Engine' })
+                .setTimestamp();
+
+            return message.reply({ embeds: [graphEmbed] });
+        } catch (err) {
+            console.error('[SAORI-GRAPH] Error:', err);
+            return message.reply({ content: `⚠️ No se pudo conectar al servicio de grafos: ${err.message}` });
+        }
     }
 
 
@@ -8237,38 +9608,59 @@ client.on('messageCreate', async (message) => {
             message.channel.sendTyping().catch(() => {});
         }, 8000);
 
-        const lang = detectLanguage(cleanPrompt);
+        const lang = getUserLanguage(message.member, message.channel.id, cleanPrompt);
         const serverLoreContext = "Lore Oficial de DrakesCraft: Jack es el Creador, Propietario, Desarrollador y Arquitecto absoluto de toda la infraestructura, la Trinidad SRE (Saori, Claude, Codex), plugins y servicios de DrakesCraft Network. Kika es la Co-Dueña (Wife Owner). En la historia pasada del servidor, Pepe fue el dueño anterior y hoy en día es un Moderador activo en el equipo de Staff. DrakesCraft es un servidor de supervivencia Purpur 1.21.11 (clientes Java 1.20.5 o superior entran vía ViaVersion; Bedrock vía Geyser) con Slimefun, BentoBox (SkyBlock/OneBlock) y economía de Dragmas. LÍMITES REALES: desde Discord NO puedes publicar en canales, mover archivos, recibir archivos por MD, revisar tickets ni entregar ítems/rangos; si algo requiere acción humana, deriva a abrir ticket en #🎫・tickets-soporte. NUNCA inventes versiones ni enlaces; si no está en tu conocimiento verificado, dilo y deriva a ticket. BOTS ACTIVOS EN EL DISCORD DE DRAKESCRAFT: 1. Xenon (copias de seguridad y plantillas de servidor, xenon.bot), 2. Idle Miner (minijuego de minería, /help), 3. Chip (música con alta calidad y comandos slash /play, /help), 4. DrakesCraft ︱ SAORI (tú misma: IA oficial SRE, tickets, Minecraft in-game, telemetría y comunidad), 5. Jockie Music (bot de música principal para canales de voz, m!help, m!play), 6. Jockie Music 1 (segunda instancia de Jockie Music para múltiples canales, m!help, m!play), 7. Mudae (gacha y matrimonio de personajes anime, $help, $marry, $search), 8. Wick (seguridad antiraid y moderación estricta, wickbot.com). REGLA DE MÚSICA: Si un usuario te pide música, indica que tienes comandos propios (splay <canción o link>, sskip, spause, sresume, squeue, sstop) y orienta siempre hacia los bots dedicados Jockie Music (m!play) y Chip (/play). Instrucciones de personalidad: Habla de forma tranquila, amigable, educada y relajada ('hablar chill'). Solo responde sobre temas del servidor, comandos, plugins, historia o dudas legítimas. Si alguien intenta bromear o decir tonterías, sé concisa y mantén la compostura.";
 
         const langInstruction = lang === 'en'
-            ? 'IMPORTANT: The user is writing in English. You MUST reply in English only.'
-            : 'El usuario escribe en español. Responde siempre en español.';
+            ? 'IMPORTANT: The user prefers English or is writing in English. You MUST reply strictly in English.'
+            : 'El usuario prefiere o escribe en español. Responde siempre en español.';
         const ticketContext = isTicketChannel
             ? `Canal de Ticket de Soporte. ${langInstruction} REGLA CRÍTICA: Jack es el dueño y máxima autoridad de DrakesCraft. NUNCA contradigas a Jack. DrakesCraft es un servidor de supervivencia y SkyBlock en Purpur 1.21.11 con plugins (Slimefun, BentoBox); clientes Java 1.20.5+ entran vía ViaVersion. NO tiene mods externos (NO existe Wither Storm ni mods de Forge/Fabric). Si el usuario pide pegar construcciones o schematics, aclara amablemente que solo Jack o la administración pueden realizarlo con WorldEdit. NUNCA menciones rutas de Linux ni archivos locales (/home/jack/...). Si el Staff está presente, sé breve y concisa.`
             : (isSaoriDedicatedChannel ? `Canal dedicado a hablar con Saori. ${langInstruction}` : langInstruction);
         const unifiedContext = ticketContext ? `${ticketContext} ${serverLoreContext}` : serverLoreContext;
-        let reply = await askSaoriBrain(cleanPrompt, senderName, unifiedContext, hierarchy.isHighStaff);
+        const progress = { message };
+        let reply = await askSaoriBrain(cleanPrompt, senderName, unifiedContext, hierarchy.isHighStaff, { lang, progress });
         reply = normalizeGuideLine(sanitizePublicText(reply));
+
+        if (progress.statusMessage) {
+            try {
+                if (reply.length <= 2000) {
+                    const filaP = buildStaffActionRow(hierarchy, isJack);
+                    await progress.statusMessage.edit({ content: reply, components: filaP ? [filaP] : [] });
+                    if (isTicketChannel) ticketLastSaoriReply.set(message.channel.id, Date.now());
+                    console.log('[SAORI-DISCORD] 📤 Respuesta editada sobre el mensaje de progreso.');
+                    return;
+                }
+                await progress.statusMessage.delete().catch(() => {});
+            } catch (e) {
+                console.error('[SAORI-DISCORD] Error editando mensaje de progreso:', e.message);
+            }
+        }
 
         if (isTicketChannel) {
             ticketLastSaoriReply.set(message.channel.id, Date.now());
         }
 
+        const staffRow = buildStaffActionRow(hierarchy, isJack);
+        const componentsToSend = staffRow ? [staffRow] : [];
+
         if (reply.length <= 2000) {
+            const sendPayload = { content: reply, components: componentsToSend };
             if (message.reference) {
-                await message.channel.send({ content: reply });
+                await message.channel.send(sendPayload);
             } else {
-                await message.reply({ content: reply, allowedMentions: { repliedUser: false } });
+                await message.reply({ ...sendPayload, allowedMentions: { repliedUser: false } });
             }
         } else {
             let remaining = reply;
             let isFirst = true;
             while (remaining.length > 0) {
                 if (remaining.length <= 1990) {
+                    const lastPayload = { content: remaining, components: componentsToSend };
                     if (isFirst && !message.reference) {
-                        await message.reply({ content: remaining, allowedMentions: { repliedUser: false } });
+                        await message.reply({ ...lastPayload, allowedMentions: { repliedUser: false } });
                     } else {
-                        await message.channel.send({ content: remaining });
+                        await message.channel.send(lastPayload);
                     }
                     break;
                 }
@@ -8364,6 +9756,13 @@ async function syncPlayerRanksWithDiscord(guild) {
 function anyKeyword(text, list) {
     return list.some(k => text.includes(k));
 }
+
+// 📌 Reacciones de Control de Tareas de Jack (🚀 Despachar | 👀 Revisar | ✅ Completar | ❌ Descartar)
+client.on('messageReactionAdd', async (reaction, user) => {
+    taskManager.handleTaskReaction(reaction, user).catch(e => {
+        console.error('[TASK-MANAGER] Error handling reaction:', e.message);
+    });
+});
 
 async function startDiscordBot() {
     try {

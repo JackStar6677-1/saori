@@ -1,0 +1,13 @@
+services:
+  saori-discord:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: saori-discord
+    restart: unless-stopped
+    network_mode: "host"
+    env_file:
+      - .env
+    volumes:
+      - ./src:/app/src
+      - /tmp:/tmp

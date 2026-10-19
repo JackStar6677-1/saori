@@ -8,10 +8,10 @@ const {
     StringSelectMenuOptionBuilder
 } = require('discord.js');
 
-const LEGACY_GUILD_ID = '699391897369575476';
+const LEGACY_GUILD_ID = process.env.NEXO_GUILD_ID || '699391897369575476';
 const STATE_PATH = process.env.LEGACY_GUILD_STATE_PATH
     || path.join(__dirname, 'legacy-guild-state.json');
-const OWNER_ID = process.env.DISCORD_OWNER_ID || '493868699489665044';
+const OWNER_ID = process.env.DISCORD_OWNER_ID || process.env.OWNER_DISCORD_ID || '493868699489665044';
 let schedulerStarted = false;
 
 const SMALL_CAPS = {
@@ -133,7 +133,7 @@ async function onReady(client) {
     const guild = client.guilds.cache.get(LEGACY_GUILD_ID);
     if (!guild || !readState()) return;
 
-    await guild.members.me?.setNickname('SAORI | NEXO').catch(error => {
+    await guild.members.me?.setNickname('🌸 ︱ SAORI').catch(error => {
         console.warn('[LEGACY-GUILD] No se pudo actualizar apodo:', error.message);
     });
     startMigrationScheduler(client);
@@ -160,6 +160,7 @@ async function handleInteraction(interaction) {
     }
 
     const groupByMenu = {
+        legacy_language_roles: 'languages',
         legacy_region_roles: 'regions',
         legacy_interest_roles: 'interests',
         legacy_theme_roles: 'themes'
@@ -215,11 +216,13 @@ function formatNickname(name, roleIds = []) {
     const state = readState();
     const staff = state?.roles?.staff || {};
     const suffixByRole = {
-        [staff.owner]: ' - ᴏᴡɴᴇʀ',
-        [staff.admin]: ' - ᴀᴅᴍɪɴ',
-        [staff.moderator]: ' - ᴍᴏᴅ',
-        [staff.host]: ' - ʜᴏsᴛ',
-        [staff.builder]: ' - ʙᴜɪʟᴅᴇʀ'
+        '1547455250880004096': ' ︱ ᴏᴡɴᴇʀ',
+        '1554118658924613683': ' ︱ ʟᴇᴀᴅ',
+        '1554118662389112842': ' ︱ ᴀᴅᴍɪɴ',
+        '1554118665383714908': ' ︱ ᴍᴏᴅ',
+        '1554118668340961291': ' ︱ ʟᴇᴀᴅ ᴅᴇᴠ',
+        '1554118671029506098': ' ︱ ᴅᴇᴠ',
+        '1554118674107858956': ' ︱ ᴀᴅᴅᴏɴ ᴅᴇᴠ'
     };
     const clean = name
         .replace(/\s*[-–—|]\s*(owner|admin|mod|host|builder|staff|ᴏᴡɴᴇʀ|ᴀᴅᴍɪɴ|ᴍᴏᴅ|ʜᴏsᴛ|ʙᴜɪʟᴅᴇʀ).*$/i, '')
@@ -251,15 +254,21 @@ async function syncNicknames(guild) {
 
 async function onMemberAdd(member) {
     if (member.guild.id !== LEGACY_GUILD_ID || member.user.bot || member.id === OWNER_ID) return;
-    const memberRoleId = readState()?.roles?.member;
-    if (memberRoleId) {
-        await member.roles.add(memberRoleId, 'Rol base automático NEXO').catch(() => {});
-    }
+    const memberRoleId = '1554118690537210018'; // 🌐 ︱ ᴄᴏᴍᴜɴɪᴅᴀᴅ
+    await member.roles.add(memberRoleId, 'Rol base automático Slimefun Hub').catch(() => {});
     const target = formatNickname(member.user.globalName || member.user.username, [...member.roles.cache.keys()]);
-    if (target) await member.setNickname(target, 'Normalización visual NEXO').catch(() => {});
+    if (target) await member.setNickname(target, 'Normalización visual Slimefun Hub').catch(() => {});
 }
 
 function roleMenus(state) {
+    const languages = state.roles.languages || {};
+    const languageOptions = [
+        ['es', '🇪🇸 Español', '🇪🇸'],
+        ['en', '🇬🇧 English', '🇬🇧'],
+        ['both', '🌐 Both / Ambos', '🌐']
+    ].filter(([key]) => languages[key])
+        .map(([key, label, emoji]) => new StringSelectMenuOptionBuilder()
+            .setLabel(label).setValue(languages[key]).setEmoji(emoji));
     const regionOptions = [
         ['chile', 'Chile', '🇨🇱'],
         ['latam', 'Latinoamérica', '🌎'],
@@ -282,6 +291,8 @@ function roleMenus(state) {
     });
 
     return [
+        ...(languageOptions.length ? [new ActionRowBuilder().addComponents(new StringSelectMenuBuilder()
+            .setCustomId('legacy_language_roles').setPlaceholder('Elige tu idioma / Choose your language').addOptions(languageOptions))] : []),
         new ActionRowBuilder().addComponents(new StringSelectMenuBuilder()
             .setCustomId('legacy_region_roles').setPlaceholder('Elige tu región').addOptions(regionOptions)),
         new ActionRowBuilder().addComponents(new StringSelectMenuBuilder()
@@ -291,4 +302,68 @@ function roleMenus(state) {
     ];
 }
 
-module.exports = { LEGACY_GUILD_ID, migrationText, migrationComponents, onReady, onMemberAdd, handleInteraction, handleMessage, isSaoriChannel, formatNickname, publishMigrationAnnouncement, readState, roleMenus };
+async function purgeOwnMessages(channel, botId) {
+    try {
+        const recent = await channel.messages.fetch({ limit: 20 });
+        const own = recent.filter(m => m.author.id === botId);
+        if (own.size) await channel.bulkDelete(own, true).catch(() => {});
+    } catch (error) {
+        console.warn('[LEGACY-GUILD] No se pudieron limpiar paneles previos:', error.message);
+    }
+}
+
+/**
+ * Publica (o refresca) los paneles interactivos de auto-roles del hub Slimefun (NEXO).
+ * El menú de idioma va al canal `channels.language`; región/intereses/temas al canal
+ * `channels.roles`. Idempotente: limpia los paneles previos del bot. Todo vía SAORI.
+ */
+async function publishAutoRolesPanel(guild) {
+    if (guild.id !== LEGACY_GUILD_ID) throw new Error('El panel de auto-roles solo aplica al hub Slimefun (NEXO).');
+    const state = readState();
+    const { EmbedBuilder } = require('discord.js');
+    const botId = guild.members.me.id;
+    const menus = roleMenus(state);
+    // La primera fila es el menú de idioma cuando hay roles de idioma configurados.
+    const hasLanguage = !!(state?.roles?.languages && Object.keys(state.roles.languages).length);
+    const languageRow = hasLanguage ? menus[0] : null;
+    const otherRows = hasLanguage ? menus.slice(1) : menus;
+
+    // Panel de idioma (canal dedicado si existe).
+    const langChannelId = state?.channels?.language || state?.channels?.roles;
+    if (languageRow && langChannelId) {
+        const langChannel = await guild.channels.fetch(langChannelId).catch(() => null);
+        if (langChannel?.isTextBased()) {
+            await purgeOwnMessages(langChannel, botId);
+            const langEmbed = new EmbedBuilder()
+                .setColor(0x8FD42E)
+                .setTitle('🌐 Elige tu idioma · Choose your language')
+                .setDescription(
+                    '**ES** · Selecciona tu idioma para desbloquear sus canales. Puedes cambiarlo cuando quieras.\n'
+                    + '**EN** · Pick your language to unlock its channels. You can change it anytime.'
+                )
+                .setFooter({ text: 'SAORI · Slimefun DrakesLabs' });
+            await langChannel.send({ embeds: [langEmbed], components: [languageRow] });
+        }
+    }
+
+    // Panel de región/intereses/temas.
+    const rolesChannelId = state?.channels?.roles;
+    if (otherRows.length && rolesChannelId) {
+        const rolesChannel = await guild.channels.fetch(rolesChannelId).catch(() => null);
+        if (rolesChannel?.isTextBased()) {
+            if (rolesChannelId !== langChannelId) await purgeOwnMessages(rolesChannel, botId);
+            const rolesEmbed = new EmbedBuilder()
+                .setColor(0x9B59B6)
+                .setTitle('🎭 Auto-Roles · Slimefun DrakesLabs')
+                .setDescription(
+                    '**ES** · Añade tu región, intereses y temas favoritos. Puedes cambiarlos cuando quieras.\n'
+                    + '**EN** · Add your region, interests and favorite topics. You can change them anytime.\n\n'
+                    + '> 🌐 *Comunidad independiente de fans de Slimefun · no afiliada a los autores originales.*'
+                )
+                .setFooter({ text: 'SAORI · Slimefun DrakesLabs' });
+            await rolesChannel.send({ embeds: [rolesEmbed], components: otherRows });
+        }
+    }
+}
+
+module.exports = { LEGACY_GUILD_ID, migrationText, migrationComponents, onReady, onMemberAdd, handleInteraction, handleMessage, isSaoriChannel, formatNickname, publishMigrationAnnouncement, readState, roleMenus, publishAutoRolesPanel };

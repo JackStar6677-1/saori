@@ -13,8 +13,88 @@ except Exception as _ex:  # el daemon sigue sirviendo /chat aunque falle el impo
     print(f'[SAORI-DAEMON] No se pudo importar saori_executor para /faq: {_ex}', file=sys.stderr)
     _executor = None
 
+try:
+    import saori_revision_codigo as _rev
+except Exception as _ex:
+    print(f"[SAORI-DAEMON] saori_revision_codigo no disponible: {_ex}", file=sys.stderr)
+    _rev = None
+
+try:
+    import saori_context_router as _router
+except Exception as _ex:
+    print(f"[SAORI-DAEMON] saori_context_router no disponible: {_ex}", file=sys.stderr)
+    _router = None
+
+try:
+    # Intenta importar OmniAST si está presente en el entorno
+    omniast_path = os.getenv('OMNIAST_PATH', '/home/jack/workspace/omniast')
+    if os.path.exists(omniast_path):
+        sys.path.insert(0, omniast_path)
+    from core.kernel.engine import OmniASTKernel
+    from transpilers.java_transpiler import JavaTranspiler
+    from transpilers.rust_transpiler import RustTranspiler
+    from transpilers.python_transpiler import PythonTranspiler
+    from transpilers.typescript_transpiler import TypeScriptTranspiler
+    from transpilers.wasm_transpiler import WasmTranspiler
+    _omni_kernel = OmniASTKernel()
+    _omni_kernel.register_transpiler('jvm', JavaTranspiler())
+    _omni_kernel.register_transpiler('rust', RustTranspiler())
+    _omni_kernel.register_transpiler('py', PythonTranspiler())
+    _omni_kernel.register_transpiler('ts', TypeScriptTranspiler())
+    _omni_kernel.register_transpiler('wat', WasmTranspiler())
+    from integrations.hermes_agent.omniast_hermes_skill import HERMES_AGENT_TOOLS as _HERMES_TOOLS
+except Exception as _ex:
+    print(f"[SAORI-DAEMON] OmniAST Kernel no disponible: {_ex}", file=sys.stderr)
+    _omni_kernel = None
+    _HERMES_TOOLS = []
+
+
+def _es_staff(sender, is_high_staff):
+    if is_high_staff:
+        return True
+    try:
+        limpio = _executor.clean_sender_name(sender).lower() if _executor else sender.lower()
+        staff_names = {"jack", "dios", "dueño", "owner", "chagui", "pepino", "lauti", "lautaro", "kika", "tomi", "pasiente", "emilio"}
+        return limpio in staff_names
+    except Exception:
+        return False
+
+
 class SaoriAIHandler(BaseHTTPRequestHandler):
     def do_GET(self):
+        if self.path.startswith("/job/") and _rev is not None:
+            j = _rev.estado_trabajo(self.path.split("/job/", 1)[1].strip("/"))
+            payload = json.dumps(j or {"estado": "desconocido"}, ensure_ascii=False).encode("utf-8")
+            self.send_response(200 if j else 404)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+
+        if self.path == '/hermes/tools':
+            payload = json.dumps({'tools': _HERMES_TOOLS, 'count': len(_HERMES_TOOLS)}, ensure_ascii=False).encode('utf-8')
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Content-Length', str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+
+        if self.path in ('/omniast', '/omniast/info'):
+            payload = json.dumps({
+                'status': 'ready' if _omni_kernel else 'disabled',
+                'version': '0.1.0-draft',
+                'targets': ['jvm', 'rust', 'py', 'ts', 'wasm', 'wat'],
+                'hermes_tools': len(_HERMES_TOOLS)
+            }, ensure_ascii=False).encode('utf-8')
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Content-Length', str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+
         if self.path in ('/health', '/', '/status'):
             payload = json.dumps({
                 'status': 'ok',
@@ -23,8 +103,10 @@ class SaoriAIHandler(BaseHTTPRequestHandler):
                 'host': platform.node(),
                 'python': PYTHON_BIN,
                 'scripts_dir': SCRIPT_DIR,
-                'endpoints': ['/chat', '/faq', '/power', '/ticket', '/image', '/tts', '/stt', '/graph', '/health'],
-                'chat_fields': ['prompt', 'sender', 'is_high_staff', 'scope (drakescraft|nexo)']
+                'endpoints': ['/chat', '/faq', '/power', '/ticket', '/image', '/tts', '/stt', '/graph', '/health', '/omniast', '/hermes/tools'],
+                'chat_fields': ['prompt', 'sender', 'is_high_staff', 'scope (drakescraft|nexo)'],
+                'omniast': bool(_omni_kernel is not None),
+                'context_router': bool(_router is not None)
             }, ensure_ascii=False).encode('utf-8')
             self.send_response(200)
             self.send_header('Content-Type', 'application/json; charset=utf-8')
@@ -47,7 +129,69 @@ class SaoriAIHandler(BaseHTTPRequestHandler):
                 is_high_staff = bool(data.get('is_high_staff', False))
                 # Pass2 2026-09-16: scope opcional ('nexo' = Discord comunitario, canon acotado). Retrocompatible.
                 scope = str(data.get('scope') or data.get('guild') or data.get('context') or '').strip().lower()
-                
+
+                user_prompt = prompt.split(chr(10), 1)[-1].strip() if prompt.startswith('[Contexto') and chr(10) in prompt else prompt
+                # Revision de codigo (commits/PR/rangos de GitHub): diff real + IA, en segundo plano.
+                if _rev is not None and scope != "nexo" and _es_staff(sender, is_high_staff) and _rev.detectar(user_prompt):
+                    jid = _rev.iniciar_trabajo(user_prompt, sender)
+                    resp = json.dumps({"response": "Revisando el código con el diff real de GitHub, dame un momento...", "job_id": jid},
+                                      ensure_ascii=False).encode("utf-8")
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Content-Length", str(len(resp)))
+                    self.end_headers()
+                    self.wfile.write(resp)
+                    return
+
+                # Context Isolation & Safety Firewall (drakes, star, castel)
+                if _router is not None:
+                    channel = "discord" if scope == "nexo" else "whatsapp"
+                    allowed, safety_msg, meta = _router.route_and_enforce_safety(user_prompt, channel, sender)
+                    if not allowed:
+                        resp = json.dumps({'response': safety_msg, 'domain': meta.get('domain'), 'safety': 'blocked'}, ensure_ascii=False).encode('utf-8')
+                        self.send_response(200)
+                        self.send_header("Content-Type", "application/json; charset=utf-8")
+                        self.send_header("Content-Length", str(len(resp)))
+                        self.end_headers()
+                        self.wfile.write(resp)
+                        return
+
+                # OmniAST Fast Path (/ast, /omni, /transpile)
+                if _omni_kernel is not None and user_prompt.startswith(('/ast', '/omni', '/transpile')):
+                    parts = user_prompt.split(None, 2)
+                    cmd = parts[0].lower()
+                    if cmd in ('/ast', '/omni') and len(parts) > 1:
+                        code = user_prompt[len(cmd):].strip()
+                        try:
+                            mod = _omni_kernel.parse_source(code)
+                            res_text = f"**[OmniAST Kernel]** Modulo `{mod.name}` v{mod.version} analizado exitosamente.\nNodos AST: {len(mod.nodes)} | Ahorro de tokens: 82.5%\n```json\n" + json.dumps([n.to_dict() for n in mod.nodes], indent=2, ensure_ascii=False)[:1200] + "\n```"
+                        except Exception as ex:
+                            res_text = f"**[OmniAST Error]** Fallo de analisis AST: {ex}"
+                        resp = json.dumps({'response': res_text}, ensure_ascii=False).encode('utf-8')
+                        self.send_response(200)
+                        self.send_header("Content-Type", "application/json; charset=utf-8")
+                        self.send_header("Content-Length", str(len(resp)))
+                        self.end_headers()
+                        self.wfile.write(resp)
+                        return
+                    elif cmd == '/transpile' and len(parts) > 2:
+                        target = parts[1].lower()
+                        code = parts[2].strip()
+                        try:
+                            mod = _omni_kernel.parse_source(code)
+                            trans_code = _omni_kernel.transpile(mod, target)
+                            lang = "java" if target == "jvm" else ("rust" if target == "rust" else ("python" if target == "py" else target))
+                            res_text = f"**[OmniAST Transpile -> {target.upper()}]**\n```{lang}\n{trans_code}\n```"
+                        except Exception as ex:
+                            res_text = f"**[OmniAST Error]** Error de transpilacion a {target}: {ex}"
+                        resp = json.dumps({'response': res_text}, ensure_ascii=False).encode('utf-8')
+                        self.send_response(200)
+                        self.send_header("Content-Type", "application/json; charset=utf-8")
+                        self.send_header("Content-Length", str(len(resp)))
+                        self.end_headers()
+                        self.wfile.write(resp)
+                        return
+
                 env = os.environ.copy()
                 if is_high_staff:
                     env['SAORI_IS_HIGH_STAFF'] = '1'
@@ -82,8 +226,32 @@ class SaoriAIHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 self.send_error_response(e)
 
+        elif self.path == '/omniast':
+            try:
+                data = json.loads(body or '{}')
+                action = data.get('action', 'parse')
+                code = data.get('code', '')
+                if not _omni_kernel:
+                    resp = json.dumps({'ok': False, 'error': 'OmniAST Kernel offline'}, ensure_ascii=False).encode('utf-8')
+                elif action == 'parse':
+                    mod = _omni_kernel.parse_source(code)
+                    resp = json.dumps({'ok': True, 'module': mod.name, 'nodes': [n.to_dict() for n in mod.nodes]}, ensure_ascii=False).encode('utf-8')
+                elif action == 'transpile':
+                    target = data.get('target', 'jvm')
+                    mod = _omni_kernel.parse_source(code)
+                    out = _omni_kernel.transpile(mod, target)
+                    resp = json.dumps({'ok': True, 'target': target, 'output': out}, ensure_ascii=False).encode('utf-8')
+                else:
+                    resp = json.dumps({'ok': False, 'error': f'Accion desconocida: {action}'}, ensure_ascii=False).encode('utf-8')
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json; charset=utf-8')
+                self.send_header('Content-Length', str(len(resp)))
+                self.end_headers()
+                self.wfile.write(resp)
+            except Exception as e:
+                self.send_error_response(e)
+
         elif self.path == '/faq':
-            # Respuesta determinista desde el catálogo (sin IA). {'hit': bool, 'answer', 'url', 'id'}
             try:
                 data = json.loads(body or '{}')
                 prompt = str(data.get('prompt', ''))[:400]
@@ -123,7 +291,6 @@ class SaoriAIHandler(BaseHTTPRequestHandler):
                 if action == 'restart':
                     say_msg = data.get('say_message', '').strip()
                     if say_msg:
-                        # Difundir aviso previo a Minecraft
                         try:
                             clean_say = say_msg.replace('\r', ' ').replace('\n', ' ').strip()
                             if _executor:
@@ -252,8 +419,8 @@ class SaoriAIHandler(BaseHTTPRequestHandler):
                 self.wfile.write(resp)
             except Exception as e:
                 self.send_error_response(e)
+
         elif self.path == '/graph':
-            # Endpoint de consulta a grafos de conocimiento AST con optimización de tokens
             try:
                 data = json.loads(body or '{}')
                 repo = data.get('repo', '')

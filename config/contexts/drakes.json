@@ -1,0 +1,27 @@
+{
+  "domain": "drakes",
+  "name": "DrakesCraft Network & Season 2",
+  "visibility": "public",
+  "environment": "production_and_staging",
+  "server_engine": "Purpur 1.21.11 (Production) / Purpur 26.x (Staging Season 2)",
+  "components": [
+    "Slimefun 4 Drake Port",
+    "StarSuites Monorepo (9/9 modules)",
+    "Slimefun-Rust Off-Heap SIMD",
+    "Odysseia Server Kernel",
+    "Tebex Purchases Engine",
+    "BentoBox-Drake"
+  ],
+  "agent_roles": [
+    "ticket_triage",
+    "player_support",
+    "staging_supervisor",
+    "addon_porting"
+  ],
+  "safety_boundaries": {
+    "allow_public_chat": true,
+    "allow_school_context": false,
+    "allow_internal_ips": false,
+    "allow_private_tokens": false
+  }
+}

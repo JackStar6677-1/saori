@@ -37,8 +37,14 @@ avatar/config.json
 !avatar/config.example.json
 data/
 auth_info/
+saori_whatsapp_auth/
 saori_memory.json
 *.session
+*-cache.json
+ip-intelligence-cache.json
+minecraft-accounts-ip-cache.json
+multiacct-alert-state.json
+nexo-nickname-sync-progress.json
 
 # OS & Editor artifacts
 .DS_Store

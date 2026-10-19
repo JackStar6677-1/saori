@@ -71,8 +71,16 @@ class BaseSaori(unittest.TestCase):
             S.heartbeat_agente(self.cx, agente, cuota="ok")
 
     def tearDown(self):
-        self.cx.close()
-        self.dir.cleanup()
+        if getattr(self, 'cx', None):
+            try:
+                self.cx.close()
+            except Exception:
+                pass
+        if getattr(self, 'dir', None):
+            try:
+                self.dir.cleanup()
+            except Exception:
+                pass
 
     def _config(self, **cambios):
         cfg = S._fusionar(S.CONFIG_POR_DEFECTO, cambios)
@@ -612,8 +620,11 @@ class PruebasResiliencia(BaseSaori):
         r = S.main(["--json", "diagnostico"])
         self.assertIn(r, (0, 1, 2))
         self.cx = None
-        self.bd.unlink()
-        self.cx = S.conectar()
+        try:
+            self.bd.unlink()
+            self.cx = S.conectar()
+        except PermissionError:
+            pass
 
     def test_esquema_futuro_se_rechaza(self):
         self.cx.execute("PRAGMA user_version=99")
@@ -621,8 +632,11 @@ class PruebasResiliencia(BaseSaori):
         with self.assertRaises(S.SaoriError):
             self.cx = S.conectar()
         self.cx = None
-        self.bd.unlink()
-        self.cx = S.conectar()
+        try:
+            self.bd.unlink()
+            self.cx = S.conectar()
+        except PermissionError:
+            pass
 
     def test_migracion_es_idempotente(self):
         v1 = self.cx.execute("PRAGMA user_version").fetchone()[0]
