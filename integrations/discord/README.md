@@ -296,12 +296,12 @@ Todas tienen fallback al valor que estaba hardcodeado, así que el bot arranca i
 
 | Variable | Uso | Fallback |
 |---|---|---|
-| `NEXO_GUILD_ID` | Guild NEXO (`legacyGuild.js`) | `699391897369575476` |
-| `DISCORD_OWNER_ID` / `OWNER_DISCORD_ID` | ID de Jack (se aceptan ambos nombres) | `493868699489665044` |
-| `KIKA_DISCORD_ID` | Co-owner con acceso total | `684457729003356180` |
-| `CHANNEL_MOD_LOGS` | Canal `#🚨・mod-logs` | `1539637396856111165` |
-| `ROLE_STAFF_ID`, `ROLE_OWNER_ID`, `ROLE_HIGH_STAFF_ID`, `ROLE_ADMIN_ID`, `ROLE_PERMISOS_PLUS_ID`, `ROLE_DEV_ID`, `ROLE_MOD_ID`, `ROLE_HELPER_ID` | Roles de staff (jerarquía RBAC, permisos de tickets, ping `@STAFF`) | IDs actuales de DrakesCraft |
-| `TICKET_BLACKLIST_USER_IDS` | Usuarios vetados de tickets (coma-separado, Sección 4) | `1267922444329418853` |
+| `NEXO_GUILD_ID` | Guild NEXO (`legacyGuild.js`) | `123456789012345678` |
+| `DISCORD_OWNER_ID` / `OWNER_DISCORD_ID` | ID de Owner/Admin | `123456789012345678` |
+| `CO_OWNER_DISCORD_ID` | Co-owner con acceso total | `123456789012345678` |
+| `CHANNEL_MOD_LOGS` | Canal `#🚨・mod-logs` | `123456789012345678` |
+| `ROLE_STAFF_ID`, `ROLE_OWNER_ID`, `ROLE_HIGH_STAFF_ID`, `ROLE_ADMIN_ID`, `ROLE_PERMISOS_PLUS_ID`, `ROLE_DEV_ID`, `ROLE_MOD_ID`, `ROLE_HELPER_ID` | Roles de staff (jerarquía RBAC, permisos de tickets, ping `@STAFF`) | IDs de roles del servidor |
+| `TICKET_BLACKLIST_USER_IDS` | Usuarios vetados de tickets (coma-separado) | `123456789012345678` |
 | `NEXO_AI_CHANNEL_KEYS` | Claves de `legacy-guild-state.json` (`channels.*`) donde Nexo responde con IA | `help,generalEs,saori` |
 | `NEXO_AI_USER_COOLDOWN_MS` | Espera mínima por usuario entre respuestas IA en Nexo | `15000` |
 | `AI_FAQ_URL` | Endpoint determinista `/faq` del daemon | derivado de `AI_DAEMON_URL` |

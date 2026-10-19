@@ -30,11 +30,11 @@ const PTERODACTYL_PANEL_URL = (process.env.PTERODACTYL_PANEL_URL || 'https://pan
 const PTERODACTYL_SERVER_ID = process.env.PTERODACTYL_SERVER_ID || '';
 const PTERODACTYL_API_KEY   = process.env.PTERODACTYL_API_KEY || '';
 
-const JACK_NAMES          = (process.env.ADMIN_NAMES || 'jack,jackstar,owner').split(',').map(s => s.trim().toLowerCase());
+const JACK_NAMES          = (process.env.ADMIN_NAMES || 'admin,owner,lead').split(',').map(s => s.trim().toLowerCase());
 const STAFF_GROUP_JID     = process.env.WHATSAPP_STAFF_GROUP_JID || '';
 const ADMIN_PHONE_NUMBER  = process.env.ADMIN_WHATSAPP_NUMBER || '';
-const SERVER_HOST_LABEL   = process.env.SERVER_HOST_LABEL || 'Star VPS (Santiago/SRE)';
-const HIGH_STAFF_NAMES    = (process.env.HIGH_STAFF_NAMES || 'jack,chagui,pepino,lauti,lautaro,macgyver,kika,jessiel').split(',').map(s => s.trim().toLowerCase());
+const SERVER_HOST_LABEL   = process.env.SERVER_HOST_LABEL || 'SRE-Production-Cluster';
+const HIGH_STAFF_NAMES    = (process.env.HIGH_STAFF_NAMES || 'admin,moderator,operator').split(',').map(s => s.trim().toLowerCase());
 
 const logger = pino({ level: 'error' });
 let globalSock = null;
@@ -63,23 +63,13 @@ function detectLanguage(text) {
 // SANITIZACIÓN Y NORMALIZACIÓN DE NOMBRE DE STAFF / USUARIO (ANTI-SPOOFING)
 // ------------------------------------------------------------------
 function cleanSenderName(raw, isVerifiedJack = false) {
-    if (isVerifiedJack) return 'Jack';
+    if (isVerifiedJack) return 'Admin';
     if (!raw) return 'Usuario';
     const lower = raw.toLowerCase();
 
     if (JACK_NAMES.some(n => lower.includes(n))) {
         return 'Usuario';
     }
-
-    if (lower.includes('emilio') || lower.includes('em1lio')) return 'Emilio';
-    if (lower.includes('pasient') || lower.includes('pacox')) return 'Pasiente';
-    if (lower.includes('pepino'))  return 'Pepino';
-    if (lower.includes('chagui'))  return 'Chagui';
-    if (lower.includes('lauti') || lower.includes('lautaro')) return 'Lauti';
-    if (lower.includes('macgyver')) return 'Macgyver';
-    if (lower.includes('tomi') || lower.includes('bytomixd') || lower.includes('tomixd') || lower.includes('tomas')) return 'Tomi';
-    if (lower.includes('kika'))    return 'Kika';
-    if (lower.includes('derem'))   return 'Derem';
 
     let s = raw.trim();
     if (s.toLowerCase().startsWith('mr_') && s.length > 3) s = s.slice(3);
