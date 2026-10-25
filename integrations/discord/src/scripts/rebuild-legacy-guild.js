@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 
 const GUILD_ID = '699391897369575476';
-const OWNER_ID = process.env.DISCORD_OWNER_ID || '493868699489665044';
+const OWNER_ID = process.env.DISCORD_OWNER_ID || '123456789012345678';
 const token = process.env.DISCORD_BOT_TOKEN;
 const statePath = process.env.LEGACY_GUILD_STATE_PATH
     || path.join(__dirname, '..', 'legacy-guild-state.json');

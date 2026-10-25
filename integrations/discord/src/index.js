@@ -68,7 +68,7 @@ process.on('uncaughtException', (err) => {
 });
 
 
-const JACK_DISCORD_ID = process.env.DISCORD_OWNER_ID || process.env.OWNER_DISCORD_ID || '493868699489665044';
+const JACK_DISCORD_ID = process.env.DISCORD_OWNER_ID || process.env.OWNER_DISCORD_ID || '123456789012345678';
 const DRAKES_OFFICIAL_GUILD_ID = process.env.GUILD_ID || '1305395719300972585';
 // Pass2 2026-09-16: IDs configurables por .env con fallback al valor vigente (ver README).
 const envList = (name, fallback) => {
@@ -1979,7 +1979,7 @@ function buildShelpStaffEmbed(category = 'all') {
 // =========================================================================
 
 const STAFF_LEVELS = {
-    OWNER: 100,    // Jack (493868699489665044) y Kika (684457729003356180) -> Acceso total irrestricto
+    OWNER: 100,    // Jack (123456789012345678) y Kika (987654321098765432) -> Acceso total irrestricto
     ADMIN: 80,     // Jessiel (1258215533250084865), Chagui (722946819419668510) -> Ban DC/MC, Discord config, Consola
     DEV: 60,       // Lauti (555133572705681417), Nix (1143658959815856129) -> stps, Logs, Dev console, Salud
     MOD: 40,       // Derem (1340427144165326932), Pepe (388055931369291776), Tomi (762781358007123968) -> Mute/Timeout DC, Kick DC, Kick/Mute/Warn MC. Ban MC SOLO justificado para Trinidad/Jack. NO BAN DC.
@@ -1988,7 +1988,7 @@ const STAFF_LEVELS = {
     USER: 0
 };
 
-const KIKA_DISCORD_ID = process.env.KIKA_DISCORD_ID || '684457729003356180';
+const KIKA_DISCORD_ID = process.env.KIKA_DISCORD_ID || '987654321098765432';
 const STAFF_ROLES = {
     STAFF: process.env.ROLE_STAFF_ID || '1539768983287496855',
     OWNER: process.env.ROLE_OWNER_ID || '1539641774392348754',
@@ -2047,7 +2047,7 @@ async function triggerSparkAnalysis(timeoutSecs = 60) {
 
 
 function getStaffMemberHierarchy(member, authorId) {
-    if (authorId === JACK_DISCORD_ID || authorId === '493868699489665044' || authorId === KIKA_DISCORD_ID) {
+    if (authorId === JACK_DISCORD_ID || authorId === '123456789012345678' || authorId === KIKA_DISCORD_ID) {
         return { level: STAFF_LEVELS.OWNER, roleName: 'Dueño / Dirección General', isStaff: true, isHighStaff: true, canDCBan: true, canMCBan: true };
     }
     if (authorId === '722946819419668510') {
@@ -3099,7 +3099,7 @@ const STAFF_ROLES_SUFFIX = {
 
 function formatMemberNickname(name, memberRoles = [], memberId = '') {
     if (!name) return "";
-    if (memberId === '684457729003356180') return 'ᴋɪᴋᴀ - ᴡɪғᴇ ᴏᴡɴᴇʀ';
+    if (memberId === '987654321098765432') return 'ᴋɪᴋᴀ - ᴡɪғᴇ ᴏᴡɴᴇʀ';
     let cleaned = name.replace(/\s*[-–—|]\s*(admin|mod|dev|helper|builder|owner|staff|bufon|bufón|wife owner|husband owner|dios|ᴀᴅᴍɪɴ|ᴍᴏᴅ|ᴅᴇᴠ|ʜᴇʟᴘᴇʀ|ʙᴜɪʟᴅᴇʀ|ᴏᴡɴᴇʀ|ʙᴜғóɴ).*$/gi, '').trim();
     cleaned = cleaned.normalize('NFKC');
     let unconfused = '';
@@ -9245,7 +9245,7 @@ client.on('messageCreate', async (message) => {
 
             for (const [id, member] of allMembers) {
                 const isBot = member.user.bot;
-                const isOwnerOrJack = id === JACK_DISCORD_ID || id === KIKA_DISCORD_ID || id === '493868699489665044';
+                const isOwnerOrJack = id === JACK_DISCORD_ID || id === KIKA_DISCORD_ID || id === '123456789012345678';
                 const memberHierarchy = getStaffMemberHierarchy(member, id);
                 const hasWhitelistRole = member.roles.cache.some(r => WHITELIST_ROLE_IDS.has(r.id));
                 const isBooster = member.premiumSinceTimestamp !== null;

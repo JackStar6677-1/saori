@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "saori-ai"
+version = "2.0.0"
+description = "Autonomous Multi-Agent SRE, Neural Observatory & Cognitive Kokoro Framework"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "JackStar Systems", email = "contact@jackstar.dev" }
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Topic :: System :: Monitoring",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence"
+]
+dependencies = []
+
+[project.optional-dependencies]
+tui = ["textual>=0.40.0", "rich>=13.0.0"]
+dev = ["pytest>=7.0.0", "black", "flake8"]
+
+[project.scripts]
+saori = "kokoro.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["kokoro*", "core*", "skills*"]

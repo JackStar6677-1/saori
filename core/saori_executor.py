@@ -9,7 +9,7 @@ from datetime import datetime
 
 
 PTERO_BASE = 'https://panel.thegamehosting.com/api/client/servers/38528a4e'
-PTERO_KEY_PATH = '/home/jack/.pterodactyl_key'
+PTERO_KEY_PATH = os.getenv('PTERO_KEY_PATH', os.path.expanduser('~/.pterodactyl_key'))
 MEMORY_FILE = '/home/jack/.local/state/nova/saori_memory.json'
 TAREAS_FILE = '/home/jack/ai-hub/TAREAS_PENDIENTES_STAFF.md'
 

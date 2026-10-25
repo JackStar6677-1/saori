@@ -58,3 +58,11 @@ nexo-nickname-sync-progress.json
 *.bak-*
 
 graphify-out/
+
+# Packaging
+build/
+dist/
+*.egg-info/
+*.egg
+.venv/
+

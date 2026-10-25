@@ -11,7 +11,7 @@ const {
 const LEGACY_GUILD_ID = process.env.NEXO_GUILD_ID || '699391897369575476';
 const STATE_PATH = process.env.LEGACY_GUILD_STATE_PATH
     || path.join(__dirname, 'legacy-guild-state.json');
-const OWNER_ID = process.env.DISCORD_OWNER_ID || process.env.OWNER_DISCORD_ID || '493868699489665044';
+const OWNER_ID = process.env.DISCORD_OWNER_ID || process.env.OWNER_DISCORD_ID || '123456789012345678';
 let schedulerStarted = false;
 
 const SMALL_CAPS = {

@@ -7,8 +7,8 @@ const http = require('http');
 
 const DRAKES_TASK_CH = '1554140307002757200'; // 📌・ᴛᴀʀᴇᴀs-ᴊᴀᴄᴋ
 const HUB_TASK_CH = '1554140426716454994';    // 📌・ᴛᴀʀᴇᴀs-sʟɪᴍᴇғᴜɴ
-const JACK_DISCORD_ID = process.env.DISCORD_OWNER_ID || '493868699489665044';
-const MEMORIA_URL = 'http://100.114.161.74:8077';
+const JACK_DISCORD_ID = process.env.DISCORD_OWNER_ID || '123456789012345678';
+const MEMORIA_URL = process.env.STAR_MEMORY_URL || process.env.SAORI_MEMORY_URL || 'http://127.0.0.1:8077';
 const AI_DAEMON_URL = process.env.SAORI_AI_BASE || 'http://127.0.0.1:8089';
 
 async function queryAiEvaluation(taskContent, project) {

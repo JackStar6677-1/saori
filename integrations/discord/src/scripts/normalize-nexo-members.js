@@ -6,7 +6,7 @@ const path = require('path');
 const { formatNickname, LEGACY_GUILD_ID } = require('../legacyGuild');
 
 const token = process.env.DISCORD_BOT_TOKEN;
-const ownerId = process.env.DISCORD_OWNER_ID || '493868699489665044';
+const ownerId = process.env.DISCORD_OWNER_ID || '123456789012345678';
 const API = 'https://discord.com/api/v10';
 const statePath = process.env.LEGACY_GUILD_STATE_PATH || path.join(__dirname, '..', 'legacy-guild-state.json');
 const progressPath = path.join(__dirname, '..', 'nexo-nickname-sync-progress.json');
