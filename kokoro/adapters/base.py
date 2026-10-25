@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-SAORI KOKORO â€” Universal Multi-Provider LLM Base Interface
+SAORI KOKORO — Universal Multi-Provider LLM Base Interface
 ==========================================================
 Defines abstract contracts, capability flags, model specifications,
 and structured response dataclasses.

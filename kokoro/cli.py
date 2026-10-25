@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-SAORI â€” Unified Open Framework CLI
+SAORI — Unified Open Framework CLI
 ==================================
 Command line interface for managing SAORI Kokoro, Neural Observatory,
 Multi-Provider LLM orchestration, and Protocol ANOMALY.
@@ -24,26 +24,26 @@ def cmd_status(args):
     st = kernel.estado_general()
 
     print("\n" + "=" * 60)
-    print(f"  ðŸ�›ï¸�  SAORI KOKORO â€” OPERATIONAL STATUS (v{st['version']})")
+    print(f"  🏛️  SAORI KOKORO — OPERATIONAL STATUS (v{st['version']})")
     print("=" * 60)
-    print(f"  â€¢ Sovereign Operator : {st['operador']}")
-    print(f"  â€¢ Active Invariants  : {st['invariantes_activas']}")
-    print(f"  â€¢ Active Providers   : {', '.join(st['proveedores_activos']) if st['proveedores_activos'] else 'None (Configure in .env)'}")
-    print(f"  â€¢ Primary Provider   : {st['primary_provider'] or 'None'}")
-    print(f"  â€¢ Persistent Memories: {st['memorias_recientes_detectadas']} recent milestones indexed")
-    print(f"  â€¢ ANOMALY Health     : {st['anomaly_health_score']}/100")
+    print(f"  • Sovereign Operator : {st['operador']}")
+    print(f"  • Active Invariants  : {st['invariantes_activas']}")
+    print(f"  • Active Providers   : {', '.join(st['proveedores_activos']) if st['proveedores_activos'] else 'None (Configure in .env)'}")
+    print(f"  • Primary Provider   : {st['primary_provider'] or 'None'}")
+    print(f"  • Persistent Memories: {st['memorias_recientes_detectadas']} recent milestones indexed")
+    print(f"  • ANOMALY Health     : {st['anomaly_health_score']}/100")
     print("=" * 60 + "\n")
 
 def cmd_doctor(args):
     """Runs a complete environment, dependency and connectivity diagnosis."""
     print("\n" + "=" * 60)
-    print("  ðŸ©º  SAORI DIAGNOSTIC DOCTOR")
+    print("  🩺  SAORI DIAGNOSTIC DOCTOR")
     print("=" * 60)
 
     # 1. Python environment
     py_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
     py_ok = sys.version_info >= (3, 10)
-    print(f"  [{'âœ“' if py_ok else 'âœ—'}] Python Version: {py_ver} (Requires >= 3.10)")
+    print(f"  [{'✓' if py_ok else '✗'}] Python Version: {py_ver} (Requires >= 3.10)")
 
     # 2. SQLite & WAL mode
     try:
@@ -53,7 +53,7 @@ def cmd_doctor(args):
         sqlite_ok = True
     except Exception:
         sqlite_ok = False
-    print(f"  [{'âœ“' if sqlite_ok else 'âœ—'}] SQLite WAL Engine: Available")
+    print(f"  [{'✓' if sqlite_ok else '✗'}] SQLite WAL Engine: Available")
 
     # 3. State directories
     state_dir = Path.home() / ".local" / "state" / "saori"
@@ -62,7 +62,7 @@ def cmd_doctor(args):
         dir_ok = os.access(state_dir, os.W_OK)
     except Exception:
         dir_ok = False
-    print(f"  [{'âœ“' if dir_ok else 'âœ—'}] State Storage: {state_dir} (Writable)")
+    print(f"  [{'✓' if dir_ok else '✗'}] State Storage: {state_dir} (Writable)")
 
     # 4. LLM Providers Probe
     from kokoro.adapters.registry import ProviderRegistry
@@ -77,26 +77,26 @@ def cmd_doctor(args):
         if cfg and st == "connected":
             any_connected = True
             lat = p_status.get("latency_ms", "N/A")
-            print(f"    â€¢ {name.upper():<10} : âœ“ CONNECTED ({lat} ms)")
+            print(f"    • {name.upper():<10} : ✓ CONNECTED ({lat} ms)")
         elif cfg:
             err = p_status.get("error", "Unknown error")
-            print(f"    â€¢ {name.upper():<10} : âš ï¸� CONFIGURED BUT ERROR ({err})")
+            print(f"    • {name.upper():<10} : ⚠️ CONFIGURED BUT ERROR ({err})")
         else:
-            print(f"    â€¢ {name.upper():<10} : âšª NOT CONFIGURED (No key/endpoint)")
+            print(f"    • {name.upper():<10} : ⚪ NOT CONFIGURED (No key/endpoint)")
 
     # Summary
     print("\n" + "-" * 60)
     if any_connected:
-        print("  ðŸŽ‰ System is healthy and ready for autonomous SRE operations!")
+        print("  🎉 System is healthy and ready for autonomous SRE operations!")
     else:
-        print("  âš ï¸�  Notice: No AI providers are connected. Run 'saori init' or edit '.env'")
+        print("  ⚠️  Notice: No AI providers are connected. Run 'saori init' or edit '.env'")
         print("     to configure OpenAI, Anthropic, Gemini, or a local Ollama daemon.")
     print("=" * 60 + "\n")
 
 def cmd_init(args):
     """Interactive onboarding wizard to configure SAORI."""
     print("\n" + "=" * 60)
-    print("  âœ¨ SAORI KOKORO INITIALIZATION WIZARD")
+    print("  ✨ SAORI KOKORO INITIALIZATION WIZARD")
     print("=" * 60)
     env_file = Path(".env")
     example_file = Path(".env.example")
@@ -110,11 +110,11 @@ def cmd_init(args):
 
     if example_file.exists():
         shutil.copy(example_file, env_file)
-        print("  âœ“ Created base .env from .env.example")
+        print("  ✓ Created base .env from .env.example")
     else:
         with open(env_file, "w", encoding="utf-8") as f:
             f.write("# SAORI Configuration\nSAORI_OWNER=Lead Engineer\n")
-        print("  âœ“ Created clean .env")
+        print("  ✓ Created clean .env")
 
     print("\n  Which primary LLM provider would you like to use?")
     print("    1) Local Ollama (100% Free & Private, runs locally)")
@@ -166,7 +166,7 @@ def cmd_init(args):
     with open(env_file, "a", encoding="utf-8") as f:
         f.write("\n# Configured via saori init\n" + "\n".join(lines_to_append) + "\n")
 
-    print("\n  âœ“ Configuration saved to .env")
+    print("\n  ✓ Configuration saved to .env")
     print("  Run 'saori doctor' to verify your connection!\n")
 
 def cmd_chat(args):
@@ -174,14 +174,14 @@ def cmd_chat(args):
     kernel = get_kernel()
     provider = kernel.router.registry.get_primary_provider()
     if not provider:
-        print("â�Œ No AI provider configured. Run 'saori init' first.")
+        print("❌ No AI provider configured. Run 'saori init' first.")
         return
 
     identity_prompt = kernel.identity.generar_prompt_base(agente="interactive-cli")
     messages = [{"role": "system", "content": identity_prompt}]
 
     print("\n" + "=" * 60)
-    print(f"  ðŸ’¬ SAORI KOKORO CHAT (Connected to {provider.name.upper()})")
+    print(f"  💬 SAORI KOKORO CHAT (Connected to {provider.name.upper()})")
     print("  Type 'exit' or 'quit' to end session.")
     print("=" * 60 + "\n")
 
@@ -204,14 +204,14 @@ def cmd_chat(args):
             print("\nSession ended.")
             break
         except Exception as e:
-            print(f"\nâ�Œ Error: {e}\n")
+            print(f"\n❌ Error: {e}\n")
 
 def cmd_observatory(args):
     """Launches Neural Observatory web interface."""
     from kokoro.observatory.dashboard import start_observatory_server
     host = args.host or "127.0.0.1"
     port = args.port or 8089
-    print(f"\nðŸš€ Launching SAORI Neural Observatory on http://{host}:{port}")
+    print(f"\n🚀 Launching SAORI Neural Observatory on http://{host}:{port}")
     start_observatory_server(host=host, port=port)
 
 def cmd_flight(args):
@@ -220,14 +220,14 @@ def cmd_flight(args):
     recorder = FlightRecorder()
 
     if args.replay:
-        print(f"\n  ðŸ“¼ Deterministic Causal Replay for Trace: {args.replay}")
+        print(f"\n  📼 Deterministic Causal Replay for Trace: {args.replay}")
         replay = recorder.reproduce_trace(args.replay)
         print(replay)
     else:
-        print("\n  ðŸ“¦ Recent Flight Recorder Traces:")
+        print("\n  📦 Recent Flight Recorder Traces:")
         traces = recorder.list_traces(limit=args.limit or 15)
         for t in traces:
-            print(f"    â€¢ {t.get('trace_id')} | {t.get('project')} | {t.get('agent')} | status={t.get('status')} | {t.get('created_at')}")
+            print(f"    • {t.get('trace_id')} | {t.get('project')} | {t.get('agent')} | status={t.get('status')} | {t.get('created_at')}")
     print()
 
 def cmd_anomaly(args):
@@ -236,22 +236,22 @@ def cmd_anomaly(args):
     anomaly = kernel.anomaly
 
     if args.cycle:
-        print("\n  ðŸŒ€ Running Autonomous ANOMALY Cognitive Audit Cycle...")
+        print("\n  🌀 Running Autonomous ANOMALY Cognitive Audit Cycle...")
         res = anomaly.ejecutar_ciclo_aprendizaje_autonomo()
-        print(f"    â€¢ Trace ID       : {res.get('trace_id')}")
-        print(f"    â€¢ Hypotheses     : {res.get('hipotesis_generadas')} generated")
-        print(f"    â€¢ Simulations    : {res.get('simulaciones_ejecutadas')} executed in sandbox")
-        print(f"    â€¢ Meta-Learnings : {res.get('aprendizajes_promovidos')} promoted")
+        print(f"    • Trace ID       : {res.get('trace_id')}")
+        print(f"    • Hypotheses     : {res.get('hipotesis_generadas')} generated")
+        print(f"    • Simulations    : {res.get('simulaciones_ejecutadas')} executed in sandbox")
+        print(f"    • Meta-Learnings : {res.get('aprendizajes_promovidos')} promoted")
     elif args.hypotheses:
-        print("\n  ðŸ”¬ Active Scientific Hypotheses:")
+        print("\n  🔬 Active Scientific Hypotheses:")
         hyps = anomaly.hypothesis_engine.listar_activas()
         for h in hyps:
-            print(f"    â€¢ [{h['id']}] {h['hipotesis'][:65]}... (status={h['estado']})")
+            print(f"    • [{h['id']}] {h['hipotesis'][:65]}... (status={h['estado']})")
     elif args.learnings:
-        print("\n  ðŸ§  Verified Meta-Learnings (Baseline vs Challenger):")
+        print("\n  🧠 Verified Meta-Learnings (Baseline vs Challenger):")
         learns = anomaly.meta_learning.listar_aprendizajes()
         for l in learns:
-            print(f"    â€¢ [{l['id']}] {l['estrategia_optima']} (+{int(l.get('ganancia_rendimiento',0)*100)}% gain)")
+            print(f"    • [{l['id']}] {l['estrategia_optima']} (+{int(l.get('ganancia_rendimiento',0)*100)}% gain)")
     else:
         model = anomaly.self_model.compilar_modelo()
         print(f"\n  SAORI Dynamic Self-Model Health: {model.salud_general_score}/100")
@@ -260,7 +260,7 @@ def cmd_anomaly(args):
 def main():
     parser = argparse.ArgumentParser(
         prog="saori",
-        description="SAORI Kokoro â€” The Autonomous Multi-Agent Cognitive Framework"
+        description="SAORI Kokoro — The Autonomous Multi-Agent Cognitive Framework"
     )
     subparsers = parser.add_subparsers(dest="command", help="Available subcommands")
 

@@ -6605,8 +6605,8 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
             try {
                 await user.send({
                     embeds: [new EmbedBuilder().setColor(0x3498DB)
-                        .setDescription(`ðŸŒ� **${destino}:** ${out.texto}`)
-                        .setFooter({ text: `Traduccion solicitada de #${msg.channel.name} Â· Saori` })],
+                        .setDescription(`🌐 **${destino}:** ${out.texto}`)
+                        .setFooter({ text: `Traduccion solicitada de #${msg.channel.name} · Saori` })],
                 });
             } catch (ignored) {}
             return;
@@ -6614,8 +6614,8 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
 
         await msg.reply({
             embeds: [new EmbedBuilder().setColor(0x3498DB)
-                .setDescription(`ðŸŒ� **${destino}:** ${out.texto}`)
-                .setFooter({ text: `pedido por ${user.username} Â· Saori` })],
+                .setDescription(`🌐 **${destino}:** ${out.texto}`)
+                .setFooter({ text: `pedido por ${user.username} · Saori` })],
             allowedMentions: { repliedUser: false },
         }).catch(() => {});
     } catch (e) { console.error('[SAORI-TRAD-REACT]', e.message); }

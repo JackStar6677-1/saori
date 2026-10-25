@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-SAORI KOKORO â€” NEURAL OBSERVATORY: Flight Recorder (Caja Negra Cognitiva)
+SAORI KOKORO — NEURAL OBSERVATORY: Flight Recorder (Caja Negra Cognitiva)
 ========================================================================
 Historial reproducible y determinista de operaciones, decisiones, herramientas,
-bloqueos, cambios, resultados e incidentes. Permite reconstruir cualquier ejecuciÃ³n.
+bloqueos, cambios, resultados e incidentes. Permite reconstruir cualquier ejecución.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ class FlightSpan:
     agent: str
     phase: str             # TRIGGER, CONTEXT, MODEL, TOOL, MUTATION, VERIFICATION, COMPLETION
     category: str          # DECISION, TOOL, BLOCKADE, CHANGE, RESULT, INCIDENT
-    name: str              # Nombre de la operaciÃ³n
+    name: str              # Nombre de la operación
     input_summary: str
     output_summary: str
     status: str            # SUCCESS, FAILED, ABORTED, DEFERRED
@@ -55,7 +55,7 @@ class FlightTrace:
         return asdict(self)
 
 class FlightRecorder:
-    """Caja negra cognitiva con almacenamiento indexado y reproducciÃ³n de trazas."""
+    """Caja negra cognitiva con almacenamiento indexado y reproducción de trazas."""
 
     _instance = None
 
@@ -148,7 +148,7 @@ class FlightRecorder:
                 phase="TRIGGER",
                 category="DECISION",
                 input_summary=f"Iniciado por {trigger} para tarea: {task}",
-                output_summary="Traza abierta con Ã©xito",
+                output_summary="Traza abierta con éxito",
                 status="SUCCESS"
             )
 
@@ -161,7 +161,7 @@ class FlightRecorder:
                 task_id=task,
                 trace_id=trace_id,
                 category="decision",
-                summary=f"Inicio de ejecuciÃ³n correlacionada: {task}",
+                summary=f"Inicio de ejecución correlacionada: {task}",
                 details={"trigger": trigger, "trace_id": trace_id}
             )
         except Exception:
@@ -182,7 +182,7 @@ class FlightRecorder:
         parent_span_id: Optional[str] = None,
         agent: Optional[str] = None
     ) -> str:
-        """Registra un tramo operativo atÃ³mico (herramienta, salto de modelo, mutaciÃ³n, decisiÃ³n)."""
+        """Registra un tramo operativo atómico (herramienta, salto de modelo, mutación, decisión)."""
         span_id = f"span_{uuid.uuid4().hex[:8]}"
         now = time.time()
         clean_meta = sanitize_metadata(metadata or {})
@@ -221,7 +221,7 @@ class FlightRecorder:
         tokens_used: int = 0,
         error: Optional[str] = None
     ):
-        """Cierra una traza registrando duraciÃ³n total, resultado final y consumo de tokens."""
+        """Cierra una traza registrando duración total, resultado final y consumo de tokens."""
         now = time.time()
         try:
             con = sqlite3.connect(str(self.db_path), timeout=2.0)
@@ -261,7 +261,7 @@ class FlightRecorder:
                     task_id=task,
                     trace_id=trace_id,
                     category="decision" if status == "SUCCESS" else "incident",
-                    summary=f"EjecuciÃ³n finalizada ({status}): {summary[:150]}",
+                    summary=f"Ejecución finalizada ({status}): {summary[:150]}",
                     details={"tokens_used": tokens_used, "duration_ms": dur_ms, "error": error},
                     status=status
                 )
@@ -333,7 +333,7 @@ class FlightRecorder:
         status: Optional[str] = None,
         limit: int = 20
     ) -> List[Dict[str, Any]]:
-        """Lista las ejecuciones mÃ¡s recientes para visualizaciÃ³n en el dashboard."""
+        """Lista las ejecuciones más recientes para visualización en el dashboard."""
         clauses = []
         params = []
         if agent:
@@ -381,7 +381,7 @@ class FlightRecorder:
             return []
 
     def reproduce_trace(self, trace_id: str) -> str:
-        """Genera un reporte explicativo paso a paso de la caja negra para auditorÃ­a humana."""
+        """Genera un reporte explicativo paso a paso de la caja negra para auditoría humana."""
         t = self.get_trace(trace_id)
         if not t:
             return f"# Error: Traza {trace_id} no encontrada en Flight Recorder."
@@ -390,11 +390,11 @@ class FlightRecorder:
             f"# REPORTE DE CAJA NEGRA (FLIGHT RECORDER): {t['trace_id']}",
             f"- **Agente:** `{t['agent']}` | **Modelo:** `{t['model']}`",
             f"- **Proyecto:** `{t['project']}` | **Tarea:** `{t['task']}`",
-            f"- **Estado Final:** `{t['status']}` | **DuraciÃ³n:** `{t['duration_seconds']}s` | **Tokens:** `{t['tokens_used']}`",
+            f"- **Estado Final:** `{t['status']}` | **Duración:** `{t['duration_seconds']}s` | **Tokens:** `{t['tokens_used']}`",
             f"- **Resumen:** {t['summary'] or 'Sin resumen declarado'}",
             "",
-            "## Secuencia Causal de Operaciones (LÃ­nea Temporal):",
-            "| Tiempo (+s) | Fase | CategorÃ­a | OperaciÃ³n | Entrada | Salida | Estado |",
+            "## Secuencia Causal de Operaciones (Línea Temporal):",
+            "| Tiempo (+s) | Fase | Categoría | Operación | Entrada | Salida | Estado |",
             "|---|---|---|---|---|---|---|"
         ]
 

@@ -2,7 +2,7 @@
 
 <img src="assets/saori-banner.svg" alt="SAORI SRE Framework Banner" width="100%" />
 
-# ðŸ�›ï¸� S.A.O.R.I. â€” Autonomous Multi-Agent SRE Framework
+# 🏛️ S.A.O.R.I. — Autonomous Multi-Agent SRE Framework
 ### **Server Autonomous Orchestrator for Resilient Infrastructure**
 *Production-Grade Omnichannel SRE Swarm, Kokoro Kernel, Neural Observatory & Protocol ANOMALY*
 
@@ -17,7 +17,7 @@
 [![Multi-Provider](https://img.shields.io/badge/providers-Ollama_%7C_Anthropic_%7C_OpenAI_%7C_Gemini-8b5cf6?style=for-the-badge)](PROVIDERS.md)
 [![License MIT](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)](LICENSE)
 
-[Quickstart](INSTALL.md) â€¢ [Providers](PROVIDERS.md) â€¢ [Architecture](ARCHITECTURE.md) â€¢ [Neural Observatory](docs/OBSERVATORY.md) â€¢ [Protocol ANOMALY](docs/KOKORO_ANOMALY.md) â€¢ [Security](SECURITY.md) â€¢ [Contributing](CONTRIBUTING.md)
+[Quickstart](INSTALL.md) • [Providers](PROVIDERS.md) • [Architecture](ARCHITECTURE.md) • [Neural Observatory](docs/OBSERVATORY.md) • [Protocol ANOMALY](docs/KOKORO_ANOMALY.md) • [Security](SECURITY.md) • [Contributing](CONTRIBUTING.md)
 
 </div>
 
@@ -28,7 +28,7 @@
 
 ---
 
-## ðŸŒŸ Vision & What SAORI Solves
+## 🌸 Vision & What SAORI Solves
 
 Modern server fleets, cloud infrastructures, and community platforms suffer from operational fragmentation:
 - Incident alerts are scattered across disparate channels (Discord, WhatsApp, monitoring webhooks).
@@ -38,9 +38,9 @@ Modern server fleets, cloud infrastructures, and community platforms suffer from
 **SAORI** (*Server Autonomous Orchestrator for Resilient Infrastructure*) solves this by providing a **production-ready, self-hosted, sovereign SRE swarm framework**. It unifies:
 1. **Omnichannel Interaction:** Operates simultaneously over CLI, Discord modals, WhatsApp bridges, and game server consoles.
 2. **Universal Multi-Provider LLM Engine:** Plugs seamlessly into **local Ollama (100% private & free)**, **Anthropic Claude**, **OpenAI**, **Google Gemini**, or **OpenAI-compatible** servers (vLLM, DeepSeek, LocalAI).
-3. **Neural Observatory & Flight Recorder:** Deterministic black-box logging that records causal chains (`TRIGGER` âž” `CONTEXT` âž” `MODEL` âž” `TOOL` âž” `RESULT`) and enables instantaneous post-mortem replay.
+3. **Neural Observatory & Flight Recorder:** Deterministic black-box logging that records causal chains (`TRIGGER` ➔ `CONTEXT` ➔ `MODEL` ➔ `TOOL` ➔ `RESULT`) and enables instantaneous post-mortem replay.
 4. **Protocol ANOMALY (AST-0001):** Verifiable cognitive self-improvement using scientific hypotheses, an ephemeral sandbox, and a strict $+15\%$ meta-learning promotion threshold.
-5. **Autonomy Matrix (A0â€“A4) & LÃ­mite 6:** Rigorous separation of powers ensuring that high-risk production changes strictly require human authorization.
+5. **Autonomy Matrix (A0–A4) & Límite 6:** Rigorous separation of powers ensuring that high-risk production changes strictly require human authorization.
 
 > [!IMPORTANT]
 > **Clean-Room Architecture (Zero Secret Leaks):**  
@@ -48,7 +48,7 @@ Modern server fleets, cloud infrastructures, and community platforms suffer from
 
 ---
 
-## ðŸš€ Key Architectural Pillars
+## 🚀 Key Architectural Pillars
 
 ```mermaid
 flowchart TD
@@ -61,7 +61,7 @@ flowchart TD
     subgraph Core["Kokoro Central Cognitive Kernel"]
         Identity["Canonical Identity & 6 Invariants"]
         Router["Cognitive Multi-Tier Router"]
-        Governance["Autonomy Matrix A0-A4 (LÃ­mite 6)"]
+        Governance["Autonomy Matrix A0-A4 (Límite 6)"]
         Memory["Persistent Episodic Autobiography (SQLite WAL)"]
     end
 
@@ -86,11 +86,11 @@ flowchart TD
 
 ### 1. Kokoro Cognitive Kernel (`kokoro/`)
 - **Canonical Persona:** Enforces non-destruction, radical technical veracity, token economy, and domain isolation.
-- **Autonomy Matrix A0â€“A4:**
+- **Autonomy Matrix A0–A4:**
   - `A0 (Observer)`: Read-only telemetry, log analysis, and AST queries.
   - `A1 (Routine Recovery)`: Automated clearance of stale locks and sandbox resets.
   - `A2 (Reversible Improvement)`: Auto-testing and patching inside isolated sandboxes.
-  - `A3 (Supervised / LÃ­mite 6)`: Production deploys, database wipes, and credential changes strictly require human signoff.
+  - `A3 (Supervised / Límite 6)`: Production deploys, database wipes, and credential changes strictly require human signoff.
   - `A4 (Emergency Contained)`: Outage containment and immediate human escalation.
 - **Persistent Autobiography:** Automatic local SQLite database in WAL mode (`~/.local/state/saori/memory.db`) with fallback sync to external MCP/REST memory services.
 
@@ -105,14 +105,14 @@ flowchart TD
 - **Secret Sanitization Engine:** Regex and structural key redaction strips sensitive tokens prior to disk persistence.
 
 ### 4. Protocol ANOMALY AST-0001 (`kokoro/anomaly/`)
-- Dynamic Self-Model health score (0â€“100).
+- Dynamic Self-Model health score (0–100).
 - Scientific hypothesis formulation with falsification criteria.
 - Ephemeral sandbox execution (`~/.local/state/saori/anomaly/sandbox/`).
 - Meta-learning comparison: challenger strategies are only promoted if they demonstrate $\ge 15\%$ gain with zero invariant breaches.
 
 ---
 
-## âš¡ 1-Minute Quickstart
+## ⚡ 1-Minute Quickstart
 
 ### Automated Installer (Linux / macOS)
 ```bash
@@ -145,7 +145,7 @@ saori doctor
 
 ---
 
-## ðŸ’» CLI Command Reference
+## 💻 CLI Command Reference
 
 | Command | Description |
 |---|---|
@@ -162,7 +162,7 @@ saori doctor
 
 ---
 
-## ðŸ¤– Connecting Custom Agents
+## 🤖 Connecting Custom Agents
 
 You can create and attach custom autonomous agents to the Kokoro Kernel with just a few lines of Python:
 
@@ -177,7 +177,7 @@ agent_ctx = kernel.preparar_contexto_agente(
     tarea="Verify and snapshot database state"
 )
 
-# 2. Check governance and LÃ­mite 6 compliance before executing
+# 2. Check governance and Límite 6 compliance before executing
 eval_res = kernel.evaluar_accion(accion="make_safe_backup", riesgo_declarado="BAJO")
 if eval_res["autorizada_autonoma"]:
     # 3. Dispatch prompt to the optimal configured provider
@@ -200,15 +200,15 @@ if eval_res["autorizada_autonoma"]:
 
 ---
 
-## âš ï¸� Known Limitations
+## ⚠️ Known Limitations
 
 1. **Hardware Requirements for Local Inference:** Running local models via Ollama requires sufficient host RAM/VRAM (e.g., 8 GB+ for `llama3.2:3b`, 16 GB+ for `qwen2.5-coder:7b`). For lightweight VPS setups, use remote API keys (Claude, OpenAI, or Gemini).
-2. **Strict Production Firewall:** By design, SAORI cannot execute irreversible production writes (e.g., database wipes, production server restarts) autonomously. This is a foundational safety invariant (LÃ­mite 6).
+2. **Strict Production Firewall:** By design, SAORI cannot execute irreversible production writes (e.g., database wipes, production server restarts) autonomously. This is a foundational safety invariant (Límite 6).
 3. **Dashboard Exposure:** The Neural Observatory web interface (`port 8089`) binds to `127.0.0.1` by default. To expose it securely to an engineering team, place it behind an authenticated reverse proxy (e.g., Nginx with TLS, Cloudflare Tunnel, or a Tailscale mesh).
 
 ---
 
-## ðŸ—ºï¸� Roadmap & Future Milestones
+## 🗺️ Roadmap & Future Milestones
 
 - [x] **v2.0.0 (Kokoro Release):** Sovereign cognitive kernel, multi-provider decoupling, Neural Observatory, Flight Recorder, and Protocol ANOMALY.
 - [ ] **v2.1.0:** Native OpenTelemetry (OTel) span exporter for external Grafana Tempo and Datadog monitoring.
@@ -217,33 +217,33 @@ if eval_res["autorizada_autonoma"]:
 
 ---
 
-## ðŸ“š Documentation Index
+## 📚 Documentation Index
 
-- ðŸ“– **[Installation Guide (INSTALL.md)](INSTALL.md):** Detailed Linux, macOS, Windows, and Docker guides.
-- ðŸŒ� **[AI Providers Guide (PROVIDERS.md)](PROVIDERS.md):** Setup instructions for Ollama, Anthropic, OpenAI, Gemini, and vLLM.
-- ðŸ�›ï¸� **[Architecture Specification (ARCHITECTURE.md)](ARCHITECTURE.md):** Deep architectural breakdown of Kokoro, SRE swarms, and memory.
-- ðŸ”­ **[Neural Observatory (docs/OBSERVATORY.md)](docs/OBSERVATORY.md):** Flight recorder causality, stratified retention, and daemon security.
-- ðŸ§¬ **[Protocol ANOMALY (docs/KOKORO_ANOMALY.md)](docs/KOKORO_ANOMALY.md):** Scientific hypothesis engine, simulation sandbox, and meta-learning.
-- ðŸ”’ **[Security Policy (SECURITY.md)](SECURITY.md):** Zero-leak standards, reporting vulnerabilities, and sanitization.
-- ðŸ¤� **[Contributing Guidelines (CONTRIBUTING.md)](CONTRIBUTING.md):** How to contribute safely to the monorepo.
-- ðŸ“� **[Changelog (CHANGELOG.md)](CHANGELOG.md):** Version history and release notes.
+- 📖 **[Installation Guide (INSTALL.md)](INSTALL.md):** Detailed Linux, macOS, Windows, and Docker guides.
+- 🌐 **[AI Providers Guide (PROVIDERS.md)](PROVIDERS.md):** Setup instructions for Ollama, Anthropic, OpenAI, Gemini, and vLLM.
+- 🏛️ **[Architecture Specification (ARCHITECTURE.md)](ARCHITECTURE.md):** Deep architectural breakdown of Kokoro, SRE swarms, and memory.
+- 🔭 **[Neural Observatory (docs/OBSERVATORY.md)](docs/OBSERVATORY.md):** Flight recorder causality, stratified retention, and daemon security.
+- 🧬 **[Protocol ANOMALY (docs/KOKORO_ANOMALY.md)](docs/KOKORO_ANOMALY.md):** Scientific hypothesis engine, simulation sandbox, and meta-learning.
+- 🔒 **[Security Policy (SECURITY.md)](SECURITY.md):** Zero-leak standards, reporting vulnerabilities, and sanitization.
+- 🤝 **[Contributing Guidelines (CONTRIBUTING.md)](CONTRIBUTING.md):** How to contribute safely to the monorepo.
+- 📝 **[Changelog (CHANGELOG.md)](CHANGELOG.md):** Version history and release notes.
 
 ---
 
-## ðŸ‡¨ðŸ‡± Resumen en EspaÃ±ol
+## 🇨🇱 Resumen en Español
 
-**SAORI** (*Server Autonomous Orchestrator for Resilient Infrastructure*) es un framework autÃ³nomo de IngenierÃ­a de Confiabilidad de Sitios (SRE) y orquestaciÃ³n multi-agente de cÃ³digo abierto.
+**SAORI** (*Server Autonomous Orchestrator for Resilient Infrastructure*) es un framework autónomo de Ingeniería de Confiabilidad de Sitios (SRE) y orquestación multi-agente de código abierto.
 
-Permite a cualquier equipo de ingenierÃ­a desplegar una flota autÃ³noma 24/7 conectada a **Discord, WhatsApp, consolas de servidores de juegos y APIs web**, respaldada por el **NÃºcleo Cognitivo Kokoro**:
+Permite a cualquier equipo de ingeniería desplegar una flota autónoma 24/7 conectada a **Discord, WhatsApp, consolas de servidores de juegos y APIs web**, respaldada por el **Núcleo Cognitivo Kokoro**:
 - **Multiproveedor Desacoplado:** Compatible con Ollama local (100% privado y sin costo de tokens), Claude de Anthropic, OpenAI, Google Gemini y servidores compatibles con OpenAI (vLLM, DeepSeek).
-- **Neural Observatory & Caja Negra:** Registra cada decisiÃ³n, llamada a herramienta y consumo de tokens con reconstrucciÃ³n determinista (`saori flight --replay`).
-- **Protocolo ANOMALY:** Motor de autoaprendizaje verificable mediante formulaciÃ³n de hipÃ³tesis cientÃ­ficas y pruebas en sandbox aislado.
-- **Matriz de AutonomÃ­a A0â€“A4 & LÃ­mite 6:** Los cambios destructivos en producciÃ³n requieren siempre autorizaciÃ³n humana explÃ­cita.
+- **Neural Observatory & Caja Negra:** Registra cada decisión, llamada a herramienta y consumo de tokens con reconstrucción determinista (`saori flight --replay`).
+- **Protocolo ANOMALY:** Motor de autoaprendizaje verificable mediante formulación de hipótesis científicas y pruebas en sandbox aislado.
+- **Matriz de Autonomía A0–A4 & Límite 6:** Los cambios destructivos en producción requieren siempre autorización humana explícita.
 - **Cero Filtraciones:** Arquitectura limpia sin credenciales, IPs privadas ni datos personales en el repositorio.
 
 ---
 
-## ðŸ“„ License
+## 📄 License
 
 SAORI is released under the permissive [MIT License](LICENSE).  
 Copyright Â© 2026 JackStar Systems.

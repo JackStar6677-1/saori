@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-SAORI KOKORO â€” Local Ollama LLM Adapter
+SAORI KOKORO — Local Ollama LLM Adapter
 =======================================
 Connects to local Ollama servers (Llama 3, Mistral, Qwen 2.5, DeepSeek-R1).
 Discovers pulled models dynamically via /api/tags.

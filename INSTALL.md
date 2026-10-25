@@ -1,10 +1,10 @@
-# ðŸ› ï¸� SAORI KOKORO â€” Installation & Quickstart Guide
+# 🛠️ SAORI KOKORO — Installation & Quickstart Guide
 
 This guide walks you through setting up and running **SAORI Kokoro** on Linux, macOS, and Windows.
 
 ---
 
-## ðŸ“‹ Prerequisites
+## 📋 Prerequisites
 
 - **Python 3.10+** (Python 3.11 or 3.12 recommended).
 - **Git**.
@@ -15,7 +15,7 @@ This guide walks you through setting up and running **SAORI Kokoro** on Linux, m
 
 ---
 
-## âš¡ 1-Minute Automated Setup (Linux / macOS)
+## ⚡ 1-Minute Automated Setup (Linux / macOS)
 
 Run the included automated installer:
 
@@ -35,7 +35,7 @@ The script will:
 
 ---
 
-## ðŸ–¥ï¸� Manual Installation (All Platforms)
+## 🖥️ Manual Installation (All Platforms)
 
 ### Step 1: Clone the Repository
 ```bash
@@ -68,7 +68,7 @@ pip install -e ".[tui]"
 
 ---
 
-## âš™ï¸� Initial Configuration
+## ⚙️ Initial Configuration
 
 Run the interactive setup wizard:
 
@@ -91,7 +91,7 @@ nano .env
 
 ---
 
-## ðŸ©º System Verification
+## 🩺 System Verification
 
 Verify that your system, storage, and AI providers are properly connected:
 
@@ -102,25 +102,25 @@ saori doctor
 Example output:
 ```text
 ============================================================
-  ðŸ©º  SAORI DIAGNOSTIC DOCTOR
+  🩺  SAORI DIAGNOSTIC DOCTOR
 ============================================================
-  [âœ“] Python Version: 3.12.3 (Requires >= 3.10)
-  [âœ“] SQLite WAL Engine: Available
-  [âœ“] State Storage: ~/.local/state/saori (Writable)
+  [✓] Python Version: 3.12.3 (Requires >= 3.10)
+  [✓] SQLite WAL Engine: Available
+  [✓] State Storage: ~/.local/state/saori (Writable)
 
   AI Provider Connectivity & Discovery:
-    â€¢ OLLAMA     : âœ“ CONNECTED (18 ms)
-    â€¢ ANTHROPIC  : âœ“ CONNECTED (340 ms)
-    â€¢ OPENAI     : âšª NOT CONFIGURED (No key/endpoint)
-    â€¢ GEMINI     : âšª NOT CONFIGURED (No key/endpoint)
+    • OLLAMA     : ✓ CONNECTED (18 ms)
+    • ANTHROPIC  : ✓ CONNECTED (340 ms)
+    • OPENAI     : ⚪ NOT CONFIGURED (No key/endpoint)
+    • GEMINI     : ⚪ NOT CONFIGURED (No key/endpoint)
 ------------------------------------------------------------
-  ðŸŽ‰ System is healthy and ready for autonomous SRE operations!
+  🎉 System is healthy and ready for autonomous SRE operations!
 ============================================================
 ```
 
 ---
 
-## ðŸ’¬ First Chat Interaction
+## 💬 First Chat Interaction
 
 Test interactive conversational SRE:
 
@@ -130,7 +130,7 @@ saori chat
 
 ---
 
-## ðŸ”­ Launching the Neural Observatory
+## 🔭 Launching the Neural Observatory
 
 To launch the real-time telemetry and flight recorder dashboard:
 
@@ -145,7 +145,7 @@ Open `http://127.0.0.1:8089` in your browser to view:
 
 ---
 
-## ðŸ�³ Docker Deployment
+## 🐳 Docker Deployment
 
 You can run SAORI in a self-contained container using Docker Compose:
 

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-SAORI KOKORO â€” Google Gemini LLM Adapter
+SAORI KOKORO — Google Gemini LLM Adapter
 ========================================
 Connects to Google's Gemini API (Gemini 2.0 Flash, 1.5 Pro, 1.5 Flash).
 Translates standard chat schema into Gemini generateContent REST format.

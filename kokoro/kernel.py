@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-SAORI KOKORO â€” Central Cognitive Kernel
+SAORI KOKORO — Central Cognitive Kernel
 =======================================
 Unified facade coordinating canonical identity, persistent episodic autobiography,
-policy governance (LÃ­mite 6 & A0-A4), multi-provider router, and ANOMALY self-learning.
+policy governance (Límite 6 & A0-A4), multi-provider router, and ANOMALY self-learning.
 Zero proprietary locks; fully extensible for open source deployments.
 """
 
@@ -70,7 +70,7 @@ class KokoroKernel:
         }
 
     def evaluar_accion(self, accion: str, riesgo_declarado: str = "BAJO") -> Dict[str, Any]:
-        """Verifies if an action is pre-authorized or falls under LÃ­mite 6 (Human Signoff)."""
+        """Verifies if an action is pre-authorized or falls under Límite 6 (Human Signoff)."""
         try:
             nivel = NivelRiesgo(riesgo_declarado.upper())
         except ValueError:

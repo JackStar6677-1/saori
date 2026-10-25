@@ -1,10 +1,10 @@
-# ðŸ”­ NEURAL OBSERVATORY & FLIGHT RECORDER
+# 🔭 NEURAL OBSERVATORY & FLIGHT RECORDER
 
 The **Neural Observatory** provides complete, real-time observability and post-mortem auditability for autonomous multi-agent swarms.
 
 ---
 
-## ðŸ›©ï¸� The Flight Recorder (Black Box)
+## 🛩️ The Flight Recorder (Black Box)
 
 Every action executed by an agent is tracked in a causal, sequential trace stored in SQLite WAL:
 
@@ -37,7 +37,7 @@ This generates a chronological markdown post-mortem detailing inputs, outputs, t
 
 ---
 
-## ðŸ“Š Stratified Event Retention
+## 📊 Stratified Event Retention
 
 To prevent unbounded disk growth while maintaining long-term auditability:
 
@@ -52,7 +52,7 @@ Storage cap: **30 MB** strict limit enforced via automatic background pruning.
 
 ---
 
-## ðŸ”’ Secret Sanitization Engine
+## 🔒 Secret Sanitization Engine
 
 Before any event is recorded to disk:
 1. Regex filter redacts API keys (`sk-...`, `ghp_...`, `AIza...`, Bearer tokens).
@@ -61,7 +61,7 @@ Before any event is recorded to disk:
 
 ---
 
-## ðŸŒ� Launching the Dashboard
+## 🌐 Launching the Dashboard
 
 ```bash
 saori observatory --host 0.0.0.0 --port 8089

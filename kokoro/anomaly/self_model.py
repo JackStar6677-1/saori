@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-SAORI PROTOCOLO ANOMALY (AST-0001): Modelo DinÃ¡mico de SÃ­ Misma
+SAORI PROTOCOLO ANOMALY (AST-0001): Modelo Dinámico de Sí Misma
 ==============================================================
-Mantiene una representaciÃ³n fÃ¡ctica, auditable y dinÃ¡mica de las capacidades,
-limitaciones, herramientas, dependencias, vulnerabilidades y mÃ©tricas de SAORI.
+Mantiene una representación fáctica, auditable y dinámica de las capacidades,
+limitaciones, herramientas, dependencias, vulnerabilidades y métricas de SAORI.
 """
 
 from __future__ import annotations
@@ -46,15 +46,15 @@ class DynamicSelfModel:
         return asdict(self)
 
 class SaoriSelfModel:
-    """Motor de autorrepresentaciÃ³n reflexiva y fÃ¡ctica de SAORI."""
+    """Motor de autorrepresentación reflexiva y fáctica de SAORI."""
 
     @classmethod
     def compilar_modelo(cls) -> DynamicSelfModel:
-        """Construye la representaciÃ³n integral en tiempo real sin alucinaciones."""
+        """Construye la representación integral en tiempo real sin alucinaciones."""
         now = time.time()
         is_finde = modo_finde.activo() if hasattr(modo_finde, "activo") else False
 
-        # 1. InspecciÃ³n de flota de agentes y liveness real
+        # 1. Inspección de flota de agentes y liveness real
         agents = KokoroInspector.inspeccionar_agentes()
         omni_pools = KokoroInspector.obtener_metricas_omniast()
 
@@ -97,25 +97,25 @@ class SaoriSelfModel:
 
         # 5. Capacidades verificadas operativas
         capacidades = [
-            "OrquestaciÃ³n multimodelo autÃ³noma (JEV Fallback OmniAST)",
-            "AuditorÃ­a e indexaciÃ³n de grafos AST de cÃ³digo (:8078)",
-            "DiagnÃ³stico de bloqueos con causa y condiciÃ³n de recuperaciÃ³n",
+            "Orquestación multimodelo autónoma (JEV Fallback OmniAST)",
+            "Auditoría e indexación de grafos AST de código (:8078)",
+            "Diagnóstico de bloqueos con causa y condición de recuperación",
             "Caja negra reproducible (Flight Recorder con trazas y spans)",
-            "Gobernanza con LÃ­mite 6 y preservaciÃ³n de invariantes Ã©ticas",
+            "Gobernanza con Límite 6 y preservación de invariantes éticas",
             "Monitoreo de red Tailscale segura y puertos locales en Star",
             "Vigilancia proactiva de dependencias y vulnerabilidades KEV/OSV"
         ]
 
         # 6. Limitaciones declaradas
         limitaciones = [
-            "LÃ­mite 6: Despliegues mayores y eliminaciÃ³n irreversible requieren firma de Jack",
-            "Modo Finde: Alertas no crÃ­ticas quedan silenciadas durante fines de semana",
+            "Límite 6: Despliegues mayores y eliminación irreversible requieren firma de Jack",
+            "Modo Finde: Alertas no críticas quedan silenciadas durante fines de semana",
             "Sin acceso a razonamientos privados internos de modelos comerciales externos",
-            "RetenciÃ³n fÃ­sica acotada a 30 MB en SQLite WAL para evitar saturar Star",
-            "Tailscale administrado exclusivamente por Jack (topologÃ­a cerrada)"
+            "Retención física acotada a 30 MB en SQLite WAL para evitar saturar Star",
+            "Tailscale administrado exclusivamente por Jack (topología cerrada)"
         ]
 
-        # 7. CÃ¡lculo de salud general (Score 0 a 100)
+        # 7. Cálculo de salud general (Score 0 a 100)
         score = 100
         # Restar por bloqueos
         blockades = [a for a in agents if a.get("blockade")]

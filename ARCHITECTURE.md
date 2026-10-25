@@ -1,10 +1,10 @@
-# ðŸ�›ï¸� SAORI KOKORO â€” System Architecture & Design Specification
+# 🏛️ SAORI KOKORO — System Architecture & Design Specification
 
 This document details the architectural foundation, cognitive patterns, security firewalls, and data flow of **SAORI Kokoro**.
 
 ---
 
-## ðŸ“� High-Level Architecture Overview
+## 📝 High-Level Architecture Overview
 
 ```mermaid
 flowchart TD
@@ -42,7 +42,7 @@ flowchart TD
         Hypothesis["Scientific Hypothesis Engine"]
         Sandbox["Isolated Ephemeral Sandbox"]
         MetaLearn["Meta-Learning Evaluator"]
-        Coherence["Invariant & LÃ­mite 6 Coherence Validator"]
+        Coherence["Invariant & Límite 6 Coherence Validator"]
     end
 
     Omnichannel --> CognitiveKernel
@@ -59,11 +59,11 @@ The **Kokoro Kernel** acts as the central coordinator, uniting four core subsyst
 
 - **Identity (`kokoro/identity.py`):** Invariant-backed operational contract. Enforces non-destruction, radical technical veracity, and privacy. Compresses system instructions into sub-1.2KB payloads to save tokens.
 - **Autobiography (`kokoro/autobiography.py`):** Persistent chronological memory. Automatically manages an isolated SQLite WAL database with fallback synchronization to REST/MCP services.
-- **Governance (`kokoro/governance.py`):** The **Autonomy Matrix (A0â€“A4)**:
+- **Governance (`kokoro/governance.py`):** The **Autonomy Matrix (A0–A4)**:
   - `A0 (Observer)`: Telemetry inspection, log reading, AST graph querying.
   - `A1 (Routine Recovery)`: Automated clearance of stale locks, process restart.
   - `A2 (Reversible Improvement)`: Automated patches verified against unit tests and ephemeral sandbox.
-  - `A3 (Supervised / LÃ­mite 6)`: High-risk production deployments, database wipes, and credential changes strictly require human signoff.
+  - `A3 (Supervised / Límite 6)`: High-risk production deployments, database wipes, and credential changes strictly require human signoff.
   - `A4 (Emergency Contained)`: Critical outage containment and immediate escalation.
 - **Cognitive Router (`kokoro/router.py`):** Dynamic tiered dispatching (`FAST`, `CODE`, `ARCH`, `LOCAL`) balancing latency, reasoning depth, and token expenditure.
 
@@ -93,7 +93,7 @@ Designed for production site reliability engineering (SRE):
 
 Autonomous self-evolution engine operating under strict supervision:
 
-1. **Self-Model:** Dynamically computes an introspective health score (0â€“100) based on agent status, vulnerabilities, and resource utilization.
+1. **Self-Model:** Dynamically computes an introspective health score (0–100) based on agent status, vulnerabilities, and resource utilization.
 2. **Scientific Hypotheses:** Formulates formal conjectures with falsification criteria.
 3. **Simulation Lab:** Executes isolated tests in an ephemeral sandbox directory (`~/.local/state/saori/anomaly/sandbox/`) with automatic post-run cleanup.
 4. **Meta-Learning:** Compares baseline vs. challenger strategies. Promotes modifications only when performance or token efficiency improves by at least 15% with zero invariant breaches.

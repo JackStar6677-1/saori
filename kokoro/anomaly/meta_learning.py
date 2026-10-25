@@ -3,7 +3,7 @@
 SAORI PROTOCOLO ANOMALY (AST-0001): Motor de Metaprendizaje
 ============================================================
 Compara estrategias mediante benchmarks reproducibles.
-Solo promueve mejoras demostradas empÃ­ricamente (Baseline vs Challenger).
+Solo promueve mejoras demostradas empíricamente (Baseline vs Challenger).
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ class VerifiedLearning:
         return asdict(self)
 
 class MetaLearningEngine:
-    """Motor de evaluaciÃ³n rigurosa y promociÃ³n de aprendizajes tÃ©cnicos."""
+    """Motor de evaluación rigurosa y promoción de aprendizajes técnicos."""
 
     _instance = None
 
@@ -72,19 +72,19 @@ class MetaLearningEngine:
         metricas_baseline: Dict[str, Any],
         metricas_challenger: Dict[str, Any]
     ) -> Optional[VerifiedLearning]:
-        """EvalÃºa empÃ­ricamente si la estrategia aspirante supera a la base sin degradar seguridad."""
+        """Evalúa empíricamente si la estrategia aspirante supera a la base sin degradar seguridad."""
         # 1. Regla dura de seguridad: Invariantes
         inv_base = metricas_baseline.get("invariantes_ok", True)
         inv_chal = metricas_challenger.get("invariantes_ok", True)
         if not inv_chal:
-            # Rechazada de inmediato por violaciÃ³n de invariantes
+            # Rechazada de inmediato por violación de invariantes
             ObservatoryEventBus().emit(
                 event_type="anomaly.learning_rejected",
                 agent="saori-anomaly",
                 model="anomaly-kernel",
                 project="saori-anomaly",
                 category="incident",
-                summary=f"Rechazada estrategia {challenger_name}: violÃ³ invariantes de seguridad.",
+                summary=f"Rechazada estrategia {challenger_name}: violó invariantes de seguridad.",
                 status="FAILED"
             )
             return None
@@ -98,7 +98,7 @@ class MetaLearningEngine:
         lat_chal = metricas_challenger.get("latencia_ms", 500)
         mejora_lat_pct = round(((lat_base - lat_chal) / max(1, lat_base)) * 100, 2)
 
-        # Criterio de promociÃ³n: o ahorra >15% tokens o reduce >15% latencia, con 0 errores nuevos
+        # Criterio de promoción: o ahorra >15% tokens o reduce >15% latencia, con 0 errores nuevos
         errores_nuevos = metricas_challenger.get("errores", 0)
         es_superior = (ahorro_tok_pct >= 15.0 or mejora_lat_pct >= 15.0) and (errores_nuevos == 0)
 

@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-SAORI KOKORO â€” NEURAL OBSERVATORY
+SAORI KOKORO — NEURAL OBSERVATORY
 =================================
-MÃ³dulo integral de observabilidad cognitiva, inspecciÃ³n operativa,
-diagnÃ³stico de bloqueos, caja negra (Flight Recorder) y dashboard en tiempo real.
+Módulo integral de observabilidad cognitiva, inspección operativa,
+diagnóstico de bloqueos, caja negra (Flight Recorder) y dashboard en tiempo real.
 """
 
 from kokoro.observatory.events import (

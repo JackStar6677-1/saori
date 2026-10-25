@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-SAORI KOKORO â€” Cognitive Multi-Tier Router & Sovereign Failover
+SAORI KOKORO — Cognitive Multi-Tier Router & Sovereign Failover
 ==============================================================
 Routes agent prompts dynamically according to complexity, latency,
 and token economy budgets, leveraging the Multi-Provider Registry.
@@ -74,5 +74,5 @@ class KokoroRouter:
         return {
             "modo": "DESCONEXION_SOBERANA",
             "origen": self.TIER_LOCAL,
-            "mensaje": f"Modo soberano sin consumo de tokens activo. PeticiÃ³n registrada: '{query}'."
+            "mensaje": f"Modo soberano sin consumo de tokens activo. Petición registrada: '{query}'."
         }

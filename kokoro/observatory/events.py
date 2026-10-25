@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-SAORI KOKORO â€” NEURAL OBSERVATORY: Motor y Modelo de Eventos
+SAORI KOKORO — NEURAL OBSERVATORY: Motor y Modelo de Eventos
 ============================================================
-Bus asÃ­ncrono, persistente y seguro de eventos cognitivos en tiempo real.
-Registra trazas operativas con retenciÃ³n diferenciada por nivel y cero filtraciones.
+Bus asíncrono, persistente y seguro de eventos cognitivos en tiempo real.
+Registra trazas operativas con retención diferenciada por nivel y cero filtraciones.
 """
 
 from __future__ import annotations
@@ -19,12 +19,12 @@ from typing import Dict, Any, List, Optional
 DB_DIR = Path.home() / ".local/state/saori/observatory"
 DB_PATH = DB_DIR / "neural_events.db"
 
-# RetenciÃ³n diferenciada por categorÃ­a (cantidad mÃ¡xima y TTL en segundos)
+# Retención diferenciada por categoría (cantidad máxima y TTL en segundos)
 RETENTION_TIERS = {
     "telemetry": {"max_count": 1000, "ttl_sec": 86400},         # 24 horas (latencias, heartbeats, progress)
-    "operation": {"max_count": 3000, "ttl_sec": 7 * 86400},      # 7 dÃ­as (herramientas, subcomandos)
-    "decision":  {"max_count": 10000, "ttl_sec": 30 * 86400},    # 30 dÃ­as (arranque, decisiones, commits)
-    "incident":  {"max_count": 10000, "ttl_sec": 90 * 86400}     # 90 dÃ­as (bloqueos, fallos, rate-limits)
+    "operation": {"max_count": 3000, "ttl_sec": 7 * 86400},      # 7 días (herramientas, subcomandos)
+    "decision":  {"max_count": 10000, "ttl_sec": 30 * 86400},    # 30 días (arranque, decisiones, commits)
+    "incident":  {"max_count": 10000, "ttl_sec": 90 * 86400}     # 90 días (bloqueos, fallos, rate-limits)
 }
 
 MAX_DB_SIZE_BYTES = 30 * 1024 * 1024  # 30 MB tope estricto de almacenamiento
@@ -70,7 +70,7 @@ def sanitize_metadata(data: Any) -> Any:
     return data
 
 def infer_category(event_type: str) -> str:
-    """Asigna automÃ¡ticamente una categorÃ­a al evento si no se especifica."""
+    """Asigna automáticamente una categoría al evento si no se especifica."""
     evt = event_type.lower()
     if any(k in evt for k in ("heartbeat", "progress", "metric", "tick")):
         return "telemetry"
@@ -97,7 +97,7 @@ class NeuralEvent:
     status: str
 
 class ObservatoryEventBus:
-    """Bus soberano de eventos cognitivos con persistencia SQLite WAL y retenciÃ³n estratificada."""
+    """Bus soberano de eventos cognitivos con persistencia SQLite WAL y retención estratificada."""
 
     _instance = None
 
@@ -132,7 +132,7 @@ class ObservatoryEventBus:
                 status TEXT NOT NULL
             );
             """)
-            # Migraciones si la tabla fue creada en versiÃ³n anterior
+            # Migraciones si la tabla fue creada en versión anterior
             cols = [c[1] for c in cur.execute("PRAGMA table_info(neural_events);").fetchall()]
             if "category" not in cols:
                 cur.execute("ALTER TABLE neural_events ADD COLUMN category TEXT DEFAULT 'operation';")
@@ -181,7 +181,7 @@ class ObservatoryEventBus:
             event_id = cur.lastrowid
             con.commit()
 
-            # Poda diferenciada periÃ³dica (cada 100 eventos)
+            # Poda diferenciada periódica (cada 100 eventos)
             if event_id and event_id % 100 == 0:
                 self._prune_differentiated(con)
 
@@ -201,7 +201,7 @@ class ObservatoryEventBus:
                 # 1. Eliminar por TTL
                 con.execute("DELETE FROM neural_events WHERE category = ? AND timestamp < ?", (cat, ttl_cutoff))
 
-                # 2. Eliminar por exceso de cantidad para esta categorÃ­a
+                # 2. Eliminar por exceso de cantidad para esta categoría
                 con.execute("""
                 DELETE FROM neural_events WHERE id IN (
                     SELECT id FROM neural_events WHERE category = ? ORDER BY id DESC LIMIT -1 OFFSET ?
@@ -210,9 +210,9 @@ class ObservatoryEventBus:
 
             con.commit()
 
-            # 3. Control estricto de tamaÃ±o fÃ­sico en disco
+            # 3. Control estricto de tamaño físico en disco
             if self.db_path.exists() and self.db_path.stat().st_size > MAX_DB_SIZE_BYTES:
-                # Si excede 30 MB, purgar telemetrÃ­a mÃ¡s agresivamente
+                # Si excede 30 MB, purgar telemetría más agresivamente
                 con.execute("DELETE FROM neural_events WHERE category = 'telemetry' ORDER BY id ASC LIMIT 2000;")
                 con.execute("VACUUM;")
                 con.commit()
@@ -231,7 +231,7 @@ class ObservatoryEventBus:
         offset: int = 0,
         since_epoch: Optional[float] = None
     ) -> List[Dict[str, Any]]:
-        """Consulta eventos con filtros estructurados para la lÃ­nea temporal."""
+        """Consulta eventos con filtros estructurados para la línea temporal."""
         clauses = []
         params = []
         if agent:
@@ -298,7 +298,7 @@ class ObservatoryEventBus:
             return []
 
     def stats(self) -> Dict[str, Any]:
-        """Devuelve telemetrÃ­a agregada del bus de eventos con desglose por categorÃ­a."""
+        """Devuelve telemetría agregada del bus de eventos con desglose por categoría."""
         try:
             con = sqlite3.connect(str(self.db_path), timeout=2.0)
             cur = con.cursor()

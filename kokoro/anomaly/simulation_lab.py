@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-SAORI PROTOCOLO ANOMALY (AST-0001): Laboratorio de SimulaciÃ³n Aislado
+SAORI PROTOCOLO ANOMALY (AST-0001): Laboratorio de Simulación Aislado
 =====================================================================
-Ejecuta experimentos, parches y comparativas en sandboxes efÃ­meros
-estrictamente aislados de la infraestructura de producciÃ³n de Star y Dallas.
+Ejecuta experimentos, parches y comparativas en sandboxes efímeros
+estrictamente aislados de la infraestructura de producción de Star y Dallas.
 """
 
 from __future__ import annotations
@@ -36,11 +36,11 @@ class SimulationResult:
         return asdict(self)
 
 class SimulationLab:
-    """Entorno de simulaciÃ³n estÃ©ril y seguro para metaprendizaje."""
+    """Entorno de simulación estéril y seguro para metaprendizaje."""
 
     @classmethod
     def preparar_sandbox_aislado(cls, nombre: str) -> Path:
-        """Crea un subdirectorio aislado y efÃ­mero con permisos seguros."""
+        """Crea un subdirectorio aislado y efímero con permisos seguros."""
         SANDBOX_ROOT.mkdir(parents=True, exist_ok=True)
         sb = SANDBOX_ROOT / f"sim_{nombre}_{int(time.time())}"
         if sb.exists():
@@ -50,23 +50,23 @@ class SimulationLab:
 
     @classmethod
     def simular_benchmark_prompts(cls, prompt_antiguo: str, prompt_nuevo: str) -> SimulationResult:
-        """Compara experimentalmente la compresiÃ³n de prompts y la preservaciÃ³n de invariantes."""
+        """Compara experimentalmente la compresión de prompts y la preservación de invariantes."""
         t0 = time.time()
         sim_id = f"sim_prompt_{int(t0)}"
 
-        # 1. Medir tamaÃ±o y estimaciÃ³n de tokens (aprox 4 caracteres por token)
+        # 1. Medir tamaño y estimación de tokens (aprox 4 caracteres por token)
         bytes_antiguo = len(prompt_antiguo.encode("utf-8"))
         bytes_nuevo = len(prompt_nuevo.encode("utf-8"))
         tokens_antiguo = max(1, bytes_antiguo // 4)
         tokens_nuevo = max(1, bytes_nuevo // 4)
         ahorro_tokens_pct = round((1 - (tokens_nuevo / tokens_antiguo)) * 100, 2)
 
-        # 2. Verificar preservaciÃ³n estricta de las 6 invariantes
+        # 2. Verificar preservación estricta de las 6 invariantes
         invariantes_ok = 0
         invariantes_falladas = []
         for inv in INVARIANTES_KOKORO:
-            # Buscar menciÃ³n semÃ¡ntica de la regla en el prompt
-            keywords = inv.nombre.lower().replace("lÃ­mite 6: ", "").split()
+            # Buscar mención semántica de la regla en el prompt
+            keywords = inv.nombre.lower().replace("límite 6: ", "").split()
             present = any(kw in prompt_nuevo.lower() for kw in keywords[:2]) or ("invariante" in prompt_nuevo.lower())
             if present:
                 invariantes_ok += 1
@@ -118,7 +118,7 @@ class SimulationLab:
         contenido_simulado: str,
         comando_validacion: str
     ) -> SimulationResult:
-        """Prueba una mitigaciÃ³n o parche en sandbox sin tocar archivos en producciÃ³n."""
+        """Prueba una mitigación o parche en sandbox sin tocar archivos en producción."""
         t0 = time.time()
         sim_id = f"sim_vuln_{int(t0)}"
         sb = cls.preparar_sandbox_aislado(componente.replace("/", "_"))
@@ -128,7 +128,7 @@ class SimulationLab:
             target_path = sb / Path(archivo_objetivo).name
             target_path.write_text(contenido_simulado, encoding="utf-8")
 
-            # Ejecutar validaciÃ³n en el directorio sandbox aislado
+            # Ejecutar validación en el directorio sandbox aislado
             p = subprocess.run(
                 ["bash", "-c", f"cd {sb} && {comando_validacion}"],
                 capture_output=True, text=True, timeout=10.0
@@ -150,14 +150,14 @@ class SimulationLab:
             exito=exito,
             duracion_ms=dur_ms,
             metricas={"returncode": 0 if exito else 1},
-            evidencia=f"ValidaciÃ³n en sandbox: {salida}",
+            evidencia=f"Validación en sandbox: {salida}",
             aislamiento_verificado=True
         )
         return res
 
     @classmethod
     def simular_fallback_router(cls, agente: str) -> SimulationResult:
-        """Simula y mide la latencia de conmutaciÃ³n hacia el pool local OmniAST."""
+        """Simula y mide la latencia de conmutación hacia el pool local OmniAST."""
         t0 = time.time()
         sim_id = f"sim_router_{int(t0)}"
 

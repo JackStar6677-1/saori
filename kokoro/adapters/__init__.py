@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""SAORI KOKORO â€” Multi-Provider Adapters Package."""
+"""SAORI KOKORO — Multi-Provider Adapters Package."""
 
 from kokoro.adapters.base import (
     BaseLLMProvider,

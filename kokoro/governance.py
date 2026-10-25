@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-SAORI KOKORO â€” Governance, Autonomy Matrix & Self-Improvement Cycle
+SAORI KOKORO — Governance, Autonomy Matrix & Self-Improvement Cycle
 ==================================================================
-Enforces the boundary of powers (LÃ­mite 6), permission tiers (A0-A4),
+Enforces the boundary of powers (Límite 6), permission tiers (A0-A4),
 and formalizes the 12-step verifiable self-improvement protocol.
 Ensures zero unreviewed production changes.
 """
@@ -21,7 +21,7 @@ class AutonomyTier(enum.Enum):
     A0 = "A0"  # Autonomous: observation, telemetry, graph querying, documentation
     A1 = "A1"  # Autonomous: verified routine self-recovery (stale lock clearing, sandbox reset)
     A2 = "A2"  # Autonomous: reversible improvements subjected to automated regression tests & backup
-    A3 = "A3"  # Supervised (LÃ­mite 6): actions requiring explicit human approval before execution
+    A3 = "A3"  # Supervised (Límite 6): actions requiring explicit human approval before execution
     A4 = "A4"  # Emergency: critical incident containment and immediate human escalation
 
 @dataclass

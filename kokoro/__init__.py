@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-SAORI KOKORO â€” The Open Autonomous Multi-Agent Cognitive Framework
+SAORI KOKORO — The Open Autonomous Multi-Agent Cognitive Framework
 ==================================================================
 Production-grade Site Reliability Engineering swarm with universal
 multi-provider LLM support, neural observability, deterministic flight recording,

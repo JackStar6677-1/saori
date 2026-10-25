@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-SAORI KOKORO â€” Anthropic Claude LLM Adapter
+SAORI KOKORO — Anthropic Claude LLM Adapter
 ==========================================
 Connects to Anthropic's Claude API (Sonnet 3.5, Haiku 3.5, Opus 3).
 Translates standard chat schema into Anthropic messages endpoint.

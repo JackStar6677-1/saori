@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-SAORI KOKORO â€” OpenAI & OpenAI-Compatible LLM Adapter
+SAORI KOKORO — OpenAI & OpenAI-Compatible LLM Adapter
 ====================================================
 Connects to standard OpenAI endpoints (GPT-4o, GPT-4o-mini, o1, o3-mini)
 or any OpenAI-compatible API (vLLM, LocalAI, OpenCode, DeepSeek, Groq, Together).

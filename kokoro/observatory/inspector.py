@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-SAORI KOKORO â€” NEURAL OBSERVATORY: Inspector de Agentes
+SAORI KOKORO — NEURAL OBSERVATORY: Inspector de Agentes
 ======================================================
 Mapea el estado real, modelo, proceso OS, tarea, consumo de tokens, latencia,
-diagnÃ³sticos verificados y telemetrÃ­a de liveness (CPU, memoria, heartbeat).
+diagnósticos verificados y telemetría de liveness (CPU, memoria, heartbeat).
 """
 
 from __future__ import annotations
@@ -105,14 +105,14 @@ class AgentCard:
         return asdict(self)
 
 class KokoroInspector:
-    """Inspector integral con telemetrÃ­a de liveness y mÃ©tricas de pools OmniAST."""
+    """Inspector integral con telemetría de liveness y métricas de pools OmniAST."""
 
     _omniast_cache = {}
     _omniast_cache_ts = 0.0
 
     @classmethod
     def obtener_metricas_omniast(cls) -> Dict[str, Any]:
-        """Obtiene mÃ©tricas de cuotas, latencia y tokens desde OmniAST con cachÃ© de 15s."""
+        """Obtiene métricas de cuotas, latencia y tokens desde OmniAST con caché de 15s."""
         now = time.time()
         if cls._omniast_cache and (now - cls._omniast_cache_ts < 15.0):
             return cls._omniast_cache
@@ -150,7 +150,7 @@ class KokoroInspector:
                         cmd = parts[1]
                         for a in AGENT_METADATA.keys():
                             if a in cmd:
-                                # Leer telemetrÃ­a de /proc/<pid>/stat si existe
+                                # Leer telemetría de /proc/<pid>/stat si existe
                                 stat_file = Path(f"/proc/{pid}/stat")
                                 proc_state = "R"
                                 cpu_ticks = 0
@@ -189,7 +189,7 @@ class KokoroInspector:
 
     @classmethod
     def inspeccionar_agentes(cls) -> List[Dict[str, Any]]:
-        """Construye las fichas completas de todos los agentes con diagnÃ³sticos rigurosos."""
+        """Construye las fichas completas de todos los agentes con diagnósticos rigurosos."""
         now = time.time()
         active_procs = cls.obtener_pids_activos()
         omni_pools = cls.obtener_metricas_omniast()
@@ -229,7 +229,7 @@ class KokoroInspector:
                 recent_failures_count=recent_fails
             )
 
-            # Resolver mÃ©tricas desde OmniAST pool
+            # Resolver métricas desde OmniAST pool
             pool_name = meta.get("omniast_pool", "antigravity")
             pool_data = omni_pools.get(pool_name, [{}])[0] if pool_name in omni_pools else {}
             latency = pool_data.get("latency_ms", 350.0)
@@ -262,7 +262,7 @@ class KokoroInspector:
             paquete_idx = gate_data.get("paquete_idx")
             task_desc = f"Paquete Proactivo {paquete_idx}" if paquete_idx is not None else "Cola de tickets"
 
-            # Liveness telemetrÃ­a
+            # Liveness telemetría
             last_log = state_data.get("last_log")
             log_age_sec = (now - os.stat(last_log).st_mtime) if (last_log and os.path.exists(last_log)) else None
 

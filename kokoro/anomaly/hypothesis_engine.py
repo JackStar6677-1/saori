@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-SAORI PROTOCOLO ANOMALY (AST-0001): Motor de HipÃ³tesis CientÃ­ficas
+SAORI PROTOCOLO ANOMALY (AST-0001): Motor de Hipótesis Científicas
 ==================================================================
 Identifica problemas o lagunas en el conocimiento de SAORI y formula
-hipÃ³tesis comprobables separando estrictamente observaciones de inferencias.
+hipótesis comprobables separando estrictamente observaciones de inferencias.
 """
 
 from __future__ import annotations
@@ -21,10 +21,10 @@ from kokoro.anomaly.self_model import SaoriSelfModel
 class Hypothesis:
     id: str
     dominio: str                # SEGURIDAD, TOKENS, AGENTES, GRAFOS, SRE
-    observacion: str            # Hecho empÃ­rico verificado (auditorÃ­a/log)
-    conjetura: str              # ExplicaciÃ³n propuesta / inferencia causal
-    plan_prueba: str            # DiseÃ±o experimental reproducible
-    criterio_falsacion: str     # CondiciÃ³n exacta bajo la cual se refuta
+    observacion: str            # Hecho empírico verificado (auditoría/log)
+    conjetura: str              # Explicación propuesta / inferencia causal
+    plan_prueba: str            # Diseño experimental reproducible
+    criterio_falsacion: str     # Condición exacta bajo la cual se refuta
     estado: str                 # PROPUESTA, EN_PRUEBA, VALIDADA, FALSADA, DESCARTADA
     evidencia: Dict[str, Any]
     resultado: str
@@ -35,7 +35,7 @@ class Hypothesis:
         return asdict(self)
 
 class HypothesisEngine:
-    """Generador y gestor de hipÃ³tesis comprobables para el autoaprendizaje de SAORI."""
+    """Generador y gestor de hipótesis comprobables para el autoaprendizaje de SAORI."""
 
     _instance = None
 
@@ -80,7 +80,7 @@ class HypothesisEngine:
         criterio_falsacion: str,
         evidencia: Optional[Dict[str, Any]] = None
     ) -> Hypothesis:
-        """Registra formalmente una nueva hipÃ³tesis comprobable."""
+        """Registra formalmente una nueva hipótesis comprobable."""
         now = time.time()
         hyp_id = f"HYP-{time.strftime('%Y%m%d')}-{uuid.uuid4().hex[:6]}"
         clean_ev = sanitize_metadata(evidencia or {})
@@ -94,7 +94,7 @@ class HypothesisEngine:
             criterio_falsacion=criterio_falsacion[:400],
             estado="PROPUESTA",
             evidencia=clean_ev,
-            resultado="Pendiente de ejecuciÃ³n en Simulation Lab",
+            resultado="Pendiente de ejecución en Simulation Lab",
             created_at=now,
             updated_at=now
         )
@@ -117,7 +117,7 @@ class HypothesisEngine:
                 project="saori-anomaly",
                 task_id=hyp_id,
                 category="decision",
-                summary=f"Nueva hipÃ³tesis [{dominio}]: {conjetura[:120]}",
+                summary=f"Nueva hipótesis [{dominio}]: {conjetura[:120]}",
                 details={"hypothesis_id": hyp_id, "dominio": dominio, "observacion": observacion[:100]}
             )
         except Exception:
@@ -131,7 +131,7 @@ class HypothesisEngine:
         resultado_detallado: str,
         evidencia_experimental: Optional[Dict[str, Any]] = None
     ):
-        """Actualiza el estado de la hipÃ³tesis tras someterla al laboratorio de simulaciÃ³n."""
+        """Actualiza el estado de la hipótesis tras someterla al laboratorio de simulación."""
         now = time.time()
         try:
             con = sqlite3.connect(str(self.db_path), timeout=2.0)
@@ -156,14 +156,14 @@ class HypothesisEngine:
                 project="saori-anomaly",
                 task_id=hyp_id,
                 category="decision" if nuevo_estado == "VALIDADA" else "incident",
-                summary=f"HipÃ³tesis {hyp_id} evaluada: {nuevo_estado} â€” {resultado_detallado[:120]}",
+                summary=f"Hipótesis {hyp_id} evaluada: {nuevo_estado} — {resultado_detallado[:120]}",
                 details={"hypothesis_id": hyp_id, "estado": nuevo_estado, "resultado": resultado_detallado[:100]}
             )
         except Exception:
             pass
 
     def listar_hipotesis(self, estado: Optional[str] = None, limit: int = 20) -> List[Dict[str, Any]]:
-        """Recupera la lista de hipÃ³tesis para consulta y auditorÃ­a."""
+        """Recupera la lista de hipótesis para consulta y auditoría."""
         try:
             con = sqlite3.connect(str(self.db_path), timeout=2.0)
             cur = con.cursor()
@@ -197,11 +197,11 @@ class HypothesisEngine:
             return []
 
     def generar_hipotesis_desde_autodiagnostico(self) -> List[Hypothesis]:
-        """Analiza autÃ³nomamente el Self-Model y formula hipÃ³tesis para problemas reales."""
+        """Analiza autónomamente el Self-Model y formula hipótesis para problemas reales."""
         model = SaoriSelfModel.compilar_modelo()
         generadas = []
 
-        # 1. HipÃ³tesis sobre agentes bloqueados (ej. opencode)
+        # 1. Hipótesis sobre agentes bloqueados (ej. opencode)
         for a in model.flota_agentes:
             if a.get("blockade"):
                 blk = a["blockade"]
@@ -209,33 +209,33 @@ class HypothesisEngine:
                 if blk.get("cause_code") == "TOOL_FAILURE":
                     h = self.proponer_hipotesis(
                         dominio="AGENTES",
-                        observacion=f"Agente {ag_id} terminÃ³ con cÃ³digo de error {a.get('last_exit')} tras timeouts en cascada de modelos en la nube.",
-                        conjetura=f"Conmutar el runner de {ag_id} hacia los endpoints locales de OmniAST (JEV fallback a deepseek o antigravity) evitarÃ¡ timeouts de proveedores externos caÃ­dos.",
-                        plan_prueba=f"Simular en sandbox la resoluciÃ³n de una tarea sintÃ©tica para {ag_id} empleando el router JEV de OmniAST.",
-                        criterio_falsacion="Si la resoluciÃ³n con JEV toma mÃ¡s de 10s o falla, la conjetura queda falsada.",
+                        observacion=f"Agente {ag_id} terminó con código de error {a.get('last_exit')} tras timeouts en cascada de modelos en la nube.",
+                        conjetura=f"Conmutar el runner de {ag_id} hacia los endpoints locales de OmniAST (JEV fallback a deepseek o antigravity) evitará timeouts de proveedores externos caídos.",
+                        plan_prueba=f"Simular en sandbox la resolución de una tarea sintética para {ag_id} empleando el router JEV de OmniAST.",
+                        criterio_falsacion="Si la resolución con JEV toma más de 10s o falla, la conjetura queda falsada.",
                         evidencia={"agente": ag_id, "blockade": blk, "last_exit": a.get("last_exit")}
                     )
                     generadas.append(h)
 
-        # 2. HipÃ³tesis sobre vulnerabilidades abiertas (ej. node desactualizado)
+        # 2. Hipótesis sobre vulnerabilidades abiertas (ej. node desactualizado)
         for v in model.vulnerabilidades_abiertas:
             if v.get("severity") in ("HIGH", "CRITICAL"):
                 h = self.proponer_hipotesis(
                     dominio="SEGURIDAD",
                     observacion=f"Vulnerabilidad abierta {v.get('id')} en componente {v.get('component')}: {v.get('title')}",
-                    conjetura=f"Aplicar la mitigaciÃ³n declarada '{v.get('fix')}' en una copia aislada de sandbox solventa el fallo sin romper dependencias.",
-                    plan_prueba=f"Generar parche en sandbox para {v.get('component')} y verificar sintaxis y resoluciÃ³n de paquetes.",
-                    criterio_falsacion="Si el parche genera errores de instalaciÃ³n o dependencias rotas, se refuta.",
+                    conjetura=f"Aplicar la mitigación declarada '{v.get('fix')}' en una copia aislada de sandbox solventa el fallo sin romper dependencias.",
+                    plan_prueba=f"Generar parche en sandbox para {v.get('component')} y verificar sintaxis y resolución de paquetes.",
+                    criterio_falsacion="Si el parche genera errores de instalación o dependencias rotas, se refuta.",
                     evidencia=v
                 )
                 generadas.append(h)
 
-        # 3. HipÃ³tesis de optimizaciÃ³n de tokens en prompts
+        # 3. Hipótesis de optimización de tokens en prompts
         h_tok = self.proponer_hipotesis(
             dominio="TOKENS",
-            observacion="Prompts heredados cargan contratos repetitivos de mÃ¡s de 8.000 tokens por ciclo proactivo.",
-            conjetura="La compresiÃ³n canÃ³nica mediante KokoroIdentity.generar_prompt_base reduce el consumo a menos de 1.200 tokens preservando las 6 invariantes y la precisiÃ³n de ejecuciÃ³n.",
-            plan_prueba="Comparar el consumo de tokens y la tasa de aciertos de invariantes en una prueba sintÃ©tica (baseline vs challenger).",
+            observacion="Prompts heredados cargan contratos repetitivos de más de 8.000 tokens por ciclo proactivo.",
+            conjetura="La compresión canónica mediante KokoroIdentity.generar_prompt_base reduce el consumo a menos de 1.200 tokens preservando las 6 invariantes y la precisión de ejecución.",
+            plan_prueba="Comparar el consumo de tokens y la tasa de aciertos de invariantes en una prueba sintética (baseline vs challenger).",
             criterio_falsacion="Si el prompt compacto omite cualquiera de las 6 invariantes de seguridad, se rechaza inmediatamente.",
             evidencia={"invariantes_requeridas": 6, "tamano_objetivo_bytes": 1200}
         )

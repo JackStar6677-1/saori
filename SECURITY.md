@@ -1,4 +1,4 @@
-# ðŸ”’ Security Policy & Zero-Leak Architecture
+# 🔒 Security Policy & Zero-Leak Architecture
 
 ## Reporting Security Vulnerabilities
 
@@ -11,7 +11,7 @@ Reports are evaluated and acknowledged within 48 hours.
 
 ---
 
-## ðŸ›¡ï¸� Zero-Leak Core Principles
+## 🛡️ Zero-Leak Core Principles
 
 SAORI is built on sovereign clean-room software engineering standards:
 
@@ -21,5 +21,5 @@ SAORI is built on sovereign clean-room software engineering standards:
    The `ObservatoryEventBus` automatically strips sensitive keys before writing events or telemetry to disk.
 3. **Domain Isolation:**
    Internal production databases and physical host nodes remain isolated from public interaction gateways (Discord/WhatsApp).
-4. **Boundary of Powers (LÃ­mite 6):**
+4. **Boundary of Powers (Límite 6):**
    Destructive actions, database wipes, master credential rotation, and production deploys strictly require explicit human confirmation.

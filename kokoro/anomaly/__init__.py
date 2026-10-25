@@ -2,8 +2,8 @@
 """
 SAORI PROTOCOLO ANOMALY (AST-0001)
 ==================================
-Subsistema de evoluciÃ³n cognitiva experimental, autorrepresentaciÃ³n,
-formulaciÃ³n de hipÃ³tesis, simulaciÃ³n en sandbox y metaprendizaje.
+Subsistema de evolución cognitiva experimental, autorrepresentación,
+formulación de hipótesis, simulación en sandbox y metaprendizaje.
 """
 
 from kokoro.anomaly.self_model import SaoriSelfModel, DynamicSelfModel

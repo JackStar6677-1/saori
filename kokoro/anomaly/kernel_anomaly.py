@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-SAORI PROTOCOLO ANOMALY (AST-0001): NÃºcleo de EvoluciÃ³n Cognitiva
+SAORI PROTOCOLO ANOMALY (AST-0001): Núcleo de Evolución Cognitiva
 ==================================================================
-Fachada maestra que orquesta el ciclo experimental: autorrepresentaciÃ³n,
-curiosidad dirigida, formulaciÃ³n de hipÃ³tesis, simulaciÃ³n en sandbox y metaprendizaje.
+Fachada maestra que orquesta el ciclo experimental: autorrepresentación,
+curiosidad dirigida, formulación de hipótesis, simulación en sandbox y metaprendizaje.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from kokoro.anomaly.coherence import CognitiveCoherence
 from kokoro.observatory import FlightRecorder, ObservatoryEventBus
 
 class AnomalyKernel:
-    """NÃºcleo del protocolo ANOMALY para autoaprendizaje y evoluciÃ³n supervisada."""
+    """Núcleo del protocolo ANOMALY para autoaprendizaje y evolución supervisada."""
 
     def __init__(self):
         self.self_model = SaoriSelfModel()
@@ -29,7 +29,7 @@ class AnomalyKernel:
         self.coherence = CognitiveCoherence()
 
     def obtener_estado_cognitivo(self) -> Dict[str, Any]:
-        """Devuelve el estado dinÃ¡mico actual del nÃºcleo ANOMALY."""
+        """Devuelve el estado dinámico actual del núcleo ANOMALY."""
         sm = self.self_model.compilar_modelo()
         hyp = self.hypothesis_engine.listar_hipotesis(limit=10)
         lrn = self.meta_learning.listar_aprendizajes(limit=10)
@@ -50,11 +50,11 @@ class AnomalyKernel:
     def ejecutar_ciclo_aprendizaje_autonomo(self) -> Dict[str, Any]:
         """
         Ejecuta un ciclo completo y verificable de autoaprendizaje:
-        1. AutodiagnÃ³stico fÃ¡ctico.
-        2. FormulaciÃ³n de hipÃ³tesis.
-        3. SimulaciÃ³n segura en sandbox.
-        4. EvaluaciÃ³n empÃ­rica de resultados.
-        5. ConsolidaciÃ³n de aprendizajes verificados.
+        1. Autodiagnóstico fáctico.
+        2. Formulación de hipótesis.
+        3. Simulación segura en sandbox.
+        4. Evaluación empírica de resultados.
+        5. Consolidación de aprendizajes verificados.
         """
         t0 = time.time()
         trace_id = FlightRecorder().start_trace(
@@ -62,7 +62,7 @@ class AnomalyKernel:
             project="saori-kokoro",
             task="ciclo_evolucion_cognitiva",
             model="anomaly-kernel",
-            summary="Ciclo experimental autÃ³nomo de Protocolo ANOMALY",
+            summary="Ciclo experimental autónomo de Protocolo ANOMALY",
             trigger="anomaly-scheduler"
         )
 
@@ -75,14 +75,14 @@ class AnomalyKernel:
         }
 
         try:
-            # Paso 1: AutodiagnÃ³stico y formulaciÃ³n de hipÃ³tesis
+            # Paso 1: Autodiagnóstico y formulación de hipótesis
             FlightRecorder().record_span(
                 trace_id=trace_id,
                 name="anomaly.diagnosis",
                 phase="CONTEXT",
                 category="DECISION",
                 input_summary="Escaneando Self-Model y oportunidades de curiosidad",
-                output_summary="HipÃ³tesis formuladas a partir de problemas reales",
+                output_summary="Hipótesis formuladas a partir de problemas reales",
                 status="SUCCESS",
                 agent="saori-anomaly"
             )
@@ -90,7 +90,7 @@ class AnomalyKernel:
             hipotesis_list = self.hypothesis_engine.generar_hipotesis_desde_autodiagnostico()
             resultados["hipotesis_generadas"] = len(hipotesis_list)
 
-            # Paso 2: Ejecutar simulaciones para cada hipÃ³tesis comprobable
+            # Paso 2: Ejecutar simulaciones para cada hipótesis comprobable
             for h in hipotesis_list:
                 FlightRecorder().record_span(
                     trace_id=trace_id,
@@ -103,7 +103,7 @@ class AnomalyKernel:
                     agent="saori-anomaly"
                 )
 
-                # SimulaciÃ³n 1: OptimizaciÃ³n de tokens
+                # Simulación 1: Optimización de tokens
                 if h.dominio == "TOKENS":
                     sim = self.simulation_lab.simular_benchmark_prompts(
                         prompt_antiguo="INSTRUCCIONES HISTORICAS DE SAORI... " * 100,  # ~3.5KB
@@ -118,7 +118,7 @@ class AnomalyKernel:
                             resultado_detallado=sim.evidencia,
                             evidencia_experimental=sim.metricas
                         )
-                        # Evaluar promociÃ³n en Metaprendizaje
+                        # Evaluar promoción en Metaprendizaje
                         lrn = self.meta_learning.evaluar_y_promover(
                             tema="compresion_prompts_kokoro",
                             baseline_name="contrato_legacy_extenso",
@@ -133,11 +133,11 @@ class AnomalyKernel:
                         self.hypothesis_engine.actualizar_resultado(
                             hyp_id=h.id,
                             nuevo_estado="FALSADA",
-                            resultado_detallado="No alcanzÃ³ el umbral mÃ­nimo de ahorro o fallaron invariantes",
+                            resultado_detallado="No alcanzó el umbral mínimo de ahorro o fallaron invariantes",
                             evidencia_experimental=sim.metricas
                         )
 
-                # SimulaciÃ³n 2: Resiliencia de agente bloqueado (ej. opencode)
+                # Simulación 2: Resiliencia de agente bloqueado (ej. opencode)
                 elif h.dominio == "AGENTES":
                     sim = self.simulation_lab.simular_fallback_router("opencode")
                     resultados["simulaciones_ejecutadas"] += 1
@@ -163,7 +163,7 @@ class AnomalyKernel:
             FlightRecorder().end_trace(
                 trace_id=trace_id,
                 status="SUCCESS",
-                summary=f"Ciclo ANOMALY completado: {resultados['hipotesis_generadas']} hipÃ³tesis, {resultados['simulaciones_ejecutadas']} simulaciones, {resultados['aprendizajes_promovidos']} aprendizajes promovidos.",
+                summary=f"Ciclo ANOMALY completado: {resultados['hipotesis_generadas']} hipótesis, {resultados['simulaciones_ejecutadas']} simulaciones, {resultados['aprendizajes_promovidos']} aprendizajes promovidos.",
                 tokens_used=0
             )
 

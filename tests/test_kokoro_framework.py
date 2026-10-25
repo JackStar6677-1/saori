@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-SAORI KOKORO â€” Unit & Integration Test Suite
+SAORI KOKORO — Unit & Integration Test Suite
 ============================================
 Verifies core Kokoro Kernel, Governance A0-A4, Multi-Provider Adapters,
 Neural Observatory Flight Recorder, and Protocol ANOMALY.
@@ -57,7 +57,7 @@ class TestKokoroGovernance(unittest.TestCase):
         self.assertEqual(tier_a2, AutonomyTier.A2)
         self.assertTrue(KokoroGovernance.puede_ejecutar_autonomamente("run_sandbox_simulation", NivelRiesgo.MEDIO))
 
-        # A3 / LÃ­mite 6: Production deploy requires human signature
+        # A3 / Límite 6: Production deploy requires human signature
         tier_a3 = KokoroGovernance.clasificar_accion("deploy_to_production", NivelRiesgo.ALTO)
         self.assertEqual(tier_a3, AutonomyTier.A3)
         self.assertFalse(KokoroGovernance.puede_ejecutar_autonomamente("deploy_to_production", NivelRiesgo.ALTO))

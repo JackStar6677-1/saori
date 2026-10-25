@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-SAORI KOKORO â€” NEURAL OBSERVATORY: Dashboard Web UI (PWA)
+SAORI KOKORO — NEURAL OBSERVATORY: Dashboard Web UI (PWA)
 =========================================================
-Panel visual reactivo y autocontenido (SPA) para observar la cogniciÃ³n de SAORI,
+Panel visual reactivo y autocontenido (SPA) para observar la cognición de SAORI,
 examinar cajas negras (Flight Recorder), trazas causales y salud de la flota.
 """
 
@@ -15,7 +15,7 @@ def render_observatory_html() -> str:
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SAORI Kokoro â€” Neural Observatory & Flight Recorder</title>
+  <title>SAORI Kokoro — Neural Observatory & Flight Recorder</title>
   <style>
     :root {
       --bg: #0b0f19;
@@ -270,7 +270,7 @@ def render_observatory_html() -> str:
       <span class="status-pill"><span class="pulse"></span> LIVE SRE</span>
     </div>
     <div style="font-size: 12px; color: var(--muted);">
-      Distributed Mesh Â· Local Swarm Node Â· Ready
+      Distributed Mesh · Local Swarm Node · Ready
     </div>
   </header>
 
@@ -288,25 +288,25 @@ def render_observatory_html() -> str:
     <div class="metric-card">
       <div class="metric-title">Almacenamiento SQLite WAL</div>
       <div class="metric-val" id="metric-db-size">...</div>
-      <div class="metric-sub">LÃ­mite estricto: 30 MB</div>
+      <div class="metric-sub">Límite estricto: 30 MB</div>
     </div>
     <div class="metric-card">
-      <div class="metric-title">DiagnÃ³stico de Bloqueos</div>
+      <div class="metric-title">Diagnóstico de Bloqueos</div>
       <div class="metric-val" style="color: var(--green);" id="metric-blockades">Nominal</div>
-      <div class="metric-sub" id="metric-blockades-sub">0 incidentes crÃ­ticos</div>
+      <div class="metric-sub" id="metric-blockades-sub">0 incidentes críticos</div>
     </div>
   </div>
 
-  <h2>ðŸ¤– Flota de Agentes en Vivo</h2>
+  <h2>🤖 Flota de Agentes en Vivo</h2>
   <div class="agents-grid" id="agents-container">
-    <!-- Renderizado dinÃ¡micamente -->
+    <!-- Renderizado dinámicamente -->
   </div>
 
   <div class="tabs-nav">
-    <button class="tab-btn active" onclick="switchTab('traces')">âœˆï¸� Flight Recorder (Trazas Causales)</button>
-    <button class="tab-btn" onclick="switchTab('events')">âš¡ Eventos en Vivo</button>
-    <button class="tab-btn" onclick="switchTab('incidents')">âš ï¸� Incidentes y Bloqueos</button>
-    <button class="tab-btn" onclick="switchTab('retention')">ðŸ—„ï¸� RetenciÃ³n Diferenciada</button>
+    <button class="tab-btn active" onclick="switchTab('traces')">✈️ Flight Recorder (Trazas Causales)</button>
+    <button class="tab-btn" onclick="switchTab('events')">⚡ Eventos en Vivo</button>
+    <button class="tab-btn" onclick="switchTab('incidents')">⚠️ Incidentes y Bloqueos</button>
+    <button class="tab-btn" onclick="switchTab('retention')">🗄️ Retención Diferenciada</button>
   </div>
 
   <!-- Panel: Flight Recorder -->
@@ -322,8 +322,8 @@ def render_observatory_html() -> str:
           <th>Estado</th>
           <th>Tramos</th>
           <th>Tokens</th>
-          <th>DuraciÃ³n</th>
-          <th>AcciÃ³n</th>
+          <th>Duración</th>
+          <th>Acción</th>
         </tr>
       </thead>
       <tbody id="traces-table-body">
@@ -347,10 +347,10 @@ def render_observatory_html() -> str:
         <option value="saori-executive">saori-executive</option>
       </select>
       <select id="filter-event-cat" onchange="loadData()">
-        <option value="">Todas las CategorÃ­as</option>
+        <option value="">Todas las Categorías</option>
         <option value="decision">Decisiones</option>
         <option value="operation">Operaciones</option>
-        <option value="telemetry">TelemetrÃ­a</option>
+        <option value="telemetry">Telemetría</option>
         <option value="incident">Incidentes</option>
       </select>
     </div>
@@ -359,7 +359,7 @@ def render_observatory_html() -> str:
         <tr>
           <th>Hora</th>
           <th>Agente</th>
-          <th>CategorÃ­a</th>
+          <th>Categoría</th>
           <th>Tipo</th>
           <th>Resumen Operativo</th>
           <th>Riesgo</th>
@@ -381,7 +381,7 @@ def render_observatory_html() -> str:
           <th>Agente</th>
           <th>Causa Diagnosticada</th>
           <th>Detalle Verificado</th>
-          <th>CondiciÃ³n de RecuperaciÃ³n</th>
+          <th>Condición de Recuperación</th>
         </tr>
       </thead>
       <tbody id="incidents-table-body">
@@ -390,18 +390,18 @@ def render_observatory_html() -> str:
     </table>
   </div>
 
-  <!-- Panel: RetenciÃ³n -->
+  <!-- Panel: Retención -->
   <div class="panel-container" id="panel-retention" style="display:none;">
     <div style="margin-bottom:12px; font-size:13px; color:var(--muted);">
-      Estrategia de retenciÃ³n estratificada activa para garantizar almacenamiento controlado (&lt;30 MB) en Star VPS.
+      Estrategia de retención estratificada activa para garantizar almacenamiento controlado (&lt;30 MB) en Star VPS.
     </div>
     <table>
       <thead>
         <tr>
-          <th>CategorÃ­a</th>
-          <th>Volumen MÃ¡ximo</th>
+          <th>Categoría</th>
+          <th>Volumen Máximo</th>
           <th>TTL (Tiempo de Vida)</th>
-          <th>PropÃ³sito Operativo</th>
+          <th>Propósito Operativo</th>
         </tr>
       </thead>
       <tbody>
@@ -414,20 +414,20 @@ def render_observatory_html() -> str:
         <tr>
           <td><strong style="color:var(--accent)">operation</strong></td>
           <td>3.000 eventos</td>
-          <td>7 DÃ­as</td>
-          <td>EjecuciÃ³n de herramientas Hermes, subprocesos, transpilaciones AST.</td>
+          <td>7 Días</td>
+          <td>Ejecución de herramientas Hermes, subprocesos, transpilaciones AST.</td>
         </tr>
         <tr>
           <td><strong style="color:var(--purple)">decision</strong></td>
           <td>10.000 eventos</td>
-          <td>30 DÃ­as</td>
-          <td>Arranque, decisiones arquitectÃ³nicas, conmutaciÃ³n de modelos JEV, handoffs.</td>
+          <td>30 Días</td>
+          <td>Arranque, decisiones arquitectónicas, conmutación de modelos JEV, handoffs.</td>
         </tr>
         <tr>
           <td><strong style="color:var(--red)">incident</strong></td>
           <td>10.000 eventos</td>
-          <td>90 DÃ­as</td>
-          <td>Bloqueos LÃ­mite 6, cuotas agotadas, bucles de reintento, procesos colgados.</td>
+          <td>90 Días</td>
+          <td>Bloqueos Límite 6, cuotas agotadas, bucles de reintento, procesos colgados.</td>
         </tr>
       </tbody>
     </table>
@@ -447,7 +447,7 @@ def render_observatory_html() -> str:
   </div>
 
   <footer>
-    SAORI Kokoro Autonomous SRE Engine Â· JackStar Systems Â· OperaciÃ³n Soberana Supervisada
+    SAORI Kokoro Autonomous SRE Engine · JackStar Systems · Operación Soberana Supervisada
   </footer>
 
   <script>
@@ -469,12 +469,12 @@ def render_observatory_html() -> str:
         if (!res.ok) return;
         const t = await res.json();
         
-        document.getElementById('modal-trace-title').innerText = 'âœˆï¸� ' + t.trace_id + ' (' + t.agent + ' Â· ' + t.status + ')';
+        document.getElementById('modal-trace-title').innerText = '✈️ ' + t.trace_id + ' (' + t.agent + ' · ' + t.status + ')';
         const body = document.getElementById('modal-trace-body');
         
         let html = `
           <div style="margin-bottom:14px; font-size:12px; color:var(--muted);">
-            <strong>Tarea:</strong> ${t.task} | <strong>DuraciÃ³n:</strong> ${t.duration_seconds}s | <strong>Tokens:</strong> ${t.tokens_used}
+            <strong>Tarea:</strong> ${t.task} | <strong>Duración:</strong> ${t.duration_seconds}s | <strong>Tokens:</strong> ${t.tokens_used}
           </div>
           <h4 style="margin-bottom:10px; font-size:13px;">Secuencia de Tramos Operativos (Causal Timeline):</h4>
         `;
@@ -486,7 +486,7 @@ def render_observatory_html() -> str:
             <div class="span-step ${s.category}">
               <div style="min-width:70px; color:var(--muted); font-size:10px;">${s.phase}<br>+${s.duration_ms}ms</div>
               <div style="flex:1;">
-                <strong>${s.name}</strong> <span style="font-size:10px; opacity:0.8;">(${s.category} Â· ${s.status})</span>
+                <strong>${s.name}</strong> <span style="font-size:10px; opacity:0.8;">(${s.category} · ${s.status})</span>
                 <div style="color:var(--muted); margin-top:2px;">In: ${s.input_summary}</div>
                 <div style="color:#e2e8f0; margin-top:1px;">Out: ${s.output_summary}</div>
               </div>
@@ -523,13 +523,13 @@ def render_observatory_html() -> str:
             </div>
             <div class="agent-meta">
               <span><strong>Modelo:</strong> ${a.model}</span>
-              <span style="color:var(--cyan);">${a.latency_ms}ms Â· ${a.tokens_consumed} tok</span>
+              <span style="color:var(--cyan);">${a.latency_ms}ms · ${a.tokens_consumed} tok</span>
             </div>
             <div class="agent-meta">
               <span><strong>Rol:</strong> ${a.role}</span>
               <span style="color:var(--green);">${a.success_rate}% OK</span>
             </div>
-            <div class="agent-task">ðŸ“Œ ${a.task}</div>
+            <div class="agent-task">📌 ${a.task}</div>
             
             <div class="liveness-bar">
               <div class="liveness-item">PID: <strong>${a.pid || '-'}</strong></div>
@@ -540,8 +540,8 @@ def render_observatory_html() -> str:
 
             ${a.blockade ? `
               <div class="blockade-alert">
-                âš ï¸� <strong>${a.blockade.cause_code}:</strong> ${a.blockade.reason}
-                <div style="font-size:10px; margin-top:2px;">â†³ ${a.blockade.recovery_condition}</div>
+                ⚠️ <strong>${a.blockade.cause_code}:</strong> ${a.blockade.reason}
+                <div style="font-size:10px; margin-top:2px;">↳ ${a.blockade.recovery_condition}</div>
               </div>` : ''}
           </div>
         `).join('');
@@ -556,11 +556,11 @@ def render_observatory_html() -> str:
         if (blockades.length > 0) {
           blockPill.innerText = `${blockades.length} Alerta(s)`;
           blockPill.style.color = 'var(--yellow)';
-          document.getElementById('metric-blockades-sub').innerText = 'IntervenciÃ³n o espera activa';
+          document.getElementById('metric-blockades-sub').innerText = 'Intervención o espera activa';
         } else {
           blockPill.innerText = 'Nominal (0)';
           blockPill.style.color = 'var(--green)';
-          document.getElementById('metric-blockades-sub').innerText = '0 incidentes crÃ­ticos';
+          document.getElementById('metric-blockades-sub').innerText = '0 incidentes críticos';
         }
 
         // 3. Tab Specific Render
@@ -571,7 +571,7 @@ def render_observatory_html() -> str:
           } else {
             tbody.innerHTML = resTraces.map(t => `
               <tr>
-                <td><code>${t.trace_id.substring(0, 18)}â€¦</code></td>
+                <td><code>${t.trace_id.substring(0, 18)}…</code></td>
                 <td><strong>${t.agent}</strong></td>
                 <td>${t.project}</td>
                 <td>${t.task}</td>
@@ -621,7 +621,7 @@ def render_observatory_html() -> str:
                   <td><strong>${i.agent}</strong></td>
                   <td><span class="state-tag state-BLOCKED">${i.event_type}</span></td>
                   <td>${i.summary}</td>
-                  <td style="color:var(--yellow);">${i.details && i.details.recovery ? i.details.recovery : 'Espera de timer o intervenciÃ³n'}</td>
+                  <td style="color:var(--yellow);">${i.details && i.details.recovery ? i.details.recovery : 'Espera de timer o intervención'}</td>
                 </tr>
               `;
             }).join('');

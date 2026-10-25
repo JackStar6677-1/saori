@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-SAORI KOKORO â€” Multi-Provider Registry, Circuit Breaker & Fallback Chain
+SAORI KOKORO — Multi-Provider Registry, Circuit Breaker & Fallback Chain
 =======================================================================
 Discovers available AI providers dynamically, manages priority routing,
 enforces circuit breakers on failure, and executes seamless fallback chains.

@@ -1,11 +1,11 @@
-# ðŸ§¬ PROTOCOL ANOMALY (AST-0001) â€” Experimental Cognitive Evolution
+# 🧬 PROTOCOL ANOMALY (AST-0001) — Experimental Cognitive Evolution
 
 ## Abstract
 **Protocol ANOMALY** is SAORI's verifiable cognitive self-improvement engine. Rather than relying on ungrounded fine-tuning or uncontrolled prompt mutation, ANOMALY introduces a **scientific falsification framework** where the autonomous system diagnoses its own limitations, formulates testable hypotheses, executes experiments inside an ephemeral sandbox, and promotes only mathematically proven improvements.
 
 ---
 
-## ðŸŽ¯ Architectural Pillars
+## 🎯 Architectural Pillars
 
 ```mermaid
 graph TD
@@ -46,11 +46,11 @@ Translates problems into structured scientific hypotheses:
   $$\Delta \text{Performance} \ge +15\% \quad \land \quad \text{Invariant Breaches} = 0$$
 
 ### 6. Cognitive Coherence Validator (`kokoro/anomaly/coherence.py`)
-Enforces the 6 Kokoro Invariants before any proposal can be promoted. Any proposal attempting to bypass LÃ­mite 6 or write to production is immediately blocked and escalated.
+Enforces the 6 Kokoro Invariants before any proposal can be promoted. Any proposal attempting to bypass Límite 6 or write to production is immediately blocked and escalated.
 
 ---
 
-## ðŸ’» CLI Commands
+## 💻 CLI Commands
 
 ```bash
 # Execute an autonomous learning cycle

@@ -1,10 +1,10 @@
-# ðŸŒ� SAORI KOKORO â€” AI Providers & Multi-Model Routing
+# 🌐 SAORI KOKORO — AI Providers & Multi-Model Routing
 
 SAORI Kokoro is designed with **sovereign model decoupling**. You are never locked into a single AI provider, vendor API, or cloud account.
 
 ---
 
-## ðŸ§­ Multi-Provider Architecture
+## 🧭 Multi-Provider Architecture
 
 SAORI includes built-in adapters for 5 distinct model topologies:
 
@@ -21,7 +21,7 @@ graph LR
 
 ---
 
-## 1. ðŸ¦™ Local Ollama (100% Free & Private)
+## 1. 🦙 Local Ollama (100% Free & Private)
 
 Run state-of-the-art open-source models completely offline on your own machine. Zero cloud costs, zero privacy concerns.
 
@@ -46,7 +46,7 @@ Run state-of-the-art open-source models completely offline on your own machine. 
 
 ---
 
-## 2. ðŸ�›ï¸� Anthropic Claude
+## 2. 🏛️ Anthropic Claude
 
 Recommended for high-precision architecture signoffs, security policy reviews, and peer consulting.
 
@@ -60,13 +60,13 @@ Recommended for high-precision architecture signoffs, security policy reviews, a
    ```
 
 ### Available Models:
-- `claude-3-5-sonnet-20241022` â€” Deep reasoning and SRE code architecture.
-- `claude-3-5-haiku-20241022` â€” Ultra-fast routine triage.
-- `claude-3-opus-20240229` â€” Formal verification and critical policy auditing.
+- `claude-3-5-sonnet-20241022` — Deep reasoning and SRE code architecture.
+- `claude-3-5-haiku-20241022` — Ultra-fast routine triage.
+- `claude-3-opus-20240229` — Formal verification and critical policy auditing.
 
 ---
 
-## 3. âš™ï¸� OpenAI Direct
+## 3. ⚙️ OpenAI Direct
 
 Recommended for balanced code generation, continuous integration tasks, and automated testing.
 
@@ -80,13 +80,13 @@ Recommended for balanced code generation, continuous integration tasks, and auto
    ```
 
 ### Available Models:
-- `gpt-4o` â€” Multimodal analysis and complex refactors.
-- `gpt-4o-mini` â€” Lightweight, cost-effective routine operational tasks.
-- `o3-mini` / `o1` â€” High-tier reasoning for algorithmic and edge-case resolution.
+- `gpt-4o` — Multimodal analysis and complex refactors.
+- `gpt-4o-mini` — Lightweight, cost-effective routine operational tasks.
+- `o3-mini` / `o1` — High-tier reasoning for algorithmic and edge-case resolution.
 
 ---
 
-## 4. âš¡ Google Gemini
+## 4. ⚡ Google Gemini
 
 Recommended for massive context analysis (up to 2M tokens) and low-latency telemetry processing.
 
@@ -100,12 +100,12 @@ Recommended for massive context analysis (up to 2M tokens) and low-latency telem
    ```
 
 ### Available Models:
-- `gemini-2.0-flash` â€” Sub-second latency, optimal for real-time telemetry indexing.
-- `gemini-1.5-pro` â€” 2M token context window for full codebase graph analysis.
+- `gemini-2.0-flash` — Sub-second latency, optimal for real-time telemetry indexing.
+- `gemini-1.5-pro` — 2M token context window for full codebase graph analysis.
 
 ---
 
-## 5. ðŸ”Œ OpenAI-Compatible Endpoints (vLLM, LocalAI, DeepSeek, Groq)
+## 5. 🔌 OpenAI-Compatible Endpoints (vLLM, LocalAI, DeepSeek, Groq)
 
 Connect to self-hosted enterprise model servers or third-party inference providers adhering to the standard OpenAI API specification.
 
@@ -119,12 +119,12 @@ OPENAI_COMPATIBLE_MODEL=deepseek-r1
 
 ---
 
-## ðŸ›¡ï¸� Circuit Breakers & Failover Chain
+## 🛡️ Circuit Breakers & Failover Chain
 
 If your primary provider encounters a rate limit (HTTP 429) or connection failure:
 1. The **Circuit Breaker** records the error and opens after 3 consecutive failures to prevent thread starvation.
 2. The **Dynamic Fallback Chain** automatically switches to the next configured provider:
    ```text
-   Primary (Anthropic) â”€â”€[Fail]â”€â”€> Secondary (OpenAI) â”€â”€[Fail]â”€â”€> Local Ollama â”€â”€[Fail]â”€â”€> Offline Mode
+   Primary (Anthropic) ──[Fail]──> Secondary (OpenAI) ──[Fail]──> Local Ollama ──[Fail]──> Offline Mode
    ```
 3. Full black-box failure context is logged into the **Flight Recorder** for post-mortem analysis.

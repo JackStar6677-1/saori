@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-SAORI KOKORO â€” Episodic Autobiography & Metacognition
+SAORI KOKORO — Episodic Autobiography & Metacognition
 ====================================================
 Manages persistent chronological memory of milestones, operational decisions,
 lessons learned, and explicit uncertainty tracking with local SQLite WAL storage
