@@ -162,6 +162,61 @@ saori doctor
 
 ---
 
+## ðŸ¤– Connecting Custom Agents
+
+You can create and attach custom autonomous agents to the Kokoro Kernel with just a few lines of Python:
+
+```python
+from kokoro import KokoroKernel, NivelRiesgo
+
+kernel = KokoroKernel()
+
+# 1. Prepare an identity and context-aware prompt
+agent_ctx = kernel.preparar_contexto_agente(
+    nombre_agente="custom-backup-agent",
+    tarea="Verify and snapshot database state"
+)
+
+# 2. Check governance and LÃ­mite 6 compliance before executing
+eval_res = kernel.evaluar_accion(accion="make_safe_backup", riesgo_declarado="BAJO")
+if eval_res["autorizada_autonoma"]:
+    # 3. Dispatch prompt to the optimal configured provider
+    response = kernel.router.despachar(
+        messages=[
+            {"role": "system", "content": agent_ctx["prompt_base"]},
+            {"role": "user", "content": "Analyze database fragmentation and generate backup plan."}
+        ],
+        tarea="telemetria"
+    )
+    print(f"Agent Output: {response.text}")
+    
+    # 4. Consolidate learning into persistent memory
+    kernel.autobiography.consolidar_recuerdo(
+        tema="database_optimization",
+        contenido="Fragmentation below 5%; snapshot complete.",
+        agente="custom-backup-agent"
+    )
+```
+
+---
+
+## âš ï¸� Known Limitations
+
+1. **Hardware Requirements for Local Inference:** Running local models via Ollama requires sufficient host RAM/VRAM (e.g., 8 GB+ for `llama3.2:3b`, 16 GB+ for `qwen2.5-coder:7b`). For lightweight VPS setups, use remote API keys (Claude, OpenAI, or Gemini).
+2. **Strict Production Firewall:** By design, SAORI cannot execute irreversible production writes (e.g., database wipes, production server restarts) autonomously. This is a foundational safety invariant (LÃ­mite 6).
+3. **Dashboard Exposure:** The Neural Observatory web interface (`port 8089`) binds to `127.0.0.1` by default. To expose it securely to an engineering team, place it behind an authenticated reverse proxy (e.g., Nginx with TLS, Cloudflare Tunnel, or a Tailscale mesh).
+
+---
+
+## ðŸ—ºï¸� Roadmap & Future Milestones
+
+- [x] **v2.0.0 (Kokoro Release):** Sovereign cognitive kernel, multi-provider decoupling, Neural Observatory, Flight Recorder, and Protocol ANOMALY.
+- [ ] **v2.1.0:** Native OpenTelemetry (OTel) span exporter for external Grafana Tempo and Datadog monitoring.
+- [ ] **v2.2.0:** Multi-node consensus coordinator for distributed server clusters spread across distinct cloud providers.
+- [ ] **v2.3.0:** Visual DAG simulation builder for Protocol ANOMALY hypothesis testing.
+
+---
+
 ## ðŸ“š Documentation Index
 
 - ðŸ“– **[Installation Guide (INSTALL.md)](INSTALL.md):** Detailed Linux, macOS, Windows, and Docker guides.
