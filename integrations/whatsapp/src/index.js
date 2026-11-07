@@ -33,8 +33,8 @@ const NVIDIA_VISION_URL = "http://127.0.0.1:8089/nvidia_vision";
 
 
 // ------------------------------------------------------------------
-// ALMACÃ‰N Y CACHÃ‰ DE MENSAJES (Para Reintentos Signal Protocol / Baileys)
-// Resuelve de raÃ­z el error "Esperando mensaje. Esto puede tomar tiempo"
+// ALMACEN Y CACHE DE MENSAJES (Para Reintentos Signal Protocol / Baileys)
+// Resuelve de raiz el error "Esperando mensaje. Esto puede tomar tiempo"
 // ------------------------------------------------------------------
 const RECENT_MESSAGES_FILE = path.join(AUTH_DIR, 'recent_messages.json');
 const messageStore = new Map();
@@ -45,7 +45,7 @@ try {
         for (const [id, msg] of Object.entries(raw)) {
             messageStore.set(id, msg);
         }
-        console.log(`[SAORI-WA] ðŸ“¦ CachÃ© de mensajes cargada desde disco: ${messageStore.size} mensajes.`);
+        console.log(`[SAORI-WA] 📦 Cache de mensajes cargada desde disco: ${messageStore.size} mensajes.`);
     }
 } catch (e) {
     console.error('[SAORI-WA] Error cargando recent_messages.json:', e.message);
@@ -577,9 +577,10 @@ function startWebhookServer() {
         }
 
         if (req.method === 'POST' && req.url === '/send-message') {
-            let body = '';
-            req.on('data', chunk => { body += chunk.toString(); });
+            const chunks = [];
+            req.on('data', chunk => { chunks.push(chunk); });
             req.on('end', async () => {
+                const body = Buffer.concat(chunks).toString('utf8');
                 try {
                     const data = JSON.parse(body || '{}');
                     let targetJid = normalizarDestino(data.jid || data.phone || STAFF_GROUP_JID);
@@ -725,12 +726,12 @@ async function startWhatsAppBot() {
                 console.log(`[SAORI-WA] ðŸ”„ Respondiendo retry receipt para mensaje ${key.id} (remoto: ${key.remoteJid})`);
                 return msg;
             }
-            console.log(`[SAORI-WA] âš ï¸� Retry receipt recibido para ${key.id}, pero mensaje no estÃ¡ en cachÃ©.`);
+            console.log(`[SAORI-WA] âš ï¸� Retry receipt recibido para ${key.id}, pero mensaje no esta en cache.`);
             return undefined;
         }
     });
 
-    // Envolver sock.sendMessage para normalizaciÃ³n de JID y guardado en cachÃ© para reintentos
+    // Envolver sock.sendMessage para normalizacion de JID y guardado en cache para reintentos
     const originalSendMessage = sock.sendMessage.bind(sock);
     sock.sendMessage = async (jid, content, options = {}) => {
         const finalJid = normalizarDestino(jid);
@@ -1495,7 +1496,7 @@ ${visionReply}` }, statusOpts);
                     if (jid.includes('88940182765600') || jid.includes('63477776')) {
                         const statusNames = { 2: 'ENVIADO (1 CHECK)', 3: 'ENTREGADO (DOBLE CHECK)', 4: 'LEÃ�DO (AZUL)', 5: 'REPRODUCIDO' };
                         const st = statusNames[update.update.status] || `ESTADO_${update.update.status}`;
-                        console.log(`[SAORI-WA] ðŸ“² TelemetrÃ­a mensaje ${update.key.id} a Jack: ${st}`);
+                        console.log(`[SAORI-WA] 📱 Telemetria mensaje ${update.key.id} a Jack: ${st}`);
                     }
                 }
             }
