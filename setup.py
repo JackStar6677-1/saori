@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from setuptools import setup, find_packages
 from pathlib import Path
@@ -29,7 +29,10 @@ setup(
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
     ],
     python_requires=">=3.10",
-    install_requires=[],
+    install_requires=[
+        "elevenlabs>=1.0.0",
+        "python-dotenv>=1.0.0",
+    ],
     extras_require={
         "tui": ["textual>=0.40.0", "rich>=13.0.0"],
         "dev": ["pytest>=7.0.0", "black", "flake8"],

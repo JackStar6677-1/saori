@@ -1,4 +1,4 @@
-[build-system]
+﻿[build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
@@ -24,7 +24,10 @@ classifiers = [
     "Topic :: System :: Monitoring",
     "Topic :: Scientific/Engineering :: Artificial Intelligence"
 ]
-dependencies = []
+dependencies = [
+    "elevenlabs>=1.0.0",
+    "python-dotenv>=1.0.0"
+]
 
 [project.optional-dependencies]
 tui = ["textual>=0.40.0", "rich>=13.0.0"]
