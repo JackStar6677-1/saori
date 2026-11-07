@@ -764,6 +764,8 @@ async function startWhatsAppBot() {
             const isBotTagged = (botPhone && mentionedJids.some(j => j.includes(botPhone))) || textLower.includes('@saori');
 
             const hasAiPrefix =
+                textLower.startsWith('saori ') ||
+                textLower === 'saori' ||
                 textLower.startsWith('>saori') ||
                 textLower.startsWith('>s ') ||
                 textLower === '>s' ||
@@ -771,6 +773,7 @@ async function startWhatsAppBot() {
                 textLower.startsWith('/saori') ||
                 textLower.startsWith('saori:') ||
                 textLower.startsWith('saori,') ||
+                (isJack && textLower.includes('saori')) ||
                 isBotTagged;
 
             if (isGroup) {
@@ -810,29 +813,14 @@ async function startWhatsAppBot() {
             // DETECCIÓN DE SOLICITUD DE AUDIO / VOZ (Simetría de Voz)
             // =========================================
             const wantsAudio = isAudio ||
+                textLower.includes('audio') ||
+                textLower.includes('voz') ||
+                textLower.includes('nota de voz') ||
+                textLower.includes('habla') ||
                 textLower.startsWith('!voz') ||
                 textLower.startsWith('/voz') ||
                 textLower.startsWith('!audio') ||
-                textLower.startsWith('/audio') ||
-                textLower.includes('manda audio') ||
-                textLower.includes('mándame un audio') ||
-                textLower.includes('mandame un audio') ||
-                textLower.includes('manda un audio') ||
-                textLower.includes('envía un audio') ||
-                textLower.includes('envia un audio') ||
-                textLower.includes('envíame un audio') ||
-                textLower.includes('enviame un audio') ||
-                textLower.includes('responde en audio') ||
-                textLower.includes('responde con un audio') ||
-                textLower.includes('responde con audio') ||
-                textLower.includes('explica en un audio') ||
-                textLower.includes('explícame en audio') ||
-                textLower.includes('explicame en audio') ||
-                textLower.includes('graba un audio') ||
-                textLower.includes('hablame con tu voz') ||
-                textLower.includes('háblame con tu voz') ||
-                textLower.includes('dilo con tu voz') ||
-                textLower.includes('nota de voz');
+                textLower.startsWith('/audio');
 
             // =========================================
             // MULTIMODAL VISION AI (NVIDIA NIM - Llama 3.2 90B Vision)
@@ -865,7 +853,7 @@ ${visionReply}` }, statusOpts);
                                 const audioPath = await generateVoiceAudio(visionReply);
                                 if (audioPath) {
                                     await sock.sendMessage(from, {
-                                        audio: { url: audioPath },
+                                        audio: fs.readFileSync(audioPath),
                                         mimetype: 'audio/ogg; codecs=opus',
                                         ptt: true
                                     }, statusOpts).catch(() => {});
@@ -909,7 +897,7 @@ ${visionReply}` }, statusOpts);
                                 const audioPath = await generateVoiceAudio(execData.response);
                                 if (audioPath) {
                                     await sock.sendMessage(from, {
-                                        audio: { url: audioPath },
+                                        audio: fs.readFileSync(audioPath),
                                         mimetype: 'audio/ogg; codecs=opus',
                                         ptt: true
                                     }, quotedOpts).catch(e => console.error('[SAORI-WA] Error voz Jack:', e.message));
@@ -942,7 +930,7 @@ ${visionReply}` }, statusOpts);
                     const audioPath = await generateVoiceAudio(outText);
                     if (audioPath) {
                         await sock.sendMessage(from, {
-                            audio: { url: audioPath },
+                            audio: fs.readFileSync(audioPath),
                             mimetype: 'audio/ogg; codecs=opus',
                             ptt: true
                         }, quotedOpts).catch(() => {});
@@ -1312,7 +1300,7 @@ ${visionReply}` }, statusOpts);
                 const imgPath = await generateImageViaDaemon(promptForImg);
                 if (imgPath && fs.existsSync(imgPath)) {
                     await sock.sendMessage(from, {
-                        image: { url: imgPath },
+                        image: fs.readFileSync(imgPath),
                         caption: `🎨 *SAORI Art Generative Studio*\n✨ *Prompt:* ${promptForImg}`
                     }, statusOpts).catch(e => console.error('[SAORI-WA] Error enviando imagen:', e.message));
                     if (fs.existsSync(imgPath)) fs.unlinkSync(imgPath);
@@ -1348,7 +1336,7 @@ ${visionReply}` }, statusOpts);
                 const audioPath = await generateVoiceAudio(aiReply);
                 if (audioPath) {
                     await sock.sendMessage(from, {
-                        audio: { url: audioPath },
+                        audio: fs.readFileSync(audioPath),
                         mimetype: 'audio/ogg; codecs=opus',
                         ptt: true
                     }, { quoted: msg }).catch(e => console.error('[SAORI-WA] Error voz:', e.message));
