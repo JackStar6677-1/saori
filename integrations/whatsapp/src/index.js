@@ -509,13 +509,27 @@ function startWebhookServer() {
                     } else if (data.image_path && fs.existsSync(data.image_path)) {
                         imgBuffer = fs.readFileSync(data.image_path);
                     }
+                    let audioBuffer = null;
+                    if (data.audio_base64) {
+                        audioBuffer = Buffer.from(data.audio_base64, "base64");
+                    } else if (data.audio_path && fs.existsSync(data.audio_path)) {
+                        audioBuffer = fs.readFileSync(data.audio_path);
+                    }
                     let docBuffer = null;
                     if (data.document_path && fs.existsSync(data.document_path)) {
                         docBuffer = fs.readFileSync(data.document_path);
                     } else if (data.document_base64) {
                         docBuffer = Buffer.from(data.document_base64, 'base64');
                     }
-                    if (globalSock && docBuffer) {
+                    if (globalSock && audioBuffer) {
+                        await globalSock.sendMessage(targetJid, {
+                            audio: audioBuffer,
+                            mimetype: "audio/ogg; codecs=opus",
+                            ptt: true
+                        });
+                        res.writeHead(200, { "Content-Type": "application/json" });
+                        return res.end(JSON.stringify({ ok: true, targetJid, type: "audio" }));
+                    } else if (globalSock && docBuffer) {
                         const filename = data.filename || path.basename(data.document_path || 'document.bin');
                         const mimetype = data.mimetype || 'text/markdown';
                         await globalSock.sendMessage(targetJid, {
