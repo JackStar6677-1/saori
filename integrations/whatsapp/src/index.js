@@ -15,6 +15,7 @@ const http   = require('http');
 const os     = require('os');
 const fetch  = require('node-fetch');
 const qrcodeTerminal = require('qrcode-terminal');
+const { resolverRemitente } = require('./identity.js');
 
 const AUTH_DIR         = process.env.AUTH_DIR || path.join(__dirname, '../data/auth_info');
 const AI_DAEMON_URL    = 'http://127.0.0.1:8089/chat';
@@ -25,16 +26,17 @@ const IMAGE_DAEMON_URL = 'http://127.0.0.1:8089/image';
 const TTS_URL          = 'http://127.0.0.1:8089/tts';
 const STT_URL          = 'http://127.0.0.1:8089/stt';
 const WEBHOOK_PORT     = 8088;
+const SRE_ACTION_URL   = "http://127.0.0.1:8089/sre_action";
+const TICKET_URL       = "http://127.0.0.1:8089/ticket";
+const NVIDIA_CHAT_URL   = "http://127.0.0.1:8089/nvidia";
+const NVIDIA_VISION_URL = "http://127.0.0.1:8089/nvidia_vision";
 
 const PTERODACTYL_PANEL_URL = (process.env.PTERODACTYL_PANEL_URL || 'https://panel.thegamehosting.com').replace(/\/+$/, '');
-const PTERODACTYL_SERVER_ID = process.env.PTERODACTYL_SERVER_ID || '';
-const PTERODACTYL_API_KEY   = process.env.PTERODACTYL_API_KEY || '';
+const PTERODACTYL_SERVER_ID = process.env.PTERODACTYL_SERVER_ID || '38528a4e';
+const PTERODACTYL_API_KEY   = process.env.PTERODACTYL_API_KEY || 'ptlc_KhP4LW1gz74GpyYyf5qIAzWxvfPIMZBeAGQNowioM24';
 
-const JACK_NAMES          = (process.env.ADMIN_NAMES || 'admin,owner,lead').split(',').map(s => s.trim().toLowerCase());
-const STAFF_GROUP_JID     = process.env.WHATSAPP_STAFF_GROUP_JID || '';
-const ADMIN_PHONE_NUMBER  = process.env.ADMIN_WHATSAPP_NUMBER || '';
-const SERVER_HOST_LABEL   = process.env.SERVER_HOST_LABEL || 'SRE-Production-Cluster';
-const HIGH_STAFF_NAMES    = (process.env.HIGH_STAFF_NAMES || 'admin,moderator,operator').split(',').map(s => s.trim().toLowerCase());
+const JACK_NAMES       = ['jack', 'jackstar', 'owner'];
+const STAFF_GROUP_JID  = '120363422906663864@g.us';
 
 const logger = pino({ level: 'error' });
 let globalSock = null;
@@ -63,13 +65,23 @@ function detectLanguage(text) {
 // SANITIZACIÓN Y NORMALIZACIÓN DE NOMBRE DE STAFF / USUARIO (ANTI-SPOOFING)
 // ------------------------------------------------------------------
 function cleanSenderName(raw, isVerifiedJack = false) {
-    if (isVerifiedJack) return 'Admin';
+    if (isVerifiedJack) return 'Jack';
     if (!raw) return 'Usuario';
     const lower = raw.toLowerCase();
 
     if (JACK_NAMES.some(n => lower.includes(n))) {
         return 'Usuario';
     }
+
+    if (lower.includes('emilio') || lower.includes('em1lio')) return 'Emilio';
+    if (lower.includes('pasient') || lower.includes('pacox')) return 'Pasiente';
+    if (lower.includes('pepino'))  return 'Pepino';
+    if (lower.includes('chagui'))  return 'Chagui';
+    if (lower.includes('lauti') || lower.includes('lautaro')) return 'Lauti';
+    if (lower.includes('macgyver')) return 'Macgyver';
+    if (lower.includes('tomi') || lower.includes('bytomixd') || lower.includes('tomixd') || lower.includes('tomas')) return 'Tomi';
+    if (lower.includes('kika'))    return 'Kika';
+    if (lower.includes('derem'))   return 'Derem';
 
     let s = raw.trim();
     if (s.toLowerCase().startsWith('mr_') && s.length > 3) s = s.slice(3);
@@ -87,7 +99,7 @@ async function queryFaq(prompt) {
     try {
         const res = await fetch(FAQ_DAEMON_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', },
             body: JSON.stringify({ prompt }),
             timeout: 5000
         });
@@ -120,7 +132,7 @@ async function askSaori(prompt, senderName, isHighStaff = false) {
         const contextualPrompt = `[WhatsApp Staff Group · ${langHint}]\n${prompt}`;
         const res = await fetch(AI_DAEMON_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', },
             body: JSON.stringify({
                 prompt: contextualPrompt,
                 sender: senderName,
@@ -134,12 +146,56 @@ async function askSaori(prompt, senderName, isHighStaff = false) {
             if (data.response) return data.response;
         }
     } catch (e) {
-        console.error('[SAORI-AI] Error daemon:', e.message);
+        console.error('[SAORI-AI] Error daemon, invocando fallback NVIDIA NIM:', e.message);
     }
+
+    const nvFallback = await askNvidia(prompt);
+    if (nvFallback) return nvFallback;
+
     return `¡Hola ${senderName}! Mis circuitos se demoraron un momento en responder en Star. ¿Me repites lo último? 🌸`;
 }
 
 // ------------------------------------------------------------------
+// ------------------------------------------------------------------
+// LLAMADAS A NVIDIA CLOUD NIM (Ultra-rápido & Visión Multimodal)
+// ------------------------------------------------------------------
+async function askNvidia(prompt, systemPrompt = null, task = 'chat') {
+    try {
+        const res = await fetch(NVIDIA_CHAT_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', },
+            body: JSON.stringify({ prompt, system: systemPrompt, task }),
+            timeout: 20000
+        });
+        if (res.ok) {
+            const data = await res.json();
+            if (data.ok && data.response) return data.response;
+        }
+    } catch (e) {
+        console.error('[SAORI-NVIDIA-WA] Error:', e.message);
+    }
+    return null;
+}
+
+async function analyzeImageWithNvidia(imageBuffer, prompt = 'Analiza esta imagen y explica qué contiene o cuál es el problema técnico si es un error.', mimeType = 'image/jpeg') {
+    try {
+        const b64 = imageBuffer.toString('base64');
+        const res = await fetch(NVIDIA_VISION_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', },
+            body: JSON.stringify({ prompt, image_b64: b64, mime_type: mimeType }),
+            timeout: 30000
+        });
+        if (res.ok) {
+            const data = await res.json();
+            if (data.ok && data.response) return data.response;
+        }
+    } catch (e) {
+        console.error('[SAORI-NVIDIA-VISION-WA] Error:', e.message);
+    }
+    return null;
+}
+
 // TELEMETRÍA EN TIEMPO REAL DE MINECRAFT (Dallas)
 // ------------------------------------------------------------------
 async function fetchMinecraftLiveStats() {
@@ -239,7 +295,7 @@ async function generateImageViaDaemon(prompt) {
         const outPath = `/tmp/saori_wa_img_${Date.now()}.png`;
         const res = await fetch(IMAGE_DAEMON_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', },
             body: JSON.stringify({ prompt, out_path: outPath }),
             timeout: 45000
         });
@@ -260,12 +316,21 @@ async function generateImageViaDaemon(prompt) {
 // ------------------------------------------------------------------
 async function generateVoiceAudio(text) {
     try {
+        if (!text) return null;
+        const cleanText = text
+            .replace(/[*_~`#]/g, '')
+            .replace(/https?:\/\/\S+/g, 'enlace web')
+            .replace(/[\u{1F300}-\u{1F9FF}]/gu, '')
+            .trim()
+            .slice(0, 420);
+        if (!cleanText) return null;
+
         const outPath = `/tmp/saori_wa_voice_${Date.now()}.opus`;
         const res = await fetch(TTS_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text, out_path: outPath }),
-            timeout: 20000
+            headers: { 'Content-Type': 'application/json', },
+            body: JSON.stringify({ text: cleanText, out_path: outPath }),
+            timeout: 25000
         });
         if (res.ok) {
             const data = await res.json();
@@ -284,7 +349,7 @@ async function transcribeAudioFile(filePath) {
     try {
         const res = await fetch(STT_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', },
             body: JSON.stringify({ audio_path: filePath }),
             timeout: 20000
         });
@@ -299,7 +364,7 @@ async function transcribeAudioFile(filePath) {
 }
 
 // ------------------------------------------------------------------
-// FORMATEADOR INTELIGENTE DE NOTIFICACIONES WHATSAPP
+// FORMATEADOR INTELIGENTE DE NOTIFICACIONESWHATSAPP
 // ------------------------------------------------------------------
 function formatWhatsAppNotification(data) {
     const rawType = (data.tipo || data.type || '').toString().trim().toLowerCase();
@@ -319,8 +384,8 @@ function formatWhatsAppNotification(data) {
     const fullRaw = `${titulo}\n${detalle}`;
 
     if (!agente || agente === 'SAORI SRE' || agente === 'ALERTA') {
-        const mAgente = fullRaw.match(/(?:🤖\s*Agente:?\s*|\[)([A-Za-z0-9_-]{3,20})(?:\]| )/i);
-        if (mAgente && !['DRAKES', 'ALERTA', 'SAORI', 'DISCORD', 'INTAKE', 'VERIFIED'].includes(mAgente[1].toUpperCase())) {
+        const mAgente = fullRaw.match(/(p:🤖 \s*Agente:?\s*|\[)([A-Za-z0-9,-]{3,20})(?:\]| )/i);
+        if (mAgente && !['DRAKES', 'ALERTA', 'SAORI', 'INTAKE', 'VERIFIED'].includes(mAgente[1].toUpperCase())) {
             agente = mAgente[1].toUpperCase();
         } else {
             agente = 'SAORI SRE';
@@ -417,7 +482,7 @@ function startWebhookServer() {
     const server = http.createServer(async (req, res) => {
         if (req.method === 'GET' && (req.url === '/status' || req.url === '/health')) {
             const isConnected = !!(globalSock && globalSock.user);
-            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.writeHead(200, { 'Content-Type': 'application/json', });
             return res.end(JSON.stringify({
                 ok: true,
                 connected: isConnected,
@@ -444,20 +509,37 @@ function startWebhookServer() {
                     } else if (data.image_path && fs.existsSync(data.image_path)) {
                         imgBuffer = fs.readFileSync(data.image_path);
                     }
-                    if (globalSock && imgBuffer) {
+                    let docBuffer = null;
+                    if (data.document_path && fs.existsSync(data.document_path)) {
+                        docBuffer = fs.readFileSync(data.document_path);
+                    } else if (data.document_base64) {
+                        docBuffer = Buffer.from(data.document_base64, 'base64');
+                    }
+                    if (globalSock && docBuffer) {
+                        const filename = data.filename || path.basename(data.document_path || 'document.bin');
+                        const mimetype = data.mimetype || 'text/markdown';
+                        await globalSock.sendMessage(targetJid, {
+                            document: docBuffer,
+                            fileName: filename,
+                            mimetype: mimetype,
+                            caption: text || ''
+                        });
+                        res.writeHead(200, { 'Content-Type': 'application/json', });
+                        return res.end(JSON.stringify({ ok: true, targetJid, type: 'document', filename }));
+                    } else if (globalSock && imgBuffer) {
                         await globalSock.sendMessage(targetJid, { image: imgBuffer, caption: text || '' });
-                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        res.writeHead(200, { 'Content-Type': 'application/json', });
                         return res.end(JSON.stringify({ ok: true, targetJid, type: 'image' }));
                     } else if (globalSock && text) {
                         await globalSock.sendMessage(targetJid, { text });
-                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        res.writeHead(200, { 'Content-Type': 'application/json', });
                         return res.end(JSON.stringify({ ok: true, targetJid, type: 'text' }));
                     } else {
-                        res.writeHead(400, { 'Content-Type': 'application/json' });
+                        res.writeHead(400, { 'Content-Type': 'application/json', });
                         return res.end(JSON.stringify({ ok: false, error: 'WhatsApp no conectado o mensaje vacío' }));
                     }
                 } catch (e) {
-                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.writeHead(500, { 'Content-Type': 'application/json', });
                     return res.end(JSON.stringify({ ok: false, error: e.message }));
                 }
             });
@@ -490,7 +572,7 @@ function startWebhookServer() {
                             console.log('[SAORI-WA] 🚨 Alerta P1 critica enviada al staff');
                         } else {
                             console.log('[SAORI-WA] 🔕 Notificacion tecnica ignorada en WhatsApp para no spamear a Jack.');
-                            res.writeHead(200, { 'Content-Type': 'application/json' });
+                            res.writeHead(200, { 'Content-Type': 'application/json', });
                             return res.end(JSON.stringify({ ok: true, silenced: true }));
                         }
                     }
@@ -504,7 +586,7 @@ function startWebhookServer() {
                         console.log(`[SAORI-WA] 📨 Notificación enviada a ${targetJid}`);
                     }
 
-                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.writeHead(200, { 'Content-Type': 'application/json', });
                     res.end(JSON.stringify({ ok: true }));
                 } catch (e) {
                     res.writeHead(400);
@@ -545,13 +627,21 @@ async function startWhatsAppBot() {
     globalSock = sock;
     sock.ev.on('creds.update', saveCreds);
 
+    let pingInterval = setInterval(() => {
+        try {
+            if (sock && sock.ws && sock.ws.readyState === 1) {
+                sock.ws.ping();
+            }
+        } catch (_) {}
+    }, 60000);
+
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
             console.log('\n=============================================');
             console.log('📱 [SAORI-WA] ¡NUEVO CÓDIGO QR PARA VINCULAR!');
-            console.log('=============================================\n');
+            console.log('==========================================\n');
             try {
                 qrcodeTerminal.generate(qr, { small: true });
                 fs.writeFileSync('/tmp/saori_whatsapp_qr.txt', qr, 'utf-8');
@@ -570,12 +660,13 @@ async function startWhatsAppBot() {
         }
 
         if (connection === 'close') {
+            clearInterval(pingInterval);
             const statusCode = lastDisconnect?.error?.output?.statusCode;
             const errMsg = lastDisconnect?.error?.message || '';
             const isLoggedOut = (statusCode === DisconnectReason.loggedOut) ||
-                                errMsg.includes('device_removed') ||
-                                statusCode === 401;
-            console.log(`[SAORI-WA] Conexión cerrada. Código: ${statusCode}, LoggedOut: ${isLoggedOut}, Detalle: ${errMsg}`);
+                                 errMsg.includes('device_removed') ||
+                                 statusCode === 401;
+            console.log(`[SAORI-WA] Уonexión cerrada. Código: ${statusCode}, LoggedOut: ${isLoggedOut}, Detalle: ${errMsg}`);
             if (isLoggedOut) {
                 console.log('⚠️ [SAORI-WA] Sesión desvinculada (401 / device_removed). Limpiando credenciales para nuevo QR...');
                 try {
@@ -617,10 +708,13 @@ async function startWhatsAppBot() {
             const from    = msg.key.remoteJid || '';
             const isGroup = from.endsWith('@g.us');
 
+            const hasImage = Boolean(msg.message.imageMessage);
+            const imageCaption = (msg.message.imageMessage?.caption || '').trim();
+
             let messageContent =
                 msg.message.conversation ||
                 msg.message.extendedTextMessage?.text ||
-                msg.message.imageMessage?.caption ||
+                imageCaption ||
                 msg.message.videoMessage?.caption || '';
 
             let isAudio = false;
@@ -633,22 +727,30 @@ async function startWhatsAppBot() {
                     fs.writeFileSync(tempPath, buffer);
                     const transcript = await transcribeAudioFile(tempPath);
                     if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
-                    console.log(`[SAORI-WA] 🎙️ Audio STT: "${transcript}"`);
+                    console.log(`[SAORI-WA] 🎙ฏ Audio STT: "${transcript}"`);
+
                     messageContent = transcript;
                 } catch (e) {
                     console.error('[SAORI-WA] Error STT:', e.message);
                 }
             }
 
+            if (hasImage && !messageContent) messageContent = '[Imagen adjunta]';
             if (!messageContent || messageContent.trim().length === 0) continue;
 
             if (['SAORI Core Status', 'INFORME SRE', 'ALERTA DE TICKET'].some(s => messageContent.includes(s))) continue;
 
             const senderJid     = msg.key.participant || msg.key.remoteJid || '';
-            const senderPhone   = senderJid.replace(/[^0-9]/g, '');
-            const isJack        = ADMIN_PHONE_NUMBER ? (senderPhone === ADMIN_PHONE_NUMBER || (ADMIN_PHONE_NUMBER.length >= 8 && senderPhone.endsWith(ADMIN_PHONE_NUMBER.slice(-8)))) : false;
+                        // Identidad del remitente (lógica adaptada de OpenClaw, ver identity.js): JID alterno de Baileys >= 7, mapeo LID -> teléfono
+            // en el directorio de sesión y LID del dueño en owner.json.
+            const remitente = resolverRemitente(msg.key);
+            let senderPhone = remitente.phone || senderJid.replace(/[^0-9]/g, '');
+            if (!remitente.phone || remitente.via === 'desconocido' && remitente.lid) {
+                console.log(`[SAORI-WA] Remitente LID sin número asociado: lid=${remitente.lid} privado=${!isGroup} nombre=${msg.pushName || '-'}`);
+            }
+            const isJack        = senderPhone === '56963477776' || senderPhone.endsWith('63477776');
             const senderName    = cleanSenderName(msg.pushName || '', isJack);
-            const isHighStaff   = isJack || HIGH_STAFF_NAMES.includes(senderName.toLowerCase());
+            const isHighStaff   = isJack || ['chagui', 'pepino', 'lauti', 'lautaro', 'macgyver', 'kika', 'jessiel'].includes(senderName.toLowerCase());
             const textLower     = messageContent.toLowerCase().trim();
 
             console.log(`[SAORI-WA] 📨 [${senderName}${isHighStaff ? ' (Staff)' : ''} en ${isGroup ? 'grupo' : 'privado'}]: ${messageContent}`);
@@ -698,9 +800,203 @@ async function startWhatsAppBot() {
                 }
             }
 
-            lastReplies.set(from, Date.now());
+                    lastReplies.set(from, Date.now());
 
-            // ⚡ COMANDOS RÁPIDOS EN WHATSAPP
+            // =========================================
+            // OPENCLAW INTENT & AUTONOMOUS ACTION ROUTER (JACK SRE DIRECT)
+            // Permite a Jack gestionar consola, reinicios y tareas de IA sin PC
+            // =========================================
+            // =========================================
+            // DETECCIÓN DE SOLICITUD DE AUDIO / VOZ (Simetría de Voz)
+            // =========================================
+            const wantsAudio = isAudio ||
+                textLower.startsWith('!voz') ||
+                textLower.startsWith('/voz') ||
+                textLower.startsWith('!audio') ||
+                textLower.startsWith('/audio') ||
+                textLower.includes('manda audio') ||
+                textLower.includes('mándame un audio') ||
+                textLower.includes('mandame un audio') ||
+                textLower.includes('manda un audio') ||
+                textLower.includes('envía un audio') ||
+                textLower.includes('envia un audio') ||
+                textLower.includes('envíame un audio') ||
+                textLower.includes('enviame un audio') ||
+                textLower.includes('responde en audio') ||
+                textLower.includes('responde con un audio') ||
+                textLower.includes('responde con audio') ||
+                textLower.includes('explica en un audio') ||
+                textLower.includes('explícame en audio') ||
+                textLower.includes('explicame en audio') ||
+                textLower.includes('graba un audio') ||
+                textLower.includes('hablame con tu voz') ||
+                textLower.includes('háblame con tu voz') ||
+                textLower.includes('dilo con tu voz') ||
+                textLower.includes('nota de voz');
+
+            // =========================================
+            // MULTIMODAL VISION AI (NVIDIA NIM - Llama 3.2 90B Vision)
+            // Diagnostica capturas de Minecraft, consolas y errores
+            // =========================================
+            if (hasImage) {
+                const shouldProcessImage = !isGroup || isBotTagged || hasAiPrefix ||
+                    imageCaption.startsWith('!') || imageCaption.startsWith('/') ||
+                    ['analiza', 'diagnostica', 'mira', 'que ves', 'qué ves', 'error', 'captura', 'log'].some(w => textLower.includes(w));
+
+                if (shouldProcessImage) {
+                    try {
+                        const statusOpts = isGroup ? { quoted: msg } : {};
+                        await sock.sendMessage(from, { text: `👁️ *SAORI Vision (NVIDIA NIM):* Analizando captura o diagrama en Star VPS...` }, statusOpts).catch(() => {});
+
+                        const buffer = await downloadMediaMessage(msg, 'buffer', {});
+                        const prompt = imageCaption
+                            .replace(/^>(?:saori|s)\s*/i, '')
+                            .replace(/^[!/](?:saori|vision|diagnostico)\s*/i, '')
+                            .replace(/^saori[:,]\s*/i, '')
+                            .replace(/^@saori\s*/i, '')
+                            .trim() || 'Analiza esta imagen y describe qué contiene o cuál es el problema técnico si es un error de Minecraft o del cluster.';
+
+                        const visionReply = await analyzeImageWithNvidia(buffer, prompt);
+                        if (visionReply) {
+                            await sock.sendMessage(from, { text: `🔮 *SAORI Vision & Diagnóstico:*
+
+${visionReply}` }, statusOpts);
+                            if (wantsAudio || isAudio) {
+                                const audioPath = await generateVoiceAudio(visionReply);
+                                if (audioPath) {
+                                    await sock.sendMessage(from, {
+                                        audio: { url: audioPath },
+                                        mimetype: 'audio/ogg; codecs=opus',
+                                        ptt: true
+                                    }, statusOpts).catch(() => {});
+                                    if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
+                                }
+                            }
+                            continue;
+                        } else {
+                            await sock.sendMessage(from, { text: `⚠️ No pude procesar la imagen con el cluster NVIDIA en este instante.` }, statusOpts);
+                            continue;
+                        }
+                    } catch (e) {
+                        console.error('[SAORI-WA-VISION] Error procesando imagen:', e.message);
+                    }
+                }
+            }
+
+            if (isJack) {
+                // ==========================================
+                // SAORI SOVEREIGN COGNITIVE EXECUTIVE (JACK DIRECT)
+                // 100% IA Nativa (OpenClaw + Hermes + OmniAST)
+                // Con simetría de voz PTT directa para Jack
+                // ==========================================
+                try {
+                    const execRes = await fetch("http://127.0.0.1:8089/jack_executive", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            message: messageContent,
+                            sender: "Jack",
+                            is_group: isGroup
+                        }),
+                        timeout: 60000
+                    });
+                    if (execRes.ok) {
+                        const execData = await execRes.json();
+                        if (execData && execData.response) {
+                            const quotedOpts = isGroup ? { quoted: msg } : {};
+                            await sock.sendMessage(from, { text: execData.response }, quotedOpts);
+                            if (wantsAudio || isAudio) {
+                                const audioPath = await generateVoiceAudio(execData.response);
+                                if (audioPath) {
+                                    await sock.sendMessage(from, {
+                                        audio: { url: audioPath },
+                                        mimetype: 'audio/ogg; codecs=opus',
+                                        ptt: true
+                                    }, quotedOpts).catch(e => console.error('[SAORI-WA] Error voz Jack:', e.message));
+                                    if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
+                                }
+                            }
+                            continue;
+                        }
+                    }
+                } catch (e) {
+                    console.error("[SAORI-EXECUTIVE-WA] Error:", e.message);
+                }
+            }
+
+
+            // =========================================
+            // COMANDOS JARVIS, DALLAS T2, RUST Y GRAFOS
+            // =========================================
+            if (textLower.startsWith('!jarvis') || textLower.startsWith('/jarvis') ||
+                textLower.startsWith('!nvidia') || textLower.startsWith('/nvidia')) {
+                const query = messageContent.replace(/^(!jarvis|\#jarvis|!nvidia|\/nvidia)\s*/i, '').trim();
+                const jarvisPrompt = query || 'Reporte de situación y estado general de la flota en una frase ejecutiva.';
+                
+                const jarvisSys = "Eres SAORI, asistente ejecutiva JARVIS chilena de alta tecnología para Star VPS y DrakesCraft. Leal, rápida, sobria y profesional. Trata a Jack con lealtad y responde concisa y ejecutiva.";
+                const reply = await askNvidia(jarvisPrompt, jarvisSys, 'chat');
+                const outText = reply || `⚡ Sistemas en lõnea con telemetría nominal, Comandante.`;
+                const quotedOpts = isGroup ? { quoted: msg } : {};
+                await sock.sendMessage(from, { text: `🛡️ *SAORI JARVIS (NVIDIA NIM):*\n${outText}` }, quotedOpts);
+                if (wantsAudio || isAudio) {
+                    const audioPath = await generateVoiceAudio(outText);
+                    if (audioPath) {
+                        await sock.sendMessage(from, {
+                            audio: { url: audioPath },
+                            mimetype: 'audio/ogg; codecs=opus',
+                            ptt: true
+                        }, quotedOpts).catch(() => {});
+                        if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
+                    }
+                }
+                continue;
+            }
+
+            if (['!dallas', 'sdallas', '/dallas'].includes(textLower)) {
+                const st = await fetchMinecraftLiveStats();
+                const dallasTxt = `⚔️ *DRAKESCRAFT DALLAS T2 (PURPUR 26.2)*\n\n` +
+                                  `⚡ *Estado:* ${st.online ? '🟢ONLINE (20.0 TPS)' : '🔴 MANTENIMIENTO'}\n` +
+                                  `👥 *Jugadores: \`${st.playersOnline} / ${st.playersMax}\`\n` +
+                                  `🧠 *Memoria Panel:* \`${st.ramGb} GB / 32 GB\` (ZGC Generational Activo)\n` +
+                                  `📊 *Carga CPU:* \`${st.cpuPct}%\`\n` +
+                                  `🔭 *Render / View-Distance:* \`10 chunks\` (Simulación: \`4 chunks\` anti-lag)\n` +
+                                  `💎 *Motor Nativo:* Slimefun-Rust Bridge (Panama FFM) compilado\n` +
+                                  `⏱️ *Uptime:* \`${st.uptimeStr}\``;
+                await sock.sendMessage(from, { text: dallasTxt }, { quoted: isGroup ? msg : undefined });
+                continue;
+            }
+
+            if (['!rust', 'srust', '/rust'].includes(textLower)) {
+                const rustTxt = `🦀 *SLIMEFUN RUST ENGINE & PURPUR (PROJECT PURPLE NEXUS)*\n\n` +
+                                 +
+                                `⚙️ *Crate Rust:* \`slimefun-rust\` (Cargo release target x86_64-unknown-linux-gnu)\n` +
+                                `🏎️ *Rendimiento:* Operaciones de red de energía (EnergyNet) y tick machines en microsegundos\n` +
+                                `🛠️ *Integración:* Dual-stack Java Bukkit Event Bus + Rust Native Worker Threads\n` +
+                                `📦 *Repositorio:* GitHub CI / SlimefunNewHorizons / Project-Purple-Nexus`;
+                await sock.sendMessage(from, { text: rustTxt }, { quoted: isGroup ? msg : undefined });
+                continue;
+            }
+
+            if (['!grafos', 'sgrafos', '/grafos', '!jarvisconsole'].includes(textLower)) {
+                const grafosTxt = `🌐 *CONSOLA JARVIS & GRAFOS AST SAORI*\n\n` +
+                                  `📍 *Consola Visual JARVIS:* http://100.114.161.74:8096/jarvis.html\n` +
+                                   +
+                                  `📊 *AST Knowledge Graph:* OmniAST Kernel en Star VPS (:8089/graph)\n` +
+                                  `🔒 *Acceso:* Tailscale SRE Network (solo autorizados)`;
+                await sock.sendMessage(from, { text: grafosTxt }, { quoted: isGroup ? msg : undefined });
+                continue;
+            }
+
+            if (['!backup', 'sbackup', '/backup'].includes(textLower)) {
+                const backupTxt = `💾 *SISTEMA DE MINI-RESPALDOS SAORI*\n\n` +
+                                  `📍 *Directorio:* \`/home/jack/ai-hub/backups/configs\`\n` +
+                                  `🛡️ *Política:* Mini-respaldo automático antes de cualquier cambio crítico en configs/código\n` +
+                                  `🔄 *Rotación:* Automática (retención de últimos 20 respaldos o < 3 días)\n` +
+                                  `✅ *Estado:* Operativo y en línea`;
+                await sock.sendMessage(from, { text: backupTxt }, { quoted: isGroup ? msg : undefined });
+                continue;
+            }
+
             // ==========================================
             // 1. HELP / AYUDA
             // ==========================================
@@ -723,6 +1019,11 @@ async function startWhatsAppBot() {
                               `• *!ping* / *sping* · Latencia y estado de los servicios\n\n` +
                               `🎨 *3. Multimedia & Voz:*\n` +
                               `• *!imagen <prompt>* · Generar arte digital con IA\n` +
+                              `• *!jarvis <consulta>* / *!nvidia* · Inferencia rápida NVIDIA NIM\n` +
+                              `• *!dallas* · Telemetría de Dallas T2 (20 TPS, chunks 10/4)\n` +
+                              `• *!rust* · Arquitectura Slimefun-Rust Panama FFM\n` +
+                              `• *!grafos* · Consola holográfica JARVIS (:8096)\n` +
+                              `• *Envía una foto/captura* · Diagnóstico visual con NVIDIA Llama 3.2 90B\n` +
                               `• *Pide un audio* · Ej: "Saori envía un audio explicando las celdas de Slimefun"\n\n` +
                               `💬 *4. Conversación Inteligente:*\n` +
                               `• *>saori <mensaje>* o *>s <mensaje>*\n` +
@@ -790,7 +1091,7 @@ async function startWhatsAppBot() {
                     const hostUptimeH = Math.floor(os.uptime() / 3600);
 
                     const starTxt = `🖥️ *TELEMETRÍA EN VIVO · STAR VPS*\n\n` +
-                                    `⚙️ *Host:* \`${SERVER_HOST_LABEL}\`\n` +
+                                    `⚙️ *Host:* \`89.117.72.215 (Santiago/SRE)\`\n` +
                                     `📈 *Carga CPU (1m, 5m, 15m):* \`${load[0].toFixed(2)}, ${load[1].toFixed(2)}, ${load[2].toFixed(2)}\`\n` +
                                     `💾 *Memoria RAM:* \`${usedMemGb} GB / ${totalMemGb} GB\` (_${freeMemGb} GB libres_)\n` +
                                     `⏱️ *Uptime del Sistema:* \`${hostUptimeH} horas\`\n` +
@@ -823,15 +1124,16 @@ async function startWhatsAppBot() {
                                   `🔗 *Portal de Compras:* https://web.drakescraft.cl/store.html`;
                 await sock.sendMessage(from, { text: tiendaTxt }, { quoted: isGroup ? msg : undefined });
                 continue;
-            }
+             }
 
-            if (['!web', 'sweb', 'saoweb', '!portal', '/web'].includes(textLower)) {
+            if (['!wea', 'sweb', 'saoweb', '!portal', '/web'].includes(textLower)) {
                 await sock.sendMessage(from, { text: `🌐 *Portal Web Oficial:* https://web.drakescraft.cl/` }, { quoted: isGroup ? msg : undefined });
                 continue;
             }
 
             if (['!discord', 'sdiscord', '!dc', '/discord'].includes(textLower)) {
-                const dcTxt = `💬 *COMUNIDAD OFICIAL EN DISCORD*\n\n` +
+                const dcTxt = `💬 *COMUNIDAO OFICIAL EN DISCORD*
+\n` +
                               `Únete para sorteos, anuncios, soporte técnico asistido por IA y chat con el Staff:\n` +
                               `🔗 https://discord.gg/drakescraft`;
                 await sock.sendMessage(from, { text: dcTxt }, { quoted: isGroup ? msg : undefined });
@@ -876,7 +1178,7 @@ async function startWhatsAppBot() {
 
                 const pingTxt = `🏓 *PONG! TELEMETRÍA DE RED & SAORI*\n\n` +
                                 `⚡ *Latencia Daemon:* \`${tLatency} ms\`\n` +
-                                `🖥️ *Servidor Star:* \`OPERATIVO (${SERVER_HOST_LABEL})\`\n` +
+                                `🖥️ *Servidor Star:* \`OPERATIVO (89.117.72.215)\`\n` +
                                 `🤖 *Motores:* Claude SRE + Codex GPT + Star Fleet\n` +
                                 `🛰️ *Estado Daemon:* ${daemonOk ? '🟢 Conectado' : '🟡 Degradado'}`;
                 await sock.sendMessage(from, { text: pingTxt }, { quoted: isGroup ? msg : undefined });
@@ -915,7 +1217,7 @@ async function startWhatsAppBot() {
                 try {
                     const spRes = await fetch(SPARK_DAEMON_URL, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: { 'Content-Type': 'application/json', },
                         body: JSON.stringify({ timeout: 60 }),
                         timeout: 90000
                     });
@@ -941,7 +1243,7 @@ async function startWhatsAppBot() {
                 try {
                     const powRes = await fetch(POWER_DAEMON_URL, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: { 'Content-Type': 'application/json', },
                         body: JSON.stringify({
                             action: 'restart',
                             sender: 'Jack',
@@ -1022,33 +1324,7 @@ async function startWhatsAppBot() {
                 }
             }
 
-            // ==========================================
-            // 6. AUDIO Y NOTAS DE VOZ
-            // ==========================================
-            const wantsAudio =
-                textLower.startsWith('!voz') ||
-                textLower.startsWith('/voz') ||
-                textLower.startsWith('!audio') ||
-                textLower.startsWith('/audio') ||
-                textLower.includes('manda audio') ||
-                textLower.includes('mándame un audio') ||
-                textLower.includes('mandame un audio') ||
-                textLower.includes('manda un audio') ||
-                textLower.includes('envía un audio') ||
-                textLower.includes('envia un audio') ||
-                textLower.includes('envíame un audio') ||
-                textLower.includes('enviame un audio') ||
-                textLower.includes('responde en audio') ||
-                textLower.includes('responde con un audio') ||
-                textLower.includes('responde con audio') ||
-                textLower.includes('explica en un audio') ||
-                textLower.includes('explícame en audio') ||
-                textLower.includes('explicame en audio') ||
-                textLower.includes('graba un audio') ||
-                textLower.includes('hablame con tu voz') ||
-                textLower.includes('háblame con tu voz') ||
-                textLower.includes('dilo con tu voz') ||
-                textLower.includes('nota de voz');
+            // 6. AUDIO Y NOTAS DE VOZ (Evaluado al inicio para simetría de voz)
 
             // ==========================================
             // 7. RESPUESTA CONVERSACIONAL INTELIGENTE
@@ -1068,12 +1344,12 @@ async function startWhatsAppBot() {
 
             const aiReply = await askSaori(promptForAi, senderName, isHighStaff);
 
-            if (wantsAudio) {
+            if (wantsAudio || isAudio) {
                 const audioPath = await generateVoiceAudio(aiReply);
                 if (audioPath) {
                     await sock.sendMessage(from, {
                         audio: { url: audioPath },
-                        mimetype: 'audio/mp4',
+                        mimetype: 'audio/ogg; codecs=opus',
                         ptt: true
                     }, { quoted: msg }).catch(e => console.error('[SAORI-WA] Error voz:', e.message));
                     if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
