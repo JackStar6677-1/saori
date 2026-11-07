@@ -15,7 +15,7 @@ const http   = require('http');
 const os     = require('os');
 const fetch  = require('node-fetch');
 const qrcodeTerminal = require('qrcode-terminal');
-const { resolverRemitente } = require('./identity.js');
+const { resolverRemitente, normalizarDestino } = require('./identity.js');
 
 const AUTH_DIR         = process.env.AUTH_DIR || path.join(__dirname, '../data/auth_info');
 const AI_DAEMON_URL    = 'http://127.0.0.1:8089/chat';
@@ -30,6 +30,57 @@ const SRE_ACTION_URL   = "http://127.0.0.1:8089/sre_action";
 const TICKET_URL       = "http://127.0.0.1:8089/ticket";
 const NVIDIA_CHAT_URL   = "http://127.0.0.1:8089/nvidia";
 const NVIDIA_VISION_URL = "http://127.0.0.1:8089/nvidia_vision";
+
+
+// ------------------------------------------------------------------
+// ALMACÃ‰N Y CACHÃ‰ DE MENSAJES (Para Reintentos Signal Protocol / Baileys)
+// Resuelve de raÃ­z el error "Esperando mensaje. Esto puede tomar tiempo"
+// ------------------------------------------------------------------
+const RECENT_MESSAGES_FILE = path.join(AUTH_DIR, 'recent_messages.json');
+const messageStore = new Map();
+
+try {
+    if (fs.existsSync(RECENT_MESSAGES_FILE)) {
+        const raw = JSON.parse(fs.readFileSync(RECENT_MESSAGES_FILE, 'utf8'));
+        for (const [id, msg] of Object.entries(raw)) {
+            messageStore.set(id, msg);
+        }
+        console.log(`[SAORI-WA] ðŸ“¦ CachÃ© de mensajes cargada desde disco: ${messageStore.size} mensajes.`);
+    }
+} catch (e) {
+    console.error('[SAORI-WA] Error cargando recent_messages.json:', e.message);
+}
+
+let saveTimer = null;
+function persistMessageStoreDebounced() {
+    if (saveTimer) return;
+    saveTimer = setTimeout(() => {
+        saveTimer = null;
+        try {
+            const obj = {};
+            for (const [k, v] of messageStore.entries()) {
+                obj[k] = v;
+            }
+            fs.writeFileSync(RECENT_MESSAGES_FILE, JSON.stringify(obj), 'utf8');
+        } catch (e) {
+            console.error('[SAORI-WA] Error persistiendo recent_messages.json:', e.message);
+        }
+    }, 5000);
+}
+
+function storeMessage(id, message) {
+    if (!id || !message) return;
+    messageStore.set(id, message);
+    if (messageStore.size > 2000) {
+        const oldestKey = messageStore.keys().next().value;
+        messageStore.delete(oldestKey);
+    }
+    persistMessageStoreDebounced();
+}
+
+function getStoredMessage(id) {
+    return messageStore.get(id) || null;
+}
 
 const PTERODACTYL_PANEL_URL = (process.env.PTERODACTYL_PANEL_URL || 'https://panel.thegamehosting.com').replace(/\/+$/, '');
 const PTERODACTYL_SERVER_ID = process.env.PTERODACTYL_SERVER_ID || '38528a4e';
@@ -318,10 +369,11 @@ async function generateImageViaDaemon(prompt) {
 function startTyping(sock, jid, initialMode = "composing") {
     let active = true;
     let currentMode = initialMode;
+    const finalJid = normalizarDestino(jid);
     const send = async () => {
-        if (!active || !sock || !jid) return;
+        if (!active || !sock || !finalJid) return;
         try {
-            await sock.sendPresenceUpdate(currentMode, jid);
+            await sock.sendPresenceUpdate(currentMode, finalJid);
         } catch (_) {}
     };
     send();
@@ -331,8 +383,8 @@ function startTyping(sock, jid, initialMode = "composing") {
         active = false;
         clearInterval(timer);
         try {
-            if (sock && jid) {
-                await sock.sendPresenceUpdate("paused", jid);
+            if (sock && finalJid) {
+                await sock.sendPresenceUpdate("paused", finalJid);
             }
         } catch (_) {}
     };
@@ -530,10 +582,7 @@ function startWebhookServer() {
             req.on('end', async () => {
                 try {
                     const data = JSON.parse(body || '{}');
-                    let targetJid = data.jid || data.phone || STAFF_GROUP_JID;
-                    if (!targetJid.includes('@')) {
-                        targetJid = targetJid.replace(/[^0-9]/g, '') + '@s.whatsapp.net';
-                    }
+                    let targetJid = normalizarDestino(data.jid || data.phone || STAFF_GROUP_JID);
                     const text = data.text || data.message || '';
                     const fs = require('fs');
                     let imgBuffer = null;
@@ -599,7 +648,7 @@ function startWebhookServer() {
             req.on('end', async () => {
                 try {
                     const data      = JSON.parse(body);
-                    let targetJid   = data.group_jid || STAFF_GROUP_JID;
+                    let targetJid   = normalizarDestino(data.group_jid || STAFF_GROUP_JID);
 
                     const titulo    = data.titulo    || data.title   || '';
                     const detalle   = data.resumen   || data.detalle || '';
@@ -668,8 +717,29 @@ async function startWhatsAppBot() {
         browser: ['SAORI SRE Fleet', 'Chrome', '1.0.0'],
         syncFullHistory: false,
         generateHighQualityLinkPreview: false,
-        defaultQueryTimeoutMs: 60000
+        defaultQueryTimeoutMs: 60000,
+        getMessage: async (key) => {
+            if (!key || !key.id) return undefined;
+            const msg = getStoredMessage(key.id);
+            if (msg) {
+                console.log(`[SAORI-WA] ðŸ”„ Respondiendo retry receipt para mensaje ${key.id} (remoto: ${key.remoteJid})`);
+                return msg;
+            }
+            console.log(`[SAORI-WA] âš ï¸� Retry receipt recibido para ${key.id}, pero mensaje no estÃ¡ en cachÃ©.`);
+            return undefined;
+        }
     });
+
+    // Envolver sock.sendMessage para normalizaciÃ³n de JID y guardado en cachÃ© para reintentos
+    const originalSendMessage = sock.sendMessage.bind(sock);
+    sock.sendMessage = async (jid, content, options = {}) => {
+        const finalJid = normalizarDestino(jid);
+        const sent = await originalSendMessage(finalJid, content, options);
+        if (sent && sent.key && sent.key.id && sent.message) {
+            storeMessage(sent.key.id, sent.message);
+        }
+        return sent;
+    };
 
     globalSock = sock;
     sock.ev.on('creds.update', saveCreds);
@@ -739,6 +809,12 @@ async function startWhatsAppBot() {
     });
 
     sock.ev.on('messages.upsert', async (m) => {
+        for (const msg of (m.messages || [])) {
+            if (msg.key && msg.key.id && msg.message) {
+                storeMessage(msg.key.id, msg.message);
+            }
+        }
+
         if (m.type !== 'notify') return;
 
         for (const msg of (m.messages || [])) {
@@ -1409,6 +1485,21 @@ ${visionReply}` }, statusOpts);
                 await stopTyping();
             }
 }
+    });
+
+    sock.ev.on('messages.update', async (updates) => {
+        try {
+            for (const update of updates) {
+                if (update.update && update.update.status) {
+                    const jid = update.key.remoteJid || '';
+                    if (jid.includes('88940182765600') || jid.includes('63477776')) {
+                        const statusNames = { 2: 'ENVIADO (1 CHECK)', 3: 'ENTREGADO (DOBLE CHECK)', 4: 'LEÃ�DO (AZUL)', 5: 'REPRODUCIDO' };
+                        const st = statusNames[update.update.status] || `ESTADO_${update.update.status}`;
+                        console.log(`[SAORI-WA] ðŸ“² TelemetrÃ­a mensaje ${update.key.id} a Jack: ${st}`);
+                    }
+                }
+            }
+        } catch (_) {}
     });
 }
 
