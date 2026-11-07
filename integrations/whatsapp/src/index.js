@@ -312,6 +312,39 @@ async function generateImageViaDaemon(prompt) {
 }
 
 // ------------------------------------------------------------------
+// ------------------------------------------------------------------
+// PRESENCIA ACTIVA (Escribiendo... / Grabando audio...)
+// ------------------------------------------------------------------
+function startTyping(sock, jid, initialMode = "composing") {
+    let active = true;
+    let currentMode = initialMode;
+    const send = async () => {
+        if (!active || !sock || !jid) return;
+        try {
+            await sock.sendPresenceUpdate(currentMode, jid);
+        } catch (_) {}
+    };
+    send();
+    const timer = setInterval(send, 4000);
+    const stopFn = async () => {
+        if (!active) return;
+        active = false;
+        clearInterval(timer);
+        try {
+            if (sock && jid) {
+                await sock.sendPresenceUpdate("paused", jid);
+            }
+        } catch (_) {}
+    };
+    stopFn.setMode = (newMode) => {
+        if (currentMode !== newMode) {
+            currentMode = newMode;
+            send();
+        }
+    };
+    return stopFn;
+}
+
 // TTS (Voz Chilena)
 // ------------------------------------------------------------------
 async function generateVoiceAudio(text) {
@@ -836,6 +869,9 @@ async function startWhatsAppBot() {
                 textLower.startsWith('!audio') ||
                 textLower.startsWith('/audio');
 
+            const stopTyping = startTyping(sock, from, wantsAudio ? "recording" : "composing");
+            try {
+
             // =========================================
             // MULTIMODAL VISION AI (NVIDIA NIM - Llama 3.2 90B Vision)
             // Diagnostica capturas de Minecraft, consolas y errores
@@ -864,6 +900,7 @@ async function startWhatsAppBot() {
 
 ${visionReply}` }, statusOpts);
                             if (wantsAudio || isAudio) {
+                                stopTyping.setMode('recording');
                                 const audioPath = await generateVoiceAudio(visionReply);
                                 if (audioPath) {
                                     await sock.sendMessage(from, {
@@ -908,6 +945,7 @@ ${visionReply}` }, statusOpts);
                             const quotedOpts = isGroup ? { quoted: msg } : {};
                             await sock.sendMessage(from, { text: execData.response }, quotedOpts);
                             if (wantsAudio || isAudio) {
+                                stopTyping.setMode('recording');
                                 const audioPath = await generateVoiceAudio(execData.response);
                                 if (audioPath) {
                                     await sock.sendMessage(from, {
@@ -941,7 +979,8 @@ ${visionReply}` }, statusOpts);
                 const quotedOpts = isGroup ? { quoted: msg } : {};
                 await sock.sendMessage(from, { text: `🛡️ *SAORI JARVIS (NVIDIA NIM):*\n${outText}` }, quotedOpts);
                 if (wantsAudio || isAudio) {
-                    const audioPath = await generateVoiceAudio(outText);
+                    stopTyping.setMode('recording');
+                                const audioPath = await generateVoiceAudio(outText);
                     if (audioPath) {
                         await sock.sendMessage(from, {
                             audio: fs.readFileSync(audioPath),
@@ -1347,7 +1386,8 @@ ${visionReply}` }, statusOpts);
             const aiReply = await askSaori(promptForAi, senderName, isHighStaff);
 
             if (wantsAudio || isAudio) {
-                const audioPath = await generateVoiceAudio(aiReply);
+                stopTyping.setMode('recording');
+                                const audioPath = await generateVoiceAudio(aiReply);
                 if (audioPath) {
                     await sock.sendMessage(from, {
                         audio: fs.readFileSync(audioPath),
@@ -1364,7 +1404,11 @@ ${visionReply}` }, statusOpts);
             await sock.sendMessage(from, { text: aiReply }, sendOpts)
                 .catch(e => console.error('[SAORI-WA] Error send:', e.message));
             console.log(`[SAORI-WA] 📤 Respuesta enviada.`);
-        }
+        
+            } finally {
+                await stopTyping();
+            }
+}
     });
 }
 
