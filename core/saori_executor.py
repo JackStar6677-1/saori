@@ -706,6 +706,13 @@ _Asistente de Infraestructura y Moderación de DrakesCraft_
         
         raw_cmd = _re.sub(r'\bvoifall\b', 'voidfall', raw_cmd, flags=_re.IGNORECASE)
         
+        # Normalizar comandos de tiempo cuando se envían desde la consola (sin jugador/mundo contextual)
+        cmd_clean = raw_cmd.strip().lstrip('/')
+        if cmd_clean.lower() == 'day':
+            raw_cmd = 'time set day world'
+        elif cmd_clean.lower() == 'night':
+            raw_cmd = 'time set night world'
+
         # Bloquear comandos destructivos incluso por chat
         if any(raw_cmd.lower().startswith(b) for b in ['stop', 'restart', 'reload', 'eco give', 'eco set', 'money give']):
             return f"Hola Jack, por seguridad los comandos críticos de economía o servidor deben ejecutarse por consola directa."
