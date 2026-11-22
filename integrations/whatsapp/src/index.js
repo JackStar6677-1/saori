@@ -703,7 +703,22 @@ function startWebhookServer() {
 async function startWhatsAppBot() {
     if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true });
 
-    const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+    // creds.json truncado (corte de disco/proceso, 12/11) fuerza QR nuevo: restaurar la ultima copia valida.
+    const credsFile = path.join(AUTH_DIR, 'creds.json');
+    const credsBak = credsFile + '.bak';
+    const credsOk = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')) && true; } catch { return false; } };
+    if (fs.existsSync(credsFile) && !credsOk(credsFile) && credsOk(credsBak)) {
+        console.log('[SAORI-WA] creds.json invalido: restaurando creds.json.bak');
+        fs.copyFileSync(credsBak, credsFile);
+    }
+    const { state, saveCreds: saveCredsRaw } = await useMultiFileAuthState(AUTH_DIR);
+    const saveCreds = async () => {
+        await saveCredsRaw();
+        if (credsOk(credsFile)) {
+            fs.copyFileSync(credsFile, credsBak + '.tmp');
+            fs.renameSync(credsBak + '.tmp', credsBak);
+        }
+    };
     const { version } = await fetchLatestBaileysVersion();
     console.log(`[SAORI-WA] Baileys v${version.join('.')} iniciando...`);
 
