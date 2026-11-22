@@ -6,11 +6,55 @@ Executes infrastructure queries (TPS, players, server status, staff tasks) in 0-
 """
 
 import os
+import re
 import sys
 import time
 
 # Desactivar telemetría externa anónima de Needle
 os.environ["NEEDLE_TELEMETRY"] = "0"
+
+_CONTEXT_WRAPPER_RE = re.compile(
+    r"^\s*\[Contexto\s+Canal/Ticket:\s*(.*?)\]\s*\n(.*)$",
+    re.IGNORECASE | re.DOTALL,
+)
+_TICKET_CONTEXT_RE = re.compile(
+    r"(?:canal\s+de\s+ticket|ticket\s+de\s+soporte|🎫・)",
+    re.IGNORECASE,
+)
+_URL_RE = re.compile(r"(?:https?://\S+|www\.\S+)", re.IGNORECASE)
+
+_EXPLICIT_TPS_RE = re.compile(
+    r"(?:"
+    r"\b(?:spark\s+)?tps\b"
+    r"|\b(?:cu[aá]ntos?|c[oó]mo\s+(?:van|est[aá]n|anda[n]?))\s+(?:los\s+)?(?:tps|el\s+lag|el\s+rendimiento)\b"
+    r"|\b(?:hay|tiene[n]?|anda\s+con|va\s+con)\s+(?:mucho\s+)?lag\b"
+    r"|\b(?:lag|rendimiento)\s+del\s+serv(?:er|idor)\b"
+    r"|\best[aá]\s+(?:con\s+mucho\s+|muy\s+)?lag(?:eado|geado)?\b"
+    r")",
+    re.IGNORECASE,
+)
+
+_INFRA_KEYWORD_RE = re.compile(
+    r"\b(?:tps|lag|rendimiento|jugador|jugadores|online|conectado|conectados|server|servidor|status|tarea|tareas)\b",
+    re.IGNORECASE,
+)
+
+
+def extract_user_prompt(prompt: str) -> tuple[str, bool]:
+    """Separa el contexto inyectado ([Contexto Canal/Ticket: ...]) del mensaje real del usuario."""
+    if not prompt:
+        return "", False
+    m = _CONTEXT_WRAPPER_RE.match(prompt)
+    if m:
+        ctx, user_msg = m.group(1), m.group(2)
+        is_ticket = bool(_TICKET_CONTEXT_RE.search(ctx))
+        return user_msg.strip(), is_ticket
+    return prompt.strip(), False
+
+
+def sanitize_for_matching(text: str) -> str:
+    """Elimina URLs (ej. https:// que contiene 'tps') antes de evaluar palabras clave."""
+    return _URL_RE.sub(" ", text or "").strip()
 
 class NeedleDispatcher:
     def __init__(self, tps_getter=None, players_getter=None, status_getter=None, tasks_getter=None):
@@ -74,49 +118,68 @@ class NeedleDispatcher:
         if not prompt or not prompt.strip():
             return None
 
-        p_lower = prompt.lower().strip()
+        user_prompt, is_ticket = extract_user_prompt(prompt)
+        if not user_prompt:
+            return None
+
+        sanitized = sanitize_for_matching(user_prompt)
+        p_lower = sanitized.lower().strip()
+        if not p_lower:
+            return None
+
+        # ── 0. PROTECCIÓN ESTRICTA EN CANALES DE TICKET ──
+        # Dentro de un ticket, solo responder TPS si el usuario pregunta explícitamente por lag/TPS/rendimiento.
+        # Jamás disparar fast-paths genéricos ni inferencia difusa SAN sobre relatos de soporte.
+        if is_ticket:
+            if _EXPLICIT_TPS_RE.search(p_lower):
+                if self.tps_getter:
+                    res = self.tps_getter()
+                    if res:
+                        print("[TIER-0] ⚡ Fast-Path TPS explícito en ticket", file=sys.stderr)
+                        return res
+            return None
 
         # Filtrar charla conversacional pura antes de evaluar
         is_greeting = any(g in p_lower for g in ["hola", "chiste", "quien eres", "cómo estás", "como estas", "que haces", "te amo", "cuentame"])
-        has_infra_keyword = any(k in p_lower for k in ["tps", "lag", "rendimiento", "jugador", "jugadores", "online", "conectado", "conectados", "server", "servidor", "status", "tarea", "tareas"])
+        has_infra_keyword = bool(_INFRA_KEYWORD_RE.search(p_lower))
 
         if is_greeting and not has_infra_keyword:
             return None
 
         # ── 1. FAST-PATH DETERMINISTA SRE (< 1 ms) ──
-        if any(k in p_lower for k in ["tps", "spark tps", "lag del server", "rendimiento del server"]):
+        if _EXPLICIT_TPS_RE.search(p_lower):
             if self.tps_getter:
                 res = self.tps_getter()
                 if res:
-                    print(f"[TIER-0] ⚡ Fast-Path TPS ejecutado determinísticamente", file=sys.stderr)
+                    print("[TIER-0] ⚡ Fast-Path TPS ejecutado determinísticamente", file=sys.stderr)
                     return res
 
         if any(k in p_lower for k in ["lista de jugadores", "quien esta conectado", "quién está conectado", "quienes estan jugando", "quiénes están jugando", "players online", "who is online"]):
             if self.players_getter:
                 res = self.players_getter()
                 if res:
-                    print(f"[TIER-0] ⚡ Fast-Path Jugadores ejecutado determinísticamente", file=sys.stderr)
+                    print("[TIER-0] ⚡ Fast-Path Jugadores ejecutado determinísticamente", file=sys.stderr)
                     return res
 
         if any(k in p_lower for k in ["estado del servidor", "status del server", "como va el server", "cómo va el server", "salud del server", "uptime del server"]):
             if self.status_getter:
                 res = self.status_getter()
                 if res:
-                    print(f"[TIER-0] ⚡ Fast-Path Estado Servidor ejecutado determinísticamente", file=sys.stderr)
+                    print("[TIER-0] ⚡ Fast-Path Estado Servidor ejecutado determinísticamente", file=sys.stderr)
                     return res
 
         if any(k in p_lower for k in ["tareas pendientes", "tareas del staff", "pendientes staff", "lista de tareas"]):
             if self.tasks_getter:
                 res = self.tasks_getter()
                 if res:
-                    print(f"[TIER-0] ⚡ Fast-Path Tareas Staff ejecutado determinísticamente", file=sys.stderr)
+                    print("[TIER-0] ⚡ Fast-Path Tareas Staff ejecutado determinísticamente", file=sys.stderr)
                     return res
 
         # ── 2. INFERENCIA LOCAL NEEDLE 2 SAN (~15 ms en CPU) ──
         if self.needle and has_infra_keyword:
             try:
                 start_t = time.time()
-                res = self.needle.run(prompt.strip())
+                res = self.needle.run(sanitized)
                 if res and isinstance(res, dict):
                     confidence = float(res.get("confidence", 0.0))
                     results = res.get("results", [])

@@ -98,8 +98,11 @@ flowchart TD
 - Switch providers dynamically via `SAORI_PRIMARY_PROVIDER` in `.env`.
 - Built-in **Circuit Breakers** and **Failover Chains**: if your primary provider encounters rate limits or outages, SAORI automatically cascades to secondary providers or local Ollama without crashing your service.
 
-### 3. Neural Observatory & Flight Recorder (`kokoro/observatory/`)
-- **Live SRE Web UI:** Real-time monitoring of agent PIDs, RSS memory, CPU ticks, and task liveness at `http://127.0.0.1:8089`.
+### 3. Neural Observatory, 3D Holographic Engine & Flight Recorder (`kokoro/observatory/`)
+- **3D Holographic Visualizer (JARVIS / ULTRON / END):** Live interactive 3D WebGL graph engine with hotkey morphing between **JARVIS** (Fibonacci spherical HUD), **ULTRON** (3D force-directed organic particle cloud), and **END CYBERPUNK** (amethyst/neon quantum lattice).
+- **Sovereign Tailscale SRE Mesh:** Private overlay topology isolating administrative operations (`:8096` Mission Control / 3D HUD, `:8888` Star SRE Analytics, `:8078` Knowledge Engine, `:8077` Agentic Memory MCP, `:8089` SRE Daemon, `:8095` Discord API).
+- **In-Engine Game Kernel Bridge (`SaoriLink`):** Direct zero-stall Panama FFM / HTTP bridge into Minecraft (`DrakesPurpur 26.2`), streaming server heartbeats, chat, player lifecycles, and autonomous crash isolation via SQLite WAL (`kernel.db`).
+- **Live SRE Web UI:** Real-time monitoring of agent PIDs, RSS memory, CPU ticks, and task liveness at `http://127.0.0.1:8089` (and `:8096`).
 - **Flight Recorder Black Box:** Records every operational step. Run `saori flight --replay <trace_id>` to generate a complete Markdown audit report.
 - **Stratified Event Retention:** Stratified TTL and count caps (telemetry 24h/1k, operations 7d/3k, decisions 30d/10k, incidents 90d/10k) with a hard 30 MB disk storage cap.
 - **Secret Sanitization Engine:** Regex and structural key redaction strips sensitive tokens prior to disk persistence.
