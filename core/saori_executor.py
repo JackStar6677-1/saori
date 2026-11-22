@@ -252,9 +252,13 @@ def buscar_faq_determinista(consulta, max_tokens_utiles=8):
 
 
 def _prompt_usuario(prompt):
-    """Quita el prefijo [Contexto ...] que antepone el bot de Discord."""
-    if prompt.startswith('[Contexto') and '\n' in prompt:
-        return prompt.split('\n', 1)[-1].strip()
+    """Quita el prefijo [Contexto ...] (incluso multilinea) que antepone el bot de Discord."""
+    if prompt.startswith('[Contexto'):
+        m = re.match(r'^\[Contexto[^\]]*\]\s*', prompt)
+        if m:
+            return prompt[m.end():].strip()
+        if '\n' in prompt:
+            return prompt.split('\n', 1)[-1].strip()
     return prompt
 
 
@@ -453,13 +457,106 @@ def execute_minecraft_command(command_str):
         return False, str(e)
     return False, "Error al ejecutar"
 
+def _extract_ticket_context(prompt):
+    """Detecta si el prompt proviene de un canal de ticket o de un formulario inicial de ticket."""
+    is_ticket_channel = False
+    if prompt.startswith("[Contexto"):
+        m_ctx = re.match(r'^\[Contexto[^\]]*\]', prompt)
+        ctx_header = m_ctx.group(0) if m_ctx else prompt.split("\n", 1)[0]
+        ctx_lower = ctx_header.lower()
+        if (
+            "canal de ticket de soporte" in ctx_lower
+            or "🎫・" in ctx_header
+            or "🎫-" in ctx_header
+            or bool(re.search(r'#(?:🎫|ticket|perdida|bug|tienda|duda|denuncia|postulacion)[\w\-・]*', ctx_lower))
+        ):
+            is_ticket_channel = True
+
+    eval_prompt = _prompt_usuario(prompt)
+    eval_lower = eval_prompt.lower().strip()
+    is_ticket_form = bool(re.match(
+        r'^\[(?:p[eé]rdida|bug|ticket|tienda|duda|denuncia|postulaci[oó]n|soporte)\b[^\]]*\]',
+        eval_lower,
+    ))
+    return eval_prompt, eval_lower, is_ticket_channel, is_ticket_form
+
+
+def _detect_power_action(prompt_lower, is_ticket_channel=False, is_ticket_form=False):
+    """Detecta solicitudes explícitas de reinicio/apagado/encendido del servidor.
+    Evita falsos positivos por menciones descriptivas ('luego del reinicio', 'despues de un reinicio').
+    """
+    is_question_about_restart = any(q in prompt_lower for q in [
+        'por que se hubo', 'porque hubo', 'por qué hubo', 'por que hubo',
+        'por que hubieron', 'por qué hubieron', 'cuantos reinicios', 'cuántos reinicios',
+        'a que hora reinicia', 'a qué hora reinicia', 'cuando reinicia', 'cuándo reinicia',
+        'que paso con el reinicio', 'qué pasó con el reinicio',
+        'cuando se reinicia', 'cuándo se reinicia', 'a que hora se reinicia', 'a qué hora se reinicia',
+    ])
+    if is_question_about_restart:
+        return None
+
+    # Comandos explícitos siempre se reconocen
+    if re.search(r'^\s*[!/](?:sreinicio|restart)\b', prompt_lower):
+        return 'restart'
+    if re.search(r'^\s*[!/](?:sstop|stop)\b', prompt_lower):
+        return 'stop'
+    if re.search(r'^\s*[!/](?:sstart|start)\b', prompt_lower):
+        return 'start'
+
+    # Al procesar la descripción inicial de un formulario de ticket, nunca disparar por texto descriptivo
+    if is_ticket_form:
+        return None
+
+    target = r'(?:(?:el|al|del)\s+)?(?:server|servidor|sv|dallas|minecraft|mc)\b'
+    restart_patterns = [
+        rf'\b(?:reinicia|reiniciar|restart)\s+{target}',
+        rf'\b(?:puedes|podr[ií]as|favor(?:\s+de)?|necesito\s+que|quiero\s+que|por\s*favor)\s+(?:reiniciar|reinicies|hacer\s+un\s+reinicio(?:\s+del)?)\s+{target}',
+        r'^\s*(?:(?:hola\s+)?saori[,:\s]+)?(?:por\s*favor\s+)?(?:reinicia|reiniciar|restart)(?:\s+(?:el\s+)?(?:server|servidor|sv|dallas|mc|ya|ahora|por\s*favor))*\s*[!?.]*$',
+    ]
+    stop_patterns = [
+        rf'\b(?:apaga|apagar|det[eé]n|detener|tira|tirar|stop)\s+{target}',
+        rf'\b(?:puedes|podr[ií]as|favor(?:\s+de)?|necesito\s+que|quiero\s+que|por\s*favor)\s+(?:apagar|apagues|detener|detengas)\s+{target}',
+        r'^\s*(?:(?:hola\s+)?saori[,:\s]+)?(?:por\s*favor\s+)?(?:apaga|apagar|stop)(?:\s+(?:el\s+)?(?:server|servidor|sv|dallas|mc|ya|ahora|por\s*favor))*\s*[!?.]*$',
+    ]
+    start_patterns = [
+        rf'\b(?:enciende|encender|inicia|iniciar|arranca|arrancar|prende|prender|start)\s+{target}',
+        rf'\b(?:puedes|podr[ií]as|favor(?:\s+de)?|necesito\s+que|quiero\s+que|por\s*favor)\s+(?:encender|enciendas|iniciar|inicies|arrancar|arranques|prender|prendas)\s+{target}',
+        r'^\s*(?:(?:hola\s+)?saori[,:\s]+)?(?:por\s*favor\s+)?(?:enciende|encender|start)(?:\s+(?:el\s+)?(?:server|servidor|sv|dallas|mc|ya|ahora|por\s*favor))*\s*[!?.]*$',
+    ]
+
+    if any(re.search(p, prompt_lower) for p in restart_patterns):
+        return 'restart'
+    if any(re.search(p, prompt_lower) for p in stop_patterns):
+        return 'stop'
+    if any(re.search(p, prompt_lower) for p in start_patterns):
+        return 'start'
+    return None
+
+
+def _is_critical_infra_request(prompt_lower, is_ticket_channel=False, is_ticket_form=False):
+    """Detecta solicitudes explícitas de cambio de permisos globales / OP / LuckPerms.
+    Evita falsos positivos por subcadenas como 'private coop' ('op ') o 'help ' ('lp ').
+    """
+    if re.search(r'^\s*[!/](?:op|deop|pex|lp|luckperms|ban-ip|reload)\b', prompt_lower):
+        return True
+    if is_ticket_form:
+        return False
+
+    patterns = [
+        r'\b(?:dame|darme|ponme|ponerme|otorga(?:me)?|asigna(?:me)?|quiero|necesito)\s+(?:op|admin|owner|administrador|permisos(?:\s+(?:de\s+admin|globales|de\s+staff))?)\b',
+        r'\b(?:cambia|cambiar|modifica|modificar|edita|editar|quita|quitar|agrega|agregar|sube|subir)\s+(?:los\s+)?permisos\b',
+        r'(?:^|[\s/!])op\s+[a-z0-9_]{3,16}\b',
+        r'(?:^|[\s/!])(?:lp|luckperms|pex)\s+(?:user|group|editor|sync|reload|creategroup|deletegroup|parent|permission|info|check)\b',
+        r'(?:^|[\s/!])ban-ip\b',
+        r'\b(?:reload|rl)\s+(?:el\s+)?(?:server|servidor|plugins?|all|confirm)\b',
+    ]
+    return any(re.search(p, prompt_lower) for p in patterns)
+
+
 def handle_server_actions(prompt, sender):
     # Aislar el mensaje real del usuario si viene inyectado con [Contexto Canal/Ticket: ...]
-    eval_prompt = prompt
-    if eval_prompt.startswith("[Contexto") and "\n" in eval_prompt:
-        eval_prompt = eval_prompt.split("\n", 1)[-1].strip()
+    eval_prompt, prompt_lower, is_ticket_channel, is_ticket_form = _extract_ticket_context(prompt)
 
-    prompt_lower = eval_prompt.lower().strip()
     sender_clean = clean_sender_name(sender).lower()
     is_jack = sender_clean in ['jack', 'dios', 'dueño', 'owner']
     is_high_staff = is_jack or (sender_clean in HIGH_STAFF_MEMBERS) or (os.environ.get('SAORI_IS_HIGH_STAFF') == '1')
@@ -490,28 +587,11 @@ def handle_server_actions(prompt, sender):
 
     # ── GESTIÓN DE ENERGÍA DE LA INFRAESTRUCTURA (RESTART, STOP, INICIO) ──
     # High Staff según Discord y Jack pueden operar la suite segura.
-    # IMPORTANTE: Distinguir entre una orden de reinicio/apagado ("reinicia el server") vs una pregunta ("¿por qué hubo reinicios?", "cuándo reinicia?")
-    is_question_about_restart = any(q in prompt_lower for q in [
-        'por que se hubo', 'porque hubo', 'por qué hubo', 'por que hubo',
-        'por que hubieron', 'por qué hubieron', 'cuantos reinicios', 'cuántos reinicios',
-        'a que hora reinicia', 'a qué hora reinicia', 'cuando reinicia', 'cuándo reinicia',
-        'que paso con el reinicio', 'qué pasó con el reinicio'
-    ])
-
-    power_patterns = [
-        r'\breinicia\b', r'\breiniciar\b', r'\breinicio\b', r'\brestart\b',
-        r'\bapaga\b', r'\bapagar\b', r'\bstop\b', r'\bdeten el server\b',
-        r'\bdetén el server\b', r'\btira el server\b', r'\benciende\b',
-        r'\bencender\b', r'\binicia el server\b', r'\biniciar el server\b',
-        r'\barranca el server\b', r'\bstart\b'
-    ]
-    if not is_question_about_restart and any(re.search(pat, prompt_lower) for pat in power_patterns):
+    # Solo se activa ante solicitudes/comandos explícitos de energía, nunca por menciones descriptivas en tickets.
+    power_action = _detect_power_action(prompt_lower, is_ticket_channel=is_ticket_channel, is_ticket_form=is_ticket_form)
+    if power_action:
         if is_high_staff:
-            is_restart = any(re.search(p, prompt_lower) for p in [r'\breinicia\b', r'\breiniciar\b', r'\breinicio\b', r'\brestart\b'])
-            is_stop = any(re.search(p, prompt_lower) for p in [r'\bapaga\b', r'\bapagar\b', r'\bstop\b', r'\bdeten\b', r'\bdetén\b', r'\btira\b'])
-            is_start = any(re.search(p, prompt_lower) for p in [r'\benciende\b', r'\bencender\b', r'\binicia\b', r'\biniciar\b', r'\bstart\b', r'\barranca\b'])
-
-            if is_restart:
+            if power_action == 'restart':
                 motivo = f"Reinicio solicitado por {clean_sender_name(sender)} (High Staff Discord)"
                 subprocess.Popen(['/usr/bin/python3', '/home/jack/ai-hub/scripts/reinicio_seguro.py', '120', motivo, 'saori', '--skip-preflight'])
                 r1 = f"🔄 **Protocolo de Reinicio Seguro Iniciado** por {clean_sender_name(sender)} (High Staff).\n\n"
@@ -519,7 +599,7 @@ def handle_server_actions(prompt, sender):
                 r3 = "💾 **Pre-Shutdown Sync:** Guardado atómico de Slimefun, respaldo de inventarios IRP, desconexión limpia de jugadores y `save-all flush` en frío.\n"
                 r4 = "🛡️ **Garantía:** Cero pérdida de inventarios ni corrupción de chunks. El servidor volverá a encenderse automáticamente tras el ciclo."
                 return r1 + r2 + r3 + r4
-            elif is_stop:
+            elif power_action == 'stop':
                 motivo = f"Apagado solicitado por {clean_sender_name(sender)} (High Staff Discord)"
                 subprocess.Popen(['/usr/bin/python3', '/home/jack/ai-hub/scripts/stop_seguro.py', '120', motivo, 'saori', '--skip-preflight'])
                 s1 = f"🛑 **Protocolo de Apagado Seguro Iniciado** por {clean_sender_name(sender)} (High Staff).\n\n"
@@ -527,7 +607,7 @@ def handle_server_actions(prompt, sender):
                 s3 = "💾 **Sincronización:** Guardando datos de modalidades, expulsión ordenada y verificación offline.\n"
                 s4 = "🛡️ **Protección Anti-Crash:** Guardia activa de 20s para neutralizar cualquier intento espurio de auto-reinicio por crash-detector de Pterodactyl."
                 return s1 + s2 + s3 + s4
-            elif is_start:
+            elif power_action == 'start':
                 subprocess.Popen(['/usr/bin/python3', '/home/jack/ai-hub/scripts/encendido_seguro.py', 'saori'])
                 e1 = f"⚡ **Protocolo de Encendido Seguro Iniciado** por {clean_sender_name(sender)} (High Staff).\n\n"
                 e2 = "🔍 **Verificación:** Chequeo anti-colisión, señal autorizada enviada al panel y watcher de arranque activo.\n"
@@ -540,22 +620,30 @@ def handle_server_actions(prompt, sender):
                 f"Si experimentas tirones o problemas técnicos, abre un ticket en #🎫・ᴛɪᴄᴋᴇᴛs-sᴏᴘᴏʀᴛᴇ para que el equipo lo evalúe."
             )
 
+    # Comandos destructivos o de infraestructura global -> EXCLUSIVOS DE JACK
+    if not is_jack and _is_critical_infra_request(prompt_lower, is_ticket_channel=is_ticket_channel, is_ticket_form=is_ticket_form):
+        return f"Hola {sender}, por seguridad solo Jack puede modificar permisos globales de la infraestructura."
+
     # BLOQUEO TOTAL DE MODERACIÓN, DINERO Y ACCIONES CRÍTICAS POR CHAT
-    if not is_jack:
-        BLOCKED_ACTION_PATTERNS = [
-            'kickea', 'kickear', 'kick ', 'kickall', 'banea', 'banear', 'ban ',
-            'mutea', 'mutear', 'mute ', 'silencia', 'silenciar', 'desmutea', 'unban', 'unmute',
-            'dame op', 'dame admin', 'dame owner', 'dame rango', 'dame plata', 'dame dinero', 'dame dragmas',
-            'dame 100', 'dar dinero', 'dar dragmas', 'eco give', 'eco set', 'money give'
+    if not is_jack and not is_ticket_form:
+        BLOCKED_MOD_REGEXES = [
+            r'\b(?:kickea|kickear|kickall|banea|banear|mutea|mutear|silencia|silenciar|desmutea|unban|unmute)\b',
+            r'(?:^|[\s/!])(?:kick|ban|mute)\s+[a-z0-9_]{3,16}\b',
+            r'\b(?:expulsa|expulsar|echa|echar)\s+a\b',
+            r'\bexp[uú]lsalo\b',
+            r'\bdame\s+rango\b',
         ]
-        EXPULSION_PATTERNS = ['expulsa a', 'expulsar a', 'echa a', 'echar a', 'expulsalo', 'expúlsalo']
-        if any(k in prompt_lower for k in BLOCKED_ACTION_PATTERNS) or any(k in prompt_lower for k in EXPULSION_PATTERNS):
-            if any(k in prompt_lower for k in ['dame plata', 'dame dinero', 'dame dragmas', 'dame 100', 'dar dinero', 'dar dragmas', 'eco give', 'eco set', 'money give']):
-                return "Acceso denegado: No tengo autorización para regalar dinero ni alterar la economía del servidor. Puedes ganar Dragmas trabajando con `/jobs`, comerciando con jugadores o en la tienda oficial: https://web.drakescraft.cl."
+        BLOCKED_ECO_PATTERNS = [
+            'dame plata', 'dame dinero', 'dame dragmas', 'dame 100',
+            'dar dinero', 'dar dragmas', 'eco give', 'eco set', 'money give'
+        ]
+        if any(k in prompt_lower for k in BLOCKED_ECO_PATTERNS):
+            return "Acceso denegado: No tengo autorización para regalar dinero ni alterar la economía del servidor. Puedes ganar Dragmas trabajando con `/jobs`, comerciando con jugadores o en la tienda oficial: https://web.drakescraft.cl."
+        if any(re.search(pat, prompt_lower) for pat in BLOCKED_MOD_REGEXES):
             return "Acceso denegado: Por seguridad y política de DrakesCraft, las sanciones y moderación (kick, ban, mute) solo pueden ser ejecutadas directamente por Jack y los Moderadores mediante los comandos oficiales in-game o el panel de control. Yo no ejecuto sanciones ni acciones administrativas por chat."
 
     # BLOQUEO ESTRICTO DE PRIVACIDAD: Prohibido revelar logs, comandos o actividades privadas a usuarios comunes
-    if not is_staff:
+    if not is_staff and not is_ticket_form:
         COMMAND_LOG_PROBES = [
             'que comandos uso', 'qué comandos uso', 'que comando uso', 'qué comando uso',
             'que comandos usó', 'qué comandos usó', 'que comandos utilizo', 'qué comandos utilizó',
@@ -566,11 +654,6 @@ def handle_server_actions(prompt, sender):
         ]
         if any(k in prompt_lower for k in COMMAND_LOG_PROBES):
             return f"Hola {clean_sender_name(sender)}, por motivos de seguridad y privacidad, los registros de comandos y auditoría del servidor son confidenciales y solo accesibles por el Staff y Jack."
-
-    # Comandos destructivos o de infraestructura global -> EXCLUSIVOS DE JACK
-    CRITICAL_INFRA = ['dame op', 'dame admin', 'dame owner', 'op ', 'reload', 'pex', 'luckperms', 'lp ', 'ban-ip']
-    if not is_jack and any(k in prompt_lower for k in CRITICAL_INFRA):
-        return f"Hola {sender}, por seguridad solo Jack puede modificar permisos globales de la infraestructura."
 
     # TAREAS STAFF Y RECORDATORIOS A JACK (Jack o cualquier miembro del Staff)
     if is_jack or is_staff:
